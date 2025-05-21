@@ -1,0 +1,230 @@
+Starting torchLoom Controller
+Controller initialized with NATS address: nats://0.0.0.0:4222
+Connected to NATS server at nats://0.0.0.0:4222
+Controller initialized
+Started subscribing to all subjects
+Subscribing to torchLoom.monitored.failure
+Subscribed to torchLoom.monitored.failure
+Started listening on torchLoom.monitored.failure
+Created stream: CONTROLLER-STREAM
+Subscribing to torchLoom.DRentry on stream CONTROLLER-STREAM with consumer controller-consumer
+Pull subscription created for torchLoom.DRentry on stream CONTROLLER-STREAM with consumer controller-consumer
+Started listening on torchLoom.DRentry
+Subscribed to all subjects
+Starting torchLoom Controller
+Controller initialized with NATS address: nats://0.0.0.0:4222
+Connected to NATS server at nats://0.0.0.0:4222
+Controller initialized
+Started subscribing to all subjects
+Subscribing to torchLoom.monitored.failure
+Subscribed to torchLoom.monitored.failure
+Started listening on torchLoom.monitored.failure
+Created stream: CONTROLLER-STREAM
+Subscribing to torchLoom.DRentry on stream CONTROLLER-STREAM with consumer controller-consumer
+Pull subscription created for torchLoom.DRentry on stream CONTROLLER-STREAM with consumer controller-consumer
+Started listening on torchLoom.DRentry
+Subscribed to all subjects
+Stopping Controller
+All subscriptions cleared
+NATS connection closed
+Received message on torchLoom.monitored.failure
+Received message: learning_rate {
+  lr: "0.001"
+}
+
+
+----------------------------------------------------------------------------------------------------
+Received reset learning rate event
+Published new learning rate 0.001 to torchLoom.training.reset_lr
+Stopping Controller
+All subscriptions cleared
+NATS connection closed
+Starting torchLoom Controller
+Controller initialized with NATS address: nats://0.0.0.0:4222
+Connected to NATS server at nats://0.0.0.0:4222
+Controller initialized
+Started subscribing to all subjects
+Subscribing to torchLoom.monitored.failure
+Subscribed to torchLoom.monitored.failure
+Started listening on torchLoom.monitored.failure
+Created stream: CONTROLLER-STREAM
+Subscribing to torchLoom.DRentry on stream CONTROLLER-STREAM with consumer controller-consumer
+Pull subscription created for torchLoom.DRentry on stream CONTROLLER-STREAM with consumer controller-consumer
+Started listening on torchLoom.DRentry
+Subscribed to all subjects
+Received message on torchLoom.monitored.failure
+Received message: learning_rate {
+  lr: "0.01"
+}
+
+
+----------------------------------------------------------------------------------------------------
+Received reset learning rate event
+Published new learning rate 0.01 to torchLoom.training.reset_lr
+Stopping Controller
+All subscriptions cleared
+Starting torchLoom Controller
+Controller initialized with NATS address: nats://0.0.0.0:4222
+Connected to NATS server at nats://0.0.0.0:4222
+Controller initialized
+Started subscribing to all subjects
+Subscribing to torchLoom.monitored.failure
+Subscribed to torchLoom.monitored.failure
+Started listening on torchLoom.monitored.failure
+Created stream: CONTROLLER-STREAM
+Subscribing to torchLoom.DRentry on stream CONTROLLER-STREAM with consumer controller-consumer
+Pull subscription created for torchLoom.DRentry on stream CONTROLLER-STREAM with consumer controller-consumer
+Started listening on torchLoom.DRentry
+Subscribed to all subjects
+Received message on torchLoom.monitored.failure
+Received message: learning_rate {
+  lr: "0.01"
+}
+
+
+----------------------------------------------------------------------------------------------------
+Received reset learning rate event
+Published new learning rate 0.01 to torchLoom.training.reset_lr
+Received message on torchLoom.monitored.failure
+Received message: learning_rate {
+  lr: "0.01"
+}
+
+
+----------------------------------------------------------------------------------------------------
+Received reset learning rate event
+Published new learning rate 0.01 to torchLoom.training.reset_lr
+Received message on torchLoom.monitored.failure
+Received message: learning_rate {
+  lr: "0.01"
+}
+
+
+----------------------------------------------------------------------------------------------------
+Received reset learning rate event
+Published new learning rate 0.01 to torchLoom.training.reset_lr
+Received message on torchLoom.monitored.failure
+Received message: learning_rate {
+  lr: "0.01"
+}
+
+
+----------------------------------------------------------------------------------------------------
+Received reset learning rate event
+Published new learning rate 0.01 to torchLoom.training.reset_lr
+Received message on torchLoom.monitored.failure
+Received message: learning_rate {
+  lr: "0.01"
+}
+
+
+----------------------------------------------------------------------------------------------------
+Received reset learning rate event
+Published new learning rate 0.01 to torchLoom.training.reset_lr
+Stopping Controller
+All subscriptions cleared
+NATS connection closed
+Starting torchLoom Controller
+Controller initialized with NATS address: nats://0.0.0.0:4222
+Connected to NATS server at nats://0.0.0.0:4222
+Controller initialized
+Started subscribing to all subjects
+Subscribing to torchLoom.monitored.failure
+Subscribed to torchLoom.monitored.failure
+Started listening on torchLoom.monitored.failure
+Created stream: CONTROLLER-STREAM
+Subscribing to torchLoom.DRentry on stream CONTROLLER-STREAM with consumer controller-consumer
+Pull subscription created for torchLoom.DRentry on stream CONTROLLER-STREAM with consumer controller-consumer
+Started listening on torchLoom.DRentry
+Subscribed to all subjects
+Received message on torchLoom.monitored.failure
+Received message: learning_rate {
+  lr: "0.01"
+}
+
+
+----------------------------------------------------------------------------------------------------
+Received reset learning rate event
+Published new learning rate 0.01 to torchLoom.training.reset_lr
+Stopping Controller
+All subscriptions cleared
+NATS connection closed
+Starting torchLoom Controller
+Controller initialized with NATS address: nats://0.0.0.0:4222
+Connected to NATS server at nats://0.0.0.0:4222
+Controller initialized
+Started subscribing to all subjects
+Subscribing to torchLoom.monitored.failure
+Subscribed to torchLoom.monitored.failure
+Started listening on torchLoom.monitored.failure
+Created stream: CONTROLLER-STREAM
+Subscribing to torchLoom.DRentry on stream CONTROLLER-STREAM with consumer controller-consumer
+Pull subscription created for torchLoom.DRentry on stream CONTROLLER-STREAM with consumer controller-consumer
+Started listening on torchLoom.DRentry
+Subscribed to all subjects
+Received message on torchLoom.monitored.failure
+Received message: learning_rate {
+  lr: "0.01"
+}
+
+
+----------------------------------------------------------------------------------------------------
+Received reset learning rate event
+Published new learning rate 0.01 to torchLoom.training.reset_lr
+Stopping Controller
+All subscriptions cleared
+NATS connection closed
+Starting torchLoom Controller
+Controller initialized with NATS address: nats://0.0.0.0:4222
+Connected to NATS server at nats://0.0.0.0:4222
+Controller initialized
+Started subscribing to all subjects
+Subscribing to torchLoom.monitored.failure
+Subscribed to torchLoom.monitored.failure
+Started listening on torchLoom.monitored.failure
+Created stream: CONTROLLER-STREAM
+Subscribing to torchLoom.DRentry on stream CONTROLLER-STREAM with consumer controller-consumer
+Pull subscription created for torchLoom.DRentry on stream CONTROLLER-STREAM with consumer controller-consumer
+Started listening on torchLoom.DRentry
+Subscribed to all subjects
+Stopping Controller
+All subscriptions cleared
+NATS connection closed
+Starting torchLoom Controller
+Controller initialized with NATS address: nats://0.0.0.0:4222
+Connected to NATS server at nats://0.0.0.0:4222
+Controller initialized
+Started subscribing to all subjects
+Subscribing to torchLoom.monitored.failure
+Subscribed to torchLoom.monitored.failure
+Started listening on torchLoom.monitored.failure
+Created stream: CONTROLLER-STREAM
+Subscribing to torchLoom.DRentry on stream CONTROLLER-STREAM with consumer controller-consumer
+Pull subscription created for torchLoom.DRentry on stream CONTROLLER-STREAM with consumer controller-consumer
+Started listening on torchLoom.DRentry
+Subscribed to all subjects
+Received message on torchLoom.monitored.failure
+Received message: learning_rate {
+  lr: "0.5"
+}
+
+
+----------------------------------------------------------------------------------------------------
+Received reset learning rate event
+Published new learning rate 0.5 to torchLoom.training.reset_lr
+Stopping Controller
+All subscriptions cleared
+NATS connection closed
+Starting torchLoom Controller
+Controller initialized with NATS address: nats://0.0.0.0:4222
+Connected to NATS server at nats://0.0.0.0:4222
+Controller initialized
+Started subscribing to all subjects
+Subscribing to torchLoom.monitored.failure
+Subscribed to torchLoom.monitored.failure
+Started listening on torchLoom.monitored.failure
+Created stream: CONTROLLER-STREAM
+Subscribing to torchLoom.DRentry on stream CONTROLLER-STREAM with consumer controller-consumer
+Pull subscription created for torchLoom.DRentry on stream CONTROLLER-STREAM with consumer controller-consumer
+Started listening on torchLoom.DRentry
+Subscribed to all subjects

@@ -1,0 +1,14 @@
+name: nats-torch27
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - nats-py>=2.10
+  - go
+  - pip
+  - pip:
+    - torch
+    - torchvision
+    - torchaudio
+    - protobuf
+    - pynvml

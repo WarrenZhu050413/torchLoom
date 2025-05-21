@@ -1,0 +1,9 @@
+{
+    "root_files": [
+      "torchLoom",
+      "*.py",
+      ".pyre_configuration",
+      ".watchmanconfig"
+    ]
+  }
+  

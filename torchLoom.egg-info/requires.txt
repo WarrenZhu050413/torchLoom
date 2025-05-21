@@ -1,0 +1,11 @@
+torch>=2.7
+
+[dev]
+pytest
+pytest-timeout
+black
+pyre-check
+parameterized
+expecttest
+numpy
+torchx
