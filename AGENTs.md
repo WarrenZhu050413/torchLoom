@@ -25,7 +25,4 @@
 - Remember to import all the libraries that you are using. Also, don't reimport the same library twice.
 
 <Environment Specific Instructions>
-Run
-```sh
-cd /srv/apps/torchLoom && conda init bash && source ~/.bashrc && conda activate /srv/apps/danny/miniconda3/envs/warren/torchtitan && <python command> in order to set up the environment correctly.
-```
+- Run tests through pytest
