@@ -1,0 +1,9 @@
+nats-py>=2.10
+torch
+torchvision
+torchaudio
+protobuf
+pynvml
+lightning
+requests
+go
