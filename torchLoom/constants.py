@@ -9,11 +9,11 @@ JS = "js"
 
 class torchLoomSubjects:
     EXTERNAL: str = "torchLoom.monitored.failure"
-    CONTROLLER_EVENTS: str = "torchLoom.controller.events"
+    CONTROLLER_EVENTS: str = "torchLoom.weaver.events"
     DR_SUBJECT: str = "torchLoom.DRentry"
     REPLICA_FAIL: str = "torchLoom.replica.fail"
 
-class ControllerSubjects:
+class WeaverSubjects:
     DR_SUBJECT: str = torchLoomSubjects.DR_SUBJECT
 
 class StreamSpec:
@@ -21,10 +21,10 @@ class StreamSpec:
     CONSUMER = None
     subjects = None
 
-class ControllerStream(StreamSpec):
+class WeaverStream(StreamSpec):
     STREAM: str = "CONTROLLER-STREAM"
-    CONSUMER: str = "controller-consumer"
-    subjects = ControllerSubjects()
+    CONSUMER: str = "weaver-consumer"
+    subjects = WeaverSubjects()
 
 class MonitorSubjects:
     EXTERNAL: str = torchLoomSubjects.EXTERNAL
@@ -39,13 +39,13 @@ class MonitorStream(StreamSpec):
 class torchLoomConstants:
     """Constants for torchLoom communication channels and configuration."""
     subjects: torchLoomSubjects = torchLoomSubjects()
-    controller_stream: ControllerStream = ControllerStream()
+    weaver_stream: WeaverStream = WeaverStream()
     monitor_stream: MonitorStream = MonitorStream()
     DEFAULT_ADDR: str = Config.DEFAULT_ADDR
     
     def __post_init__(self):
         logger.debug(f"torchLoomConstants initialized with DEFAULT_ADDR: {self.DEFAULT_ADDR}")
-        logger.debug(f"Controller stream: {self.controller_stream.STREAM}, Consumer: {self.controller_stream.CONSUMER}")
+        logger.debug(f"Weaver stream: {self.weaver_stream.STREAM}, Consumer: {self.weaver_stream.CONSUMER}")
         logger.debug(f"Monitor stream: {self.monitor_stream.STREAM}, Consumer: {self.monitor_stream.CONSUMER}")
         logger.debug(f"Subject paths: DR_SUBJECT={self.subjects.DR_SUBJECT}, EXTERNAL={self.subjects.EXTERNAL}")
 

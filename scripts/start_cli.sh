@@ -1,4 +1,4 @@
 python torchft/torchLoom/monitor_cli.py
 
 # test 111
-# run controller: python torchft/torchLoom/controller.py
+# run weaver: python torchft/torchLoom/weaver.py

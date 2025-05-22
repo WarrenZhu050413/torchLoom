@@ -17,12 +17,12 @@ telnet localhost 4222
 /srv/apps/warren/torchft/torchft/torchLoom/nats-cli consumer list CONTROLLER-STREAM
 ```
 
-### Controller
+### Weaver
 ```bash
-# Check if controller is running
-ps aux | grep controller.py
+# Check if weaver is running
+ps aux | grep weaver.py
 
-# Check controller logs
+# Check weaver logs
 tail -f /srv/apps/warren/torchft/torchft/torchLoom/logging/torchLoom.log
 ```
 
@@ -43,7 +43,7 @@ If messages aren't being delivered between components:
    # Check environment variable
    echo $torchLoom_ADDR
    
-   # Check controller and manager code for hardcoded addresses
+   # Check weaver and manager code for hardcoded addresses
    grep -r "torchLoom_ADDR" /srv/apps/warren/torchft/torchft/
    ```
 
@@ -88,9 +88,9 @@ If replica failure events aren't being properly handled:
    ```
 
 3. Verify message flow in logs
-   - Controller should log receiving the device failure
-   - Controller should log associated replica IDs
-   - Controller should log publishing replica fail events
+   - Weaver should log receiving the device failure
+   - Weaver should log associated replica IDs
+   - Weaver should log publishing replica fail events
    - Manager should log receiving the replica fail event
 
 ## Asyncio Debugging

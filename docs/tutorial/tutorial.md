@@ -8,21 +8,21 @@ torchLoom>
 
 ## Test 0: DRMapping Registration upon starting training
 
-Controller output:
+Weaver output:
 
 ```bash
 torchLoom constants module loaded
-Starting torchLoom Controller
-Controller initialized with NATS address: nats://0.0.0.0:4222
+Starting torchLoom Weaver
+Weaver initialized with NATS address: nats://0.0.0.0:4222
 Connected to NATS server at nats://0.0.0.0:4222
-Subscribing to torchLoom.DRentry on stream CONTROLLER-STREAM with consumer controller-consumer
+Subscribing to torchLoom.DRentry on stream CONTROLLER-STREAM with consumer weaver-consumer
 Subscribed to torchLoom.monitored.failure
-Controller initialized and subscribed to all subjects
+Weaver initialized and subscribed to all subjects
 Started listening on torchLoom.DRentry
 Started listening on torchLoom.monitored.failure
 ```
 
-Once the two training scrips start according to the above instructions, then should see the registration on the controller:
+Once the two training scrips start according to the above instructions, then should see the registration on the weaver:
 
 ```bash
 ----------------------------------------------------------------------------------------------------
@@ -45,7 +45,7 @@ Received message
 ```
 
 Here, there are two possible cases. If the device_uuid is not found in the device replica map, then the device is not registered.
-Here, the device_uuid is printed out by the controller whenever a training process starts on a device.
+Here, the device_uuid is printed out by the weaver whenever a training process starts on a device.
 
 ## Test 1a: Device not registered
 
@@ -58,7 +58,7 @@ Simulating failed GPU with uuid: 50
 Published device failure event for device 50
 ```
 
-Controller output:
+Weaver output:
 ```bash
 [GPU FAILURE] Device 50 not found in device-to-replicas map
 ```
@@ -73,7 +73,7 @@ Simulating failed GPU with uuid: GPU-307a982d-bf2b-4cc3-64e3-aae456bf6a28
 Published device failure event for device GPU-307a982d-bf2b-4cc3-64e3-aae456bf6a28
 ```
 
-Controller output:
+Weaver output:
 
 ```bash
 [GPU FAILURE] Associated Replica IDs: {'train_ddp_1:b584d120-6037-4a33-aeb6-54fcbcbee9bf'}

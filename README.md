@@ -14,7 +14,7 @@ Unlike traditional orchestration frameworks that focus on deployment and schedul
 
 ## Key Components
 
-- **Controller**: Central service that maintains device-to-replica mappings and coordinates failure responses
+- **Weaver**: Central service that maintains device-to-replica mappings and coordinates failure responses
 - **Manager Integration**: Direct integration with TorchFT Manager for seamless fault-tolerance
 - **NATS Messaging**: Lightweight pub/sub communication layer for system events
 - **Monitor CLI**: Command-line interface for manual control and testing
@@ -51,9 +51,9 @@ conda activate nats-torch27
 ./nats/nats-server -c ./nats/nats.conf
 ```
 
-2. Start the controller
+2. Start the weaver
 ```sh
-python -m torchLoom.controller
+python -m torchLoom.weaver
 ```
 
 3. Start the cli

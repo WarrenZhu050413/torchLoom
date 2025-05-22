@@ -13,10 +13,10 @@ from torchLoom.log.logger import setup_logger
 from torchLoom.log.log_utils import log_and_raise_exception
 from torchLoom.utils import cancel_subscriptions
 
-logger = setup_logger(name="torchLoom_controller", log_file=Config.torchLoom_CONTROLLER_LOG_FILE)
+logger = setup_logger(name="torchLoom_weaver", log_file=Config.torchLoom_CONTROLLER_LOG_FILE)
 
-class Controller():
-    """Controller for torchLoom.
+class Weaver():
+    """Weaver for torchLoom.
 
     This class is responsible for managing the training process, including
     handling events and managing resources. It runs in a separate thread to
@@ -36,7 +36,7 @@ class Controller():
         self._subscriptions = {}
         self._nc_timeout = Config.NC_TIMEOUT or 1   
         self._exception_sleep = Config.EXCEPTION_RETRY_TIME or 1
-        logger.info(f"Controller initialized with NATS address: {torchLoom_addr}")
+        logger.info(f"Weaver initialized with NATS address: {torchLoom_addr}")
 
         self._nc: Client | None = None
         self._js: JetStreamContext | None = None
@@ -211,7 +211,7 @@ class Controller():
         self._subscriptions[subject] = (sub, task)
 
     async def stop(self):
-        logger.info("Stopping Controller")
+        logger.info("Stopping Weaver")
         # signal all loops to exit
         self._stop_nats.set()
 
@@ -236,21 +236,21 @@ class Controller():
 
 async def main():
     try:
-        logger.info("Starting torchLoom Controller")
-        controller = Controller()
-        await controller.initialize()
-        logger.info("Controller initialized")
+        logger.info("Starting torchLoom Weaver")
+        weaver = Weaver()
+        await weaver.initialize()
+        logger.info("Weaver initialized")
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(controller.subscribe_js(
-                torchLoomConstants.controller_stream.STREAM,
-                torchLoomConstants.controller_stream.subjects.DR_SUBJECT,
-                torchLoomConstants.controller_stream.CONSUMER,
-                controller.message_handler
+            tg.create_task(weaver.subscribe_js(
+                torchLoomConstants.weaver_stream.STREAM,
+                torchLoomConstants.weaver_stream.subjects.DR_SUBJECT,
+                torchLoomConstants.weaver_stream.CONSUMER,
+                weaver.message_handler
             ))
-            tg.create_task(controller.subscribe_nc(
+            tg.create_task(weaver.subscribe_nc(
                 subject=torchLoomConstants.subjects.EXTERNAL, 
-                message_handler=controller.message_handler
+                message_handler=weaver.message_handler
             ))
             logger.info("Started subscribing to all subjects")
 
@@ -259,11 +259,11 @@ async def main():
         while True:
             await asyncio.sleep(1)
     except KeyboardInterrupt:
-        logger.info("Controller stopped by user")
+        logger.info("Weaver stopped by user")
     except Exception as e:
-        logger.exception(f"Unexpected error in controller: {e}")
+        logger.exception(f"Unexpected error in weaver: {e}")
     finally:
-        await controller.stop()
+        await weaver.stop()
 
 if __name__ == '__main__':
     asyncio.run(main())

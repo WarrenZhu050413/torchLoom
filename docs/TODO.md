@@ -13,7 +13,7 @@
 Deliverable: UI. 
 
 ## Dynamic Configuration
-1. Enable hyperparameter broadcasting from training runtime to controller
+1. Enable hyperparameter broadcasting from training runtime to weaver
    - Maintain a map: replica_id → hyperparameters
    - Allow dynamic tuning of parameters when training becomes unstable
    - Enable real-time configuration changes without training interruption
@@ -35,7 +35,7 @@ Deliverable: Enable dynamic dataloader modification from 2 Replica Group to 1 Re
 
 Deliverable: MNIST training with configurable parameters through torchLoom.
 
-4. Handle resource draining by properly deleting DR mapping entries from both NATS JetStream and controller map
+4. Handle resource draining by properly deleting DR mapping entries from both NATS JetStream and weaver map
 
 ## Other feaures
 1. Implement "drain" functionality for GPUs requiring replacement
@@ -59,10 +59,10 @@ Deliverable: MNIST training with configurable parameters through torchLoom.
 # Low Priority TODOs
 
 3. Integrate with checkpointing system
-   - Allow controller to specify which checkpoint to load
+   - Allow weaver to specify which checkpoint to load
    - Synchronize across distributed training processes
 
-4. Make controller and Manager handle NATS connection failures (e.g. when we have a network partition or the server is down) gracefully, e.g. by retrying.
+4. Make weaver and Manager handle NATS connection failures (e.g. when we have a network partition or the server is down) gracefully, e.g. by retrying.
 
 5. Implement persistence for DR mapping in an object store: https://docs.nats.io/nats-concepts/jetstream/obj_store/obj_walkthrough
 

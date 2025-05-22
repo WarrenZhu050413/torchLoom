@@ -35,7 +35,7 @@ class MyShell(cmd.Cmd):
                 self._nc = await nats.connect(torchLoomConstants.DEFAULT_ADDR)
             logger.debug(f"Connected to NATS server at {torchLoomConstants.DEFAULT_ADDR}")
             
-            # await js.add_stream(name=torchLoomConstants.controller_stream.STREAM, subjects=[torchLoomConstants.monitor_stream.subjects.EXTERNAL])
+            # await js.add_stream(name=torchLoomConstants.weaver_stream.STREAM, subjects=[torchLoomConstants.monitor_stream.subjects.EXTERNAL])
             DRenvelope = EventEnvelope()
             DRenvelope.learning_rate.lr = line
             
@@ -52,7 +52,7 @@ class MyShell(cmd.Cmd):
                 self._nc = await nats.connect(torchLoomConstants.DEFAULT_ADDR)
             logger.debug(f"Connected to NATS server at {torchLoomConstants.DEFAULT_ADDR}")
             
-            # await js.add_stream(name=torchLoomConstants.controller_stream.STREAM, subjects=[torchLoomConstants.monitor_stream.subjects.EXTERNAL])
+            # await js.add_stream(name=torchLoomConstants.weaver_stream.STREAM, subjects=[torchLoomConstants.monitor_stream.subjects.EXTERNAL])
             DRenvelope = EventEnvelope()
             DRenvelope.monitored_fail.device_uuid = line
             

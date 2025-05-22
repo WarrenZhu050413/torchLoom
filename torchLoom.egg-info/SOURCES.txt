@@ -4,7 +4,7 @@ pyproject.toml
 torchLoom/__init__.py
 torchLoom/config.py
 torchLoom/constants.py
-torchLoom/controller.py
+torchLoom/weaver.py
 torchLoom/loom.py
 torchLoom/monitor_cli.py
 torchLoom/monitor_cli_danny.py
