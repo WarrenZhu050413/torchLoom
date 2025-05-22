@@ -46,7 +46,7 @@ python -m torchLoom.controller
 3. Start the cli
 
 ```sh
-python -m torchLoom.monitor_cli
+python -m torchLoom.monitor_cli_danny
 ```
 
 <!-- 
