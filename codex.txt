@@ -1,6 +1,10 @@
+# Tell pip to look for every package here first
+--index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://pypi.org/simple   # fall back for everything else
+
 nats-py>=2.10
-torch
-torchvision
+torch==2.7.*                # CPU-only wheel is automatically chosen
+torchvision==0.18.*+cpu     # still GPU-free, matches the torch cpu build
 protobuf
 pynvml
 lightning
