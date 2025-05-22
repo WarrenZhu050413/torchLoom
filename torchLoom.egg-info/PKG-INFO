@@ -13,6 +13,4 @@ Requires-Dist: black; extra == "dev"
 Requires-Dist: pyre-check; extra == "dev"
 Requires-Dist: parameterized; extra == "dev"
 Requires-Dist: expecttest; extra == "dev"
-Requires-Dist: numpy; extra == "dev"
-Requires-Dist: torchx; extra == "dev"
 Dynamic: license-file

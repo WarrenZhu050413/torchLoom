@@ -5,7 +5,7 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
-dynamic = ["version"]
+version = "0.1.0"
 dependencies = [
     "torch>=2.7"
 ]
@@ -20,8 +20,6 @@ dev = [
     "pyre-check",
     "parameterized",
     "expecttest",
-    "numpy",
-    "torchx"
 ]
 
 [tool.isort]
@@ -34,3 +32,10 @@ log_date_format = "%Y-%m-%d %H:%M:%S"
 log_level = "INFO"
 timeout = 60
 timeout_method = "thread"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["torchLoom"]
