@@ -12,3 +12,4 @@ dependencies:
     - torchaudio
     - protobuf
     - pynvml
+    - pytorch-lightning
