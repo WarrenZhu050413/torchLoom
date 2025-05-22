@@ -120,3 +120,13 @@ Executing test command with input: 0.5
 Simulating reset lr to: 0.5
 Connected to NATS server at nats://localhost:4222
 Published reset learning rate event with lr equals 0.5
+Using NATS server at nats://localhost:4222
+Starting torchLoom CLI
+torchLoom CLI initialized
+Using NATS server at nats://localhost:4222
+Starting torchLoom CLI
+torchLoom CLI initialized
+Executing test command with input: 0.5
+Simulating reset lr to: 0.5
+Connected to NATS server at nats://localhost:4222
+Published reset learning rate event with lr equals 0.5

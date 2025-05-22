@@ -1,6 +1,6 @@
 # Contributing to torchLoom
 
-This contributor guide is adapted from torchft's contributor guide.
+Notes: This contributor guide is adapted from torchft's contributor guide.
 
 We want to make contributing to this project as easy and transparent as possible.
 
@@ -35,17 +35,14 @@ description is clear and has sufficient instructions to be able to reproduce the
 
 ## Development installation
 
-torchft is written in Python and Rust so you will need to install the Rust
-toolchain. [rustup](https://rustup.rs/) is recommended as it makes using tools such as linters much
-easier.
+torchLoom is written in Python and uses NATS as its messaging system.
 
-Once you have rust installed you can install the project via:
+You can set up by running the following commands:
 
+```sh
+chmod +x setup.sh
+./setup.sh
 ```
-$ pip install -e .[dev]
-```
-
-Also see the installation instructions in [the README](./README.md).
 
 ## Pull Requests
 
@@ -59,7 +56,7 @@ We actively welcome your pull requests.
 
 ### Code style
 
-`torchft` enforces a fairly strict code format with tools such as cargo fmt and black.
+`torchLoom` enforces a fairly strict code format with tools such as black.
 
 ```shell
 pip install lintrunner lintrunner-adapters
@@ -72,13 +69,7 @@ lintrunner -a
 We use `pytest` as our testing framework. To execute a specific test, use the following command:
 
 ```sh
-pytest torchft/process_group_test.py -k test_device_mesh
-```
-
-To run the Rust tests run:
-
-```sh
-cargo test
+pytest torchLoom/loom_test.py loom_test.py
 ```
 
 To run the entire suite of tests:
@@ -86,39 +77,6 @@ To run the entire suite of tests:
 ```sh
 $ scripts/test.sh
 ```
-
-### Build Docs
-To build the docs run:
-```sh
-pip install -r docs/requirements.txt
-cd docs
-make livehtml
-```
-
-The docs will be built in the `docs/build/html` directory and served at http://localhost:8000.
-The page will be automatically re-built as long as the process is kept running.
-
-### Running Multiple Replica Local Job
-
-We use torchx to run multiple worker local test jobs. You need to run the
-lighthouse first and then you can use torchx to launch as many replica groups as
-you want. This uses the [train_ddp.py](./train_ddp.py) script.
-
-```sh
-$ torchft_lighthouse --min_replicas 2 --join_timeout_ms 10000 &
-$ torchx run -- --replicas 10
-```
-
-Once the Lighthouse has started you can view the status of all the workers at the Lighthouse dashboard.
-
-Default address is: http://localhost:29510
-
-## Contributor License Agreement ("CLA")
-
-In order to accept your pull request, we need you to submit a CLA. You only need to do this once to work on any of
-Facebook's open source projects.
-
-Complete your CLA here: <https://code.facebook.com/cla>
 
 ## License
 
