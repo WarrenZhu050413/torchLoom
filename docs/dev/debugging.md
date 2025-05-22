@@ -41,10 +41,10 @@ If messages aren't being delivered between components:
 1. Verify that all components are using the same NATS server address
    ```bash
    # Check environment variable
-   echo $MARDUK_ADDR
+   echo $torchLoom_ADDR
    
    # Check controller and manager code for hardcoded addresses
-   grep -r "MARDUK_ADDR" /srv/apps/warren/torchft/torchft/
+   grep -r "torchLoom_ADDR" /srv/apps/warren/torchft/torchft/
    ```
 
 2. Check NATS subscription status
@@ -80,7 +80,7 @@ If replica failure events aren't being properly handled:
 2. Manually trigger a failure event to test the pipeline
    ```bash
    # Get a valid device UUID 
-   python -c "from torchft.torchLoom.utils import get_device_uuid; print(get_device_uuid())"
+   python -c "from torchLoom.utils import get_device_uuid; print(get_device_uuid())"
    
    # Use the monitor CLI to test with that UUID
    python /srv/apps/warren/torchft/torchft/torchLoom/monitor_cli.py

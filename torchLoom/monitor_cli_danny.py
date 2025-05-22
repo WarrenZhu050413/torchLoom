@@ -24,6 +24,27 @@ class MyShell(cmd.Cmd):
         logger.info(f"Executing test command with input: {line}")
         self._loop.run_until_complete(self._send_device_err(line))
     
+    def do_setlr(self, line):
+        logger.info(f"Executing test command with input: {line}")
+        self._loop.run_until_complete(self._send_set_lr(line))
+
+    async def _send_set_lr(self, line):
+        logger.info(f"Simulating reset lr to: {line}")
+        try:
+            if self._nc is None:
+                self._nc = await nats.connect(torchLoomConstants.DEFAULT_ADDR)
+            logger.debug(f"Connected to NATS server at {torchLoomConstants.DEFAULT_ADDR}")
+            
+            # await js.add_stream(name=torchLoomConstants.controller_stream.STREAM, subjects=[torchLoomConstants.monitor_stream.subjects.EXTERNAL])
+            DRenvelope = EventEnvelope()
+            DRenvelope.learning_rate.lr = line
+            
+            await self._nc.publish(torchLoomConstants.monitor_stream.subjects.EXTERNAL, DRenvelope.SerializeToString())
+            logger.info(f"Published reset learning rate event with lr equals {line}")
+
+        except Exception as e:
+            logger.exception(f"Failed to reset learning rate error: {e}")
+    
     async def _send_device_err(self, line):
         logger.info(f"Simulating failed GPU with uuid: {line}")
         try:

@@ -165,6 +165,7 @@ def main() -> None:
             optimizer.zero_grad()
 
             out = m(inputs)
+
             loss = criterion(out, labels)
 
             # Gradient allreduce overlaps with the backwards pass.

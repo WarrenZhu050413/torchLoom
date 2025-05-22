@@ -6,14 +6,14 @@ from nats.aio.client import Client
 import nats.errors
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
-from torchft.torchLoom.config import Config
-from torchft.torchLoom.torchLoom_pb2 import EventEnvelope, MonitoredFailEvent
-from torchft.torchLoom.constants import torchLoomConstants, NC, JS
-from torchft.torchLoom.logging.logger import setup_logger
-from torchft.torchLoom.logging.log_utils import log_and_raise_exception
-from torchft.torchLoom.utils import cancel_subscriptions
+from torchLoom.config import Config
+from torchLoom.torchLoom_pb2 import EventEnvelope, MonitoredFailEvent
+from torchLoom.constants import torchLoomConstants, NC, JS
+from torchLoom.log.logger import setup_logger
+from torchLoom.log.log_utils import log_and_raise_exception
+from torchLoom.utils import cancel_subscriptions
 
-logger = setup_logger(name="torchLoom_controller", log_file=Config.MARDUK_CONTROLLER_LOG_FILE)
+logger = setup_logger(name="torchLoom_controller", log_file=Config.torchLoom_CONTROLLER_LOG_FILE)
 
 class Controller():
     """Controller for torchLoom.
@@ -59,9 +59,27 @@ class Controller():
             
             if env.HasField("monitored_fail"):
                 await self.message_handler_handle_gpu_failure(env)
-                
+            
+            if env.HasField("learning_rate"):
+                await self.message_handler_reset_learning_rate(env)
+
         except Exception as e:
             logger.exception(f"Error handling message: {e}")
+
+    async def message_handler_reset_learning_rate(self, env: EventEnvelope):
+        new_lr: str = env.learning_rate.lr
+
+        logger.info("\n" + "-" * 100)
+        logger.info(f"Received reset learning rate event")
+
+        try:
+            if not self._nc:
+                raise RuntimeError("NATS connection is not initialized.")
+            # await self._nc.publish("torchLoom.training.reset_lr", str(new_lr).encode("utf-8"))
+            await self._nc.jetstream().publish("torchLoom.training.reset_lr", str(new_lr).encode("utf-8"))
+            logger.info(f"Published new learning rate {new_lr} to torchLoom.training.reset_lr")
+        except Exception as e:
+            logger.exception(f"Failed to publish new learning rate: {e}")
 
     async def message_handler_register_device(self, env: EventEnvelope):
         device_uuid: str = env.register_device.device_uuid

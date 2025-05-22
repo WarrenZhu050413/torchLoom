@@ -28,26 +28,28 @@ Then, you can set of the environment.
 0. Set up and clean up
 
 ```bash
-cd /path/to/torchft # e.g. cd /srv/apps/warren/torchft
+cd /path/to/torchLoom # e.g. cd /srv/apps/torchLoom
 conda activate /path/to/env # e.g. conda activate /srv/apps/danny/miniconda3/envs/warren/torchtitan
-source ./torchft/torchLoom/scripts/preamble.sh # Sets up the environment, compiles protobuf, and kills all the existing servers.
+# source ./torchLoom/scripts/preamble.sh # Sets up the environment, compiles protobuf, and kills all the existing servers.
 ```
 
 1. Start the nats server
 ```
-./torchft/torchLoom/nats-server -c ./torchft/torchLoom/nats.conf
+./torchLoom/my_nats/nats-server -c ./torchLoom/my_nats/nats.conf
 ```
+
 2. Start the controller
 ```sh
-python ./torchft/torchLoom/controller.py
+python -m torchLoom.controller
 ```
 
 3. Start the cli
 
 ```sh
-python ./torchft/torchLoom/monitor_cli.py
+python -m torchLoom.monitor_cli
 ```
 
+<!-- 
 4. Set up torchFT by starting the lighthouse
 
 ```bash
@@ -81,7 +83,7 @@ When the training processes run, you should be able to see the devices registeri
 ```sh
 Registered device: GPU-307a982d-bf2b-4cc3-64e3-aae456bf6a28 for replica_id: train_ddp_0:d5aa538f-3268-4f78-ae88-3afff894e629 # For replica 0
 Registered device: GPU-307a982d-bf2b-4cc3-64e3-aae456bf6a28 for replica_id: train_ddp_1:164ecd9c-f806-4eef-8fd3-add20298ea20 # For replica 1
-```
+``` -->
 
 Then, you can go to [tutorial.md](tutorial.md) for detailed testing scenarios and instructions to see what torchLoom is capable of.
 
@@ -91,4 +93,14 @@ Then, you can go to [tutorial.md](tutorial.md) for detailed testing scenarios an
 - [Tutorial](tutorial.md): Testing procedures and example workflows
 - [Debugging](debugging.md): Troubleshooting guide for common issues
 - [TODO](todo.md): Upcoming features and development roadmap
-- [Shenzhen Cluster FAQ](shenzhen_cluster_FAQ.md): Specific information for development on the Shenzhen cluster
+
+## Environment setup
+
+- Do `conda env create -n torchLoom -f environment.yaml`
+
+Also need to download protobuf compiler and library
+
+On Debian-based machines, run
+```bash
+sudo apt install protobuf-compiler libprotobuf-dev
+```

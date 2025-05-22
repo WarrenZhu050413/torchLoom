@@ -1,12 +1,7 @@
-[build-system]
-requires = ["maturin>=1.7,<2.0"]
-build-backend = "maturin"
-
 [project]
-name = "torchft"
-requires-python = ">=3.8"
+name = "torchLoom"
+requires-python = ">=3.11"
 classifiers = [
-    "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
@@ -16,9 +11,6 @@ dependencies = [
 ]
 
 [project.urls]
-Documentation = "https://pytorch-labs.github.io/torchft"
-Repository = "https://github.com/pytorch-labs/torchft"
-Issues = "https://github.com/pytorch-labs/torchft/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -31,13 +23,6 @@ dev = [
     "numpy",
     "torchx"
 ]
-
-[tool.maturin]
-features = ["pyo3/extension-module"]
-module-name = "torchft._torchft"
-
-[project.scripts]
-torchft_lighthouse = "torchft._torchft:lighthouse_main"
 
 [tool.isort]
 multi_line_output = 3

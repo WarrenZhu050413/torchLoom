@@ -2,11 +2,11 @@ import asyncio
 from typing import Tuple, Any, Dict
 from pynvml import nvmlInit, nvmlDeviceGetHandleByIndex, nvmlDeviceGetUUID
 import torch
-from torchft.torchLoom.logging.log_utils import log_and_raise_exception
-from torchft.torchLoom.logging.logger import setup_logger
-from torchft.torchLoom.config import Config
+from torchLoom.log.log_utils import log_and_raise_exception
+from torchLoom.log.logger import setup_logger
+from torchLoom.config import Config
 
-logger = setup_logger(name="torchLoom_utils", log_file=Config.MARDUK_UTILS_LOG_FILE)
+logger = setup_logger(name="torchLoom_utils", log_file=Config.torchLoom_UTILS_LOG_FILE)
 
 def get_device_uuid():
     try:

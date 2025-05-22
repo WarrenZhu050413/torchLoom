@@ -1,0 +1,89 @@
+Using NATS server at nats://localhost:4222
+Starting torchLoom CLI
+torchLoom CLI initialized
+Unknown command: set_lr 0.001
+Unknown command: setlr 0.001
+Using NATS server at nats://localhost:4222
+Starting torchLoom CLI
+torchLoom CLI initialized
+Executing test command with input: 0.001
+Simulating reset lr to: 0.001
+Connected to NATS server at nats://localhost:4222
+Published reset learning rate event with lr equals 0.001
+Executing test command with input: 0.001
+Simulating reset lr to: 0.001
+Connected to NATS server at nats://localhost:4222
+Published reset learning rate event with lr equals 0.001
+Executing test command with input: 0.001
+Simulating reset lr to: 0.001
+Connected to NATS server at nats://localhost:4222
+Published reset learning rate event with lr equals 0.001
+Executing test command with input: 0.001
+Simulating reset lr to: 0.001
+Connected to NATS server at nats://localhost:4222
+Published reset learning rate event with lr equals 0.001
+Executing test command with input: 0.001
+Simulating reset lr to: 0.001
+Connected to NATS server at nats://localhost:4222
+Published reset learning rate event with lr equals 0.001
+Executing test command with input: 0.001
+Simulating reset lr to: 0.001
+Connected to NATS server at nats://localhost:4222
+Published reset learning rate event with lr equals 0.001
+Using NATS server at nats://localhost:4222
+Starting torchLoom CLI
+torchLoom CLI initialized
+Executing test command with input: 0.01
+Simulating reset lr to: 0.01
+Connected to NATS server at nats://localhost:4222
+Published reset learning rate event with lr equals 0.01
+Executing test command with input: 0.01
+Simulating reset lr to: 0.01
+Connected to NATS server at nats://localhost:4222
+Published reset learning rate event with lr equals 0.01
+Executing test command with input: 0.01
+Simulating reset lr to: 0.01
+Connected to NATS server at nats://localhost:4222
+Published reset learning rate event with lr equals 0.01
+Executing test command with input: 0.01
+Simulating reset lr to: 0.01
+Connected to NATS server at nats://localhost:4222
+Published reset learning rate event with lr equals 0.01
+Executing test command with input: 0.01
+Simulating reset lr to: 0.01
+Connected to NATS server at nats://localhost:4222
+Published reset learning rate event with lr equals 0.01
+Using NATS server at nats://localhost:4222
+Starting torchLoom CLI
+torchLoom CLI initialized
+Executing test command with input: 0.01
+Simulating reset lr to: 0.01
+Connected to NATS server at nats://localhost:4222
+Published reset learning rate event with lr equals 0.01
+Executing test command with input: 0.01
+Simulating reset lr to: 0.01
+Connected to NATS server at nats://localhost:4222
+Published reset learning rate event with lr equals 0.01
+Executing test command with input: 0.01
+Simulating reset lr to: 0.01
+Connected to NATS server at nats://localhost:4222
+Published reset learning rate event with lr equals 0.01
+Executing test command with input: 0.01
+Simulating reset lr to: 0.01
+Connected to NATS server at nats://localhost:4222
+Published reset learning rate event with lr equals 0.01
+Executing test command with input: 0.01
+Simulating reset lr to: 0.01
+Connected to NATS server at nats://localhost:4222
+Published reset learning rate event with lr equals 0.01
+Executing test command with input: 0.01
+Simulating reset lr to: 0.01
+Connected to NATS server at nats://localhost:4222
+Published reset learning rate event with lr equals 0.01
+Using NATS server at nats://localhost:4222
+Starting torchLoom CLI
+torchLoom CLI initialized
+Executing test command with input: 0.01
+Simulating reset lr to: 0.01
+Connected to NATS server at nats://localhost:4222
+Published reset learning rate event with lr equals 0.01

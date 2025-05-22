@@ -1,0 +1,15 @@
+name: nats-torch27
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pytorch=2.7
+  - nats-py>=2.10
+  - uvloop
+  - pip
+  - pip:
+    - natscli
+    - pytorch-cuda=12.8
+    - pynvml

@@ -30,7 +30,7 @@ torchLoom serves as a central controller for the entire training environment, co
 torchLoom can be configured through environment variables:
 
 ```python
-os.environ["MARDUK_ADDR"]  # Default: nats://localhost:4222
+os.environ["torchLoom_ADDR"]  # Default: nats://localhost:4222
 ```
 
 All constants are defined in `torchft/torchLoom/constants.py`.

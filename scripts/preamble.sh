@@ -1,5 +1,5 @@
 # conda activate torchtitan
-protoc --python_out=. torchft/torchLoom/torchLoom.proto
+protoc --python_out=. ./torchLoom/torchLoom.proto
 
 kill_processes() {
     # Kill processes matching given pattern
@@ -13,7 +13,6 @@ kill_processes() {
 
 # Kill existing processes
 kill_processes "nats-server -c"
-kill_processes "torchft_lighthouse"
 
 if [ -d "/srv/tmp/jetstream/store" ]; then
     rm -r /srv/tmp/jetstream/store

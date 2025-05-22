@@ -1,8 +1,8 @@
 from dataclasses import dataclass
-from torchft.torchLoom.logging.logger import setup_logger
-from torchft.torchLoom.config import Config
+from torchLoom.log.logger import setup_logger
+from torchLoom.config import Config
 
-logger = setup_logger(name="torchLoom_constants", log_file=Config.MARDUK_CONSTANTS_LOG_FILE)
+logger = setup_logger(name="torchLoom_constants", log_file=Config.torchLoom_CONSTANTS_LOG_FILE)
 
 NC = "nc"
 JS = "js"

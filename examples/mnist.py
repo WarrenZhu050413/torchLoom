@@ -5,8 +5,12 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
-
-
+import asyncio
+import nats
+from torchLoom.constants import torchLoomConstants
+import time
+import threading
+from nats.js.api import StreamConfig
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
@@ -43,9 +47,9 @@ def train(args, model, device, train_loader, optimizer, epoch):
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.item()))
+            # print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+            #     epoch, batch_idx * len(data), len(train_loader.dataset),
+            #     100. * batch_idx / len(train_loader), loss.item()))
             if args.dry_run:
                 break
 
@@ -76,8 +80,8 @@ def main():
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=14, metavar='N',
-                        help='number of epochs to train (default: 14)')
+    parser.add_argument('--epochs', type=int, default=100, metavar='N',
+                        help='number of epochs to train (default: 100)')
     parser.add_argument('--lr', type=float, default=1.0, metavar='LR',
                         help='learning rate (default: 1.0)')
     parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
@@ -105,6 +109,69 @@ def main():
 
     train_kwargs = {'batch_size': args.batch_size}
     test_kwargs = {'batch_size': args.test_batch_size}
+
+
+    # async def check_nats_for_lr_change(optimizer):
+    #     global last_lr
+    #     print("进入拉取环节")
+    #     try:
+    #         nc = await nats.connect(torchLoomConstants.DEFAULT_ADDR)
+    #         print("nat链接成功")
+    #         # 一次性拉取一个消息，带超时
+    #         async def future_msg():
+    #             sub = await nc.subscribe("torchLoom.training.reset_lr")
+    #             msg = await sub.next_msg(timeout=5)  # 最多等 0.5 秒
+    #             return msg
+
+    #         try:
+    #             msg = await future_msg()
+    #             new_lr = float(msg.data.decode())
+
+    #             for param_group in optimizer.param_groups:
+    #                 param_group['lr'] = new_lr
+    #             last_lr = new_lr
+    #         except asyncio.TimeoutError:
+    #             print("本轮没收到")
+    #             pass 
+            
+    #         await nc.close()
+    #     except Exception as e:
+    #         print(f"[NATS] Error during NATS check: {e}")
+
+    async def check_jetstream_for_lr_change(optimizer):
+        from nats.js.api import StreamConfig
+
+        try:
+            # 连接 NATS 并获取 JetStream 客户端
+            nc = await nats.connect(torchLoomConstants.DEFAULT_ADDR)
+            js = nc.jetstream()
+
+            # ✅ 确保创建了 stream（只需创建一次，可放到初始化阶段）
+            await js.add_stream(StreamConfig(
+                name="LR_STREAM",
+                subjects=["torchLoom.training.reset_lr"]
+            ))
+
+            # ✅ 拉取最新一条消息（从 durable consumer）
+            consumer = await js.pull_subscribe("torchLoom.training.reset_lr", durable="lr_durable")
+            messages = await consumer.fetch(1, timeout=1)
+
+            for msg in messages:
+                new_lr = float(msg.data.decode())
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = new_lr
+                print(f"✅ [JetStream] Applied new learning rate: {new_lr}")
+
+                await msg.ack()
+
+            await nc.close()
+
+        except asyncio.TimeoutError:
+            print("⏳ [JetStream] No new learning rate message this round.")
+        except Exception as e:
+            print(f"❌ [JetStream] Error: {e}")
+
+
     if use_accel:
         accel_kwargs = {'num_workers': 1,
                        'pin_memory': True,
@@ -126,11 +193,16 @@ def main():
     model = Net().to(device)
     optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
 
-    scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
+    # scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
+
     for epoch in range(1, args.epochs + 1):
         train(args, model, device, train_loader, optimizer, epoch)
         test(model, device, test_loader)
-        scheduler.step()
+        # scheduler.step()
+        time.sleep(1)
+        # asyncio.run(check_nats_for_lr_change(optimizer))
+        asyncio.run(check_jetstream_for_lr_change(optimizer))
+        print("Current learning rate:", optimizer.param_groups[0]['lr'])
 
     if args.save_model:
         torch.save(model.state_dict(), "mnist_cnn.pt")
