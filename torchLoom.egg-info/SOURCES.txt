@@ -4,12 +4,12 @@ pyproject.toml
 torchLoom/__init__.py
 torchLoom/config.py
 torchLoom/constants.py
-torchLoom/weaver.py
 torchLoom/loom.py
 torchLoom/monitor_cli.py
 torchLoom/monitor_cli_danny.py
 torchLoom/torchLoom_pb2.py
 torchLoom/utils.py
+torchLoom/weaver.py
 torchLoom.egg-info/PKG-INFO
 torchLoom.egg-info/SOURCES.txt
 torchLoom.egg-info/dependency_links.txt
@@ -18,4 +18,3 @@ torchLoom.egg-info/top_level.txt
 torchLoom/log/__init__.py
 torchLoom/log/log_utils.py
 torchLoom/log/logger.py
-torchLoom/nats/__init__.py

@@ -19,13 +19,15 @@
  * NVIDIA Environment: When setting up NVIDIA environments, verify compatibility using nvidia-smi and checking the installed version.
  * Conda Usage: Always initialize (conda init) and activate the correct conda environment before running commands.
  * Linter Settings: Do not modify linter configurations.
+* Remember to import all the libraries that you are using. Also, don't reimport the same library twice.
 
-## Language Specific
- * Rust: Refer to llm.rust.
-- Remember to import all the libraries that you are using. Also, don't reimport the same library twice.
+## Testing
+* After you implement any change, always run the tests to ensure that you didn't break anything.
+* If the feature you implement is not covered by the tests, add tests to cover it.
+
+## Continuous Learning
+
+* Continuously add to AGENTS.md as you learn more about the codebase and its best practices.
 
 <Environment Specific Instructions>
-Run
-```sh
-cd /srv/apps/torchLoom && conda init bash && source ~/.bashrc && conda activate /srv/apps/danny/miniconda3/envs/warren/torchtitan && <python command> in order to set up the environment correctly.
-```
+- Run tests through pytest

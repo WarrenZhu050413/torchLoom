@@ -59,7 +59,7 @@ python -m torchLoom.weaver
 3. Start the cli
 
 ```sh
-python -m torchLoom.monitor_cli_danny
+python -m torchLoom.monitor_cli
 ```
 
 4. Start the training script

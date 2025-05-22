@@ -7,7 +7,7 @@ import nats.errors
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 from torchLoom.config import Config
-from torchLoom.torchLoom_pb2 import EventEnvelope, MonitoredFailEvent
+from torchLoom.torchLoom_pb2 import EventEnvelope, MonitoredFailEvent, ChangeConfigEvent
 from torchLoom.constants import torchLoomConstants, NC, JS
 from torchLoom.log.logger import setup_logger
 from torchLoom.log.log_utils import log_and_raise_exception
@@ -62,6 +62,9 @@ class Weaver():
             
             if env.HasField("learning_rate"):
                 await self.message_handler_reset_learning_rate(env)
+
+            if env.HasField("config_info"):
+                await self.message_handler_config_info(env)
 
         except Exception as e:
             logger.exception(f"Error handling message: {e}")
@@ -234,6 +237,33 @@ class Weaver():
         else:
             log_and_raise_exception(logger, f"Invalid type: {type}")
 
+    async def message_handler_config_info(self, env: EventEnvelope):
+        config_params: Dict[str, str] = dict(env.config_info.config_params)
+        
+        logger.info("\n" + "-" * 100)
+        logger.info(f"Received config_info event with parameters: {config_params}")
+        
+        try:
+            if not self._nc:
+                raise RuntimeError("NATS connection is not initialized.")
+            
+            js = self._nc.jetstream()
+            
+            # Handle learning rate change specifically for backward compatibility
+            if "learning_rate" in config_params:
+                lr = config_params["learning_rate"]
+                await js.publish("torchLoom.training.reset_lr", str(lr).encode("utf-8"))
+                logger.info(f"Published new learning rate {lr} to torchLoom.training.reset_lr")
+            
+            # Publish the entire config change to a general subject
+            await js.publish(
+                torchLoomConstants.subjects.CONFIG_INFO, 
+                env.SerializeToString()
+            )
+            logger.info(f"Published config changes to {torchLoomConstants.subjects.CONFIG_INFO}")
+        except Exception as e:
+            logger.exception(f"Failed to publish config changes: {e}")
+
 async def main():
     try:
         logger.info("Starting torchLoom Weaver")
@@ -250,6 +280,10 @@ async def main():
             ))
             tg.create_task(weaver.subscribe_nc(
                 subject=torchLoomConstants.subjects.EXTERNAL, 
+                message_handler=weaver.message_handler
+            ))
+            tg.create_task(weaver.subscribe_nc(
+                subject=torchLoomConstants.subjects.CONFIG_INFO,
                 message_handler=weaver.message_handler
             ))
             logger.info("Started subscribing to all subjects")

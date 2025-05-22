@@ -4,7 +4,7 @@
 
 nats-py>=2.10
 torch==2.7.*                # CPU-only wheel is automatically chosen
-torchvision==0.18.*+cpu     # still GPU-free, matches the torch cpu build
+torchvision
 protobuf
 pynvml
 lightning
