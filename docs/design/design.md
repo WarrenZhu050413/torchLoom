@@ -14,11 +14,11 @@ Current orchestration frameworks focus primarily on deployment and scheduling bu
 
 ## Architecture
 
-torchLoom serves as a central controller for the entire training environment, connecting monitoring systems with training processes through a lightweight messaging system.
+torchLoom serves as a central weaver for the entire training environment, connecting monitoring systems with training processes through a lightweight messaging system.
 
 ### Key Components
 
-1. **Controller**: Central service that maintains the device-to-replica mapping and coordinates responses to failures
+1. **Weaver**: Central service that maintains the device-to-replica mapping and coordinates responses to failures
 2. **Manager Integration**: Direct integration with TorchFT Manager in each training process
 3. **NATS Messaging**: Pub/sub communication layer for system events
 4. **Monitor CLI**: Command-line interface for manual control and testing
@@ -54,7 +54,7 @@ If a device_uuid is mapped to a set of replica_ids, then each of those replica_i
 
 ### Registration Process
 
-Upon initialization, each Manager instance registers itself with the controller, providing:
+Upon initialization, each Manager instance registers itself with the weaver, providing:
 1. Its replica_id
 2. The device_uuid(s) it's running on
 
@@ -63,7 +63,7 @@ This builds the DRMap dynamically as training processes start up.
 ### Failure Detection and Response
 
 When a device failure is detected:
-1. The monitoring system reports the device_uuid to the controller
-2. The controller looks up affected replicas in the DRMap
-3. The controller sends failure notifications to all affected replicas
+1. The monitoring system reports the device_uuid to the weaver
+2. The weaver looks up affected replicas in the DRMap
+3. The weaver sends failure notifications to all affected replicas
 4. Each replica triggers its recovery process through TorchFT
