@@ -4,7 +4,6 @@ message RegisterDevice       { string device_uuid = 1; string replica_id = 2; }
 message DrainEvent           { string device_uuid = 1; }
 message ReplicaFailEvent     { string  replica_id = 1; }
 message MonitoredFailEvent   { string  device_uuid = 1; }
-message ChangeTrConfigEvent  { string  tr_config_type = 1; string  tr_config_value = 2; }
 message ResetLearningRate    { string  lr = 1; }
 
 message EventEnvelope {
@@ -15,7 +14,6 @@ message EventEnvelope {
     DrainEvent           drain             = 10;
     ReplicaFailEvent     replica_fail      = 11;
     MonitoredFailEvent   monitored_fail    = 12;
-    ChangeTrConfigEvent  change_tr_config  = 13;
     ResetLearningRate    learning_rate     = 14;
   }
 }
