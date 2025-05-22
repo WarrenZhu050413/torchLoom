@@ -5,4 +5,3 @@ protobuf
 pynvml
 lightning
 requests
-go
