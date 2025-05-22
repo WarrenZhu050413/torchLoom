@@ -12,3 +12,5 @@ dependencies:
     - torchaudio
     - protobuf
     - pynvml
+    - lightning
+    - requests
