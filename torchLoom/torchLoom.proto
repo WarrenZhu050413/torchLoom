@@ -5,6 +5,7 @@ message DrainEvent           { string device_uuid = 1; }
 message ReplicaFailEvent     { string  replica_id = 1; }
 message MonitoredFailEvent   { string  device_uuid = 1; }
 message ResetLearningRate    { string  lr = 1; }
+message ChangeConfigEvent    { map<string, string> config_params = 1; }
 
 message EventEnvelope {
   uint64  seq      = 1;
@@ -15,10 +16,11 @@ message EventEnvelope {
     ReplicaFailEvent     replica_fail      = 11;
     MonitoredFailEvent   monitored_fail    = 12;
     ResetLearningRate    learning_rate     = 14;
+    ChangeConfigEvent    config_info       = 15;
   }
 }
 
 message DeviceReplicaMapEntry {
   string device_uuid = 1;
   int32  replica_id   = 2;
-}
+python -m grpc_tools.protoc -I. --python_out=. torch}

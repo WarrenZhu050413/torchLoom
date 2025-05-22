@@ -25,5 +25,9 @@
 * After you implement any change, always run the tests to ensure that you didn't break anything.
 * If the feature you implement is not covered by the tests, add tests to cover it.
 
+## Continuous Learning
+
+* Continuously add to AGENTS.md as you learn more about the codebase and its best practices.
+
 <Environment Specific Instructions>
 - Run tests through pytest

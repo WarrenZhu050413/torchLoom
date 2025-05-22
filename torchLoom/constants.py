@@ -12,6 +12,7 @@ class torchLoomSubjects:
     CONTROLLER_EVENTS: str = "torchLoom.weaver.events"
     DR_SUBJECT: str = "torchLoom.DRentry"
     REPLICA_FAIL: str = "torchLoom.replica.fail"
+    CONFIG_INFO: str = "torchLoom.config.info"
 
 class WeaverSubjects:
     DR_SUBJECT: str = torchLoomSubjects.DR_SUBJECT
