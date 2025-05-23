@@ -1,289 +1,26 @@
+"""
+Async weavelet listener implementation.
+"""
+
 import asyncio
-import inspect
 import multiprocessing
-import time
-import uuid
-from typing import Any, Awaitable, Callable, Dict, Optional, Type, Union
+from typing import Any, Awaitable, Callable, Dict, Optional
 
 from nats.aio.client import Client
 from nats.aio.msg import Msg
-from nats.js.api import StreamConfig
+from nats.js.api import RetentionPolicy, StorageType, StreamConfig
 from nats.js.client import JetStreamContext
 
 import nats
 from torchLoom.config import Config
-from torchLoom.constants import JS, NC, torchLoomConstants
-from torchLoom.log.log_utils import log_and_raise_exception
+from torchLoom.constants import torchLoomConstants
 from torchLoom.log.logger import setup_logger
-from torchLoom.torchLoom_pb2 import EventEnvelope
+try:
+    from torchLoom.proto.torchLoom_pb2 import EventEnvelope
+except ImportError:
+    # Handle case where protobuf isn't generated yet
+    EventEnvelope = None
 from torchLoom.utils import cancel_subscriptions, get_device_uuid
-
-
-class Weavelet:
-    """Process-based Weavelet for torchLoom training processes.
-
-    This class manages all communication between training processes and the weaver,
-    including receiving configuration updates and sending training status updates.
-    It runs in a separate process using multiprocessing.Process and supports
-    decorator-based handler registration for automatic configuration management.
-    """
-
-    def __init__(
-        self,
-        replica_id: Optional[str] = None,
-        torchLoom_addr: str = torchLoomConstants.DEFAULT_ADDR,
-        config_queue: Optional[multiprocessing.Queue] = None,
-        status_queue: Optional[multiprocessing.Queue] = None,
-    ):
-        # Core identifiers
-        self._replica_id = replica_id or f"weavelet:{uuid.uuid4()}"
-        self._device_uuid: Optional[str] = None
-
-        # NATS connection setup
-        self._torchLoom_addr = torchLoom_addr
-        self._nc: Optional[Client] = None
-        self._js: Optional[JetStreamContext] = None
-        self._subscriptions: Dict[str, Any] = {}
-        self._stop_event = multiprocessing.Event()
-
-        # Inter-process communication
-        self._config_queue = config_queue or multiprocessing.Queue()
-        self._status_queue = status_queue or multiprocessing.Queue()
-
-        # Process management
-        self._process: Optional[multiprocessing.Process] = None
-
-        # Configuration
-        self._nc_timeout = Config.NC_TIMEOUT or 1
-        self._exception_sleep = Config.EXCEPTION_RETRY_TIME or 1
-
-        # Enhanced handler system
-        self._handlers: Dict[str, Callable] = {}
-        self._handler_types: Dict[str, Type] = {}
-        self._auto_dispatch = True
-
-    def register_handler(
-        self, config_key: str, handler: Callable, expected_type: Optional[Type] = None
-    ) -> None:
-        """Register a handler for a specific configuration parameter.
-
-        Args:
-            config_key: The configuration parameter name (e.g., 'optimizer_type')
-            handler: Function to call when this parameter changes
-            expected_type: Expected type for the parameter value (inferred if not provided)
-        """
-        # Infer type from handler signature if not provided
-        if expected_type is None:
-            sig = inspect.signature(handler)
-            params = list(sig.parameters.values())
-            if len(params) >= 1:
-                param = params[0]  # First parameter (after self if it's a method)
-                if param.annotation != inspect.Parameter.empty:
-                    expected_type = param.annotation
-                else:
-                    expected_type = str  # Default to string
-
-        self._handlers[config_key] = handler
-        self._handler_types[config_key] = expected_type or str
-        print(f"Registered handler for '{config_key}' with type {expected_type}")
-
-    def handler(self, config_key: str, expected_type: Optional[Type] = None):
-        """Decorator for registering configuration handlers.
-
-        Args:
-            config_key: The configuration parameter name
-            expected_type: Expected type for the parameter value
-
-        Usage:
-            @weavelet.handler("optimizer_type")
-            def update_optimizer(self, new_type: str):
-                # Implementation here
-                pass
-        """
-
-        def decorator(func: Callable) -> Callable:
-            self.register_handler(config_key, func, expected_type)
-            return func
-
-        return decorator
-
-    def _validate_and_convert_value(self, config_key: str, value: Any) -> Any:
-        """Validate and convert a configuration value to the expected type."""
-        if config_key not in self._handler_types:
-            return value
-
-        expected_type = self._handler_types[config_key]
-
-        # If value is already the correct type, return as-is
-        if isinstance(value, expected_type):
-            return value
-
-        # Try to convert the value
-        try:
-            if expected_type == bool:
-                # Handle boolean conversion from strings
-                if isinstance(value, str):
-                    return value.lower() in ("true", "1", "yes", "on")
-                return bool(value)
-            elif expected_type == int:
-                return int(float(value))  # Handle "1.0" -> 1
-            elif expected_type == float:
-                return float(value)
-            elif expected_type == str:
-                return str(value)
-            else:
-                # For other types, try direct conversion
-                return expected_type(value)
-        except (ValueError, TypeError) as e:
-            raise TypeError(
-                f"Cannot convert value '{value}' to expected type {expected_type.__name__} "
-                f"for config parameter '{config_key}': {e}"
-            )
-
-    def _dispatch_handlers(self, config_updates: Dict[str, Any]) -> None:
-        """Automatically dispatch handlers for configuration updates."""
-        for config_key, value in config_updates.items():
-            if config_key in self._handlers:
-                try:
-                    # Validate and convert the value
-                    converted_value = self._validate_and_convert_value(
-                        config_key, value
-                    )
-
-                    # Call the handler
-                    handler = self._handlers[config_key]
-                    print(
-                        f"Calling handler for '{config_key}' with value: {converted_value}"
-                    )
-                    handler(converted_value)
-
-                except Exception as e:
-                    print(f"Error in handler for '{config_key}': {e}")
-            else:
-                print(f"No handler registered for config key: {config_key}")
-
-    def get_config_update(self, timeout: float = 0.1) -> Optional[Dict[str, str]]:
-        """Get configuration update from the weavelet process if available.
-
-        If auto_dispatch is enabled (default), this will automatically call
-        registered handlers. Otherwise, it returns the config update dict.
-        """
-        try:
-            config_update = self._config_queue.get_nowait()
-
-            if config_update and self._auto_dispatch:
-                # Automatically dispatch to registered handlers
-                self._dispatch_handlers(config_update)
-                return None  # No need to return since handlers were called
-
-            return config_update
-        except:
-            return None
-
-    def check_and_apply_updates(self) -> bool:
-        """Check for configuration updates and apply them automatically.
-
-        Returns:
-            True if updates were found and applied, False otherwise
-        """
-        config_update = (
-            self._config_queue.get_nowait() if not self._config_queue.empty() else None
-        )
-        if config_update:
-            self._dispatch_handlers(config_update)
-            return True
-        return False
-
-    def start(self) -> None:
-        """Start the weavelet in a separate process."""
-        try:
-            self._process = multiprocessing.Process(
-                target=self._run_weavelet_listener_process,
-                args=(
-                    self._replica_id,
-                    self._torchLoom_addr,
-                    self._config_queue,
-                    self._status_queue,
-                    self._stop_event,
-                ),
-                name=f"weavelet-{self._replica_id}",
-            )
-            self._process.start()
-
-            # Give the process a moment to start
-            time.sleep(0.1)
-
-            print(f"Weavelet process started with PID: {self._process.pid}")
-        except Exception as e:
-            print(f"Failed to start weavelet process: {e}")
-            raise
-
-    def stop(self) -> None:
-        """Stop the weavelet process and clean up resources."""
-        try:
-            if self._process and self._process.is_alive():
-                print("Stopping weavelet process")
-                self._stop_event.set()
-
-                # Wait for the process to finish gracefully
-                self._process.join(timeout=5)
-
-                # If still alive, terminate forcefully
-                if self._process.is_alive():
-                    print("Force terminating weavelet process")
-                    self._process.terminate()
-                    self._process.join(timeout=2)
-
-                    # Last resort - kill
-                    if self._process.is_alive():
-                        self._process.kill()
-                        self._process.join()
-
-                print("Weavelet process stopped successfully")
-        except Exception as e:
-            print(f"Error stopping weavelet process: {e}")
-
-    def publish_training_status(self, status: Dict[str, Any]) -> None:
-        """Send training status to the weavelet process for publishing."""
-        try:
-            self._status_queue.put_nowait(status)
-        except:
-            # Queue might be full, ignore for now
-            pass
-
-    @staticmethod
-    def _run_weavelet_listener_process(
-        replica_id: str,
-        torchLoom_addr: str,
-        config_queue: multiprocessing.Queue,
-        status_queue: multiprocessing.Queue,
-        stop_event: multiprocessing.Event,
-    ) -> None:
-        """Main function that runs in the separate weavelet listener process."""
-        try:
-            # Create event loop for this process
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-            # Create the async weavelet listener instance
-            weavelet_listener = WeaveletListener(
-                replica_id=replica_id,
-                torchLoom_addr=torchLoom_addr,
-                config_queue=config_queue,
-                status_queue=status_queue,
-                stop_event=stop_event,
-            )
-
-            # Run the async main loop
-            loop.run_until_complete(weavelet_listener.run())
-        except Exception as e:
-            print(f"Error in weavelet listener process: {e}")
-        finally:
-            # Clean up
-            try:
-                loop.close()
-            except:
-                pass
 
 
 class WeaveletListener:
@@ -293,9 +30,9 @@ class WeaveletListener:
         self,
         replica_id: str,
         torchLoom_addr: str,
-        config_queue: multiprocessing.Queue,
-        status_queue: multiprocessing.Queue,
-        stop_event: multiprocessing.Event,
+        config_queue: "multiprocessing.Queue[Any]",
+        status_queue: "multiprocessing.Queue[Any]",
+        stop_event: "multiprocessing.Event",
     ):
         # Setup logging
         self._logger = setup_logger(
@@ -378,6 +115,9 @@ class WeaveletListener:
     async def _setup_subscriptions(self) -> None:
         """Set up subscriptions for config updates and other messages."""
         try:
+            if not self._js:
+                raise RuntimeError("JetStream not initialized")
+                
             # Subscribe to config updates
             await self._js.add_stream(
                 StreamConfig(
@@ -407,6 +147,11 @@ class WeaveletListener:
     async def _register_device(self) -> None:
         """Register this device with the weaver."""
         try:
+            if not self._js:
+                raise RuntimeError("JetStream not initialized")
+            if not EventEnvelope:
+                raise RuntimeError("EventEnvelope not available")
+                
             self._device_uuid = get_device_uuid()
 
             envelope = EventEnvelope()
@@ -428,6 +173,10 @@ class WeaveletListener:
     async def _handle_config_message(self, msg: Msg) -> None:
         """Handle incoming configuration update messages."""
         try:
+            if not EventEnvelope:
+                self._logger.error("EventEnvelope not available, cannot parse message")
+                return
+                
             envelope = EventEnvelope()
             envelope.ParseFromString(msg.data)
 
@@ -449,6 +198,10 @@ class WeaveletListener:
     async def _handle_replica_fail_message(self, msg: Msg) -> None:
         """Handle replica failure notifications."""
         try:
+            if not EventEnvelope:
+                self._logger.error("EventEnvelope not available, cannot parse message")
+                return
+                
             envelope = EventEnvelope()
             envelope.ParseFromString(msg.data)
 
@@ -471,8 +224,38 @@ class WeaveletListener:
         consumer: str,
         message_handler: Callable[[Msg], Awaitable[None]],
     ) -> None:
-        """Subscribe to JetStream subject."""
+        """Subscribe to JetStream subject with proper stream configuration."""
         try:
+            # Ensure stream exists with proper configuration
+            try:
+                stream_config = StreamConfig(
+                    name=stream,
+                    subjects=[subject, f"{subject}.*"],  # Allow subject patterns
+                    retention=RetentionPolicy.LIMITS,  # Retain based on limits
+                    max_msgs=10000,  # Maximum number of messages to retain
+                    max_bytes=10 * 1024 * 1024,  # 10MB max stream size
+                    max_age=3600,  # 1 hour message retention
+                    storage=StorageType.FILE,  # Use file storage for persistence
+                    num_replicas=1,  # Single replica for simplicity
+                )
+                
+                # Create or update the stream
+                try:
+                    if not self._js:
+                        raise RuntimeError("JetStream not initialized")
+                    await self._js.add_stream(stream_config)
+                    self._logger.info(f"Created/updated JetStream {stream}")
+                except Exception as e:
+                    # Stream might already exist with different config
+                    self._logger.info(f"Stream {stream} already exists or update failed: {e}")
+                    
+            except Exception as e:
+                self._logger.warning(f"Could not configure stream {stream}: {e}")
+                # Continue with subscription attempt even if stream config failed
+            
+            # Subscribe to the stream
+            if not self._js:
+                raise RuntimeError("JetStream not initialized")
             psub = await self._js.pull_subscribe(
                 subject, durable=consumer, stream=stream
             )
@@ -504,6 +287,8 @@ class WeaveletListener:
     ) -> None:
         """Subscribe to regular NATS subject."""
         try:
+            if not self._nc:
+                raise RuntimeError("NATS client not initialized")
             sub = await self._nc.subscribe(subject)
             self._logger.info(f"Subscribed to NATS {subject}")
 
@@ -554,7 +339,10 @@ class WeaveletListener:
                 return
 
             # Create a status message (this could be extended with proper protobuf message)
-            envelope = EventEnvelope()
+            envelope = EventEnvelope() if EventEnvelope else None
+            if not envelope:
+                self._logger.warning("EventEnvelope not available, skipping status publish")
+                return
             # Add status fields as needed based on your protobuf schema
 
             await self._nc.publish(
@@ -583,4 +371,4 @@ class WeaveletListener:
 
             self._logger.info("WeaveletListener cleanup completed")
         except Exception as e:
-            self._logger.exception(f"Error during cleanup: {e}")
+            self._logger.exception(f"Error during cleanup: {e}") 

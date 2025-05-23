@@ -1,0 +1,321 @@
+"""
+Comprehensive CLI integration tests.
+
+These tests use the torchLoom CLI to send messages through a real NATS server
+and verify that the Weaver properly processes them.
+"""
+
+import pytest
+import asyncio
+import nats
+from nats.aio.msg import Msg
+
+from torchLoom.weaver import Weaver
+from torchLoom.cli import TorchLoomClient
+from torchLoom.proto.torchLoom_pb2 import EventEnvelope
+from torchLoom.constants import torchLoomConstants
+from tests.test_utils import NatsTestServer
+
+
+@pytest.mark.asyncio
+async def test_cli_device_registration():
+    """Test device registration through CLI with real NATS."""
+    async with NatsTestServer() as nats_url:
+        # Initialize Weaver
+        weaver = Weaver(nats_url)
+        await weaver.initialize()
+        
+        # Set up monitoring
+        test_nc = await nats.connect(nats_url)
+        published_messages = []
+        
+        async def message_collector(msg: Msg):
+            published_messages.append((msg.subject, msg.data))
+        
+        # Subscribe to external messages
+        await test_nc.subscribe(torchLoomConstants.subjects.EXTERNAL, cb=message_collector)
+        
+        # Start Weaver subscriptions
+        await weaver.subscribe_nc(
+            torchLoomConstants.subjects.EXTERNAL,
+            weaver.message_handler
+        )
+        
+        try:
+            # Use CLI client to register devices
+            async with TorchLoomClient(nats_url) as cli_client:
+                await cli_client.register_device("device1", "replica1")
+                await cli_client.register_device("device1", "replica2")
+                await cli_client.register_device("device2", "replica1")
+            
+            # Wait for processing
+            await asyncio.sleep(0.5)
+            
+            # Verify device mappings
+            assert weaver.device_to_replicas.get("device1") == {"replica1", "replica2"}
+            assert weaver.device_to_replicas.get("device2") == {"replica1"}
+            assert weaver.replica_to_devices.get("replica1") == {"device1", "device2"}
+            assert weaver.replica_to_devices.get("replica2") == {"device1"}
+            
+            # Verify messages were published
+            assert len(published_messages) == 3
+            
+        finally:
+            await test_nc.close()
+            await weaver.stop()
+
+
+@pytest.mark.asyncio
+async def test_cli_device_failure():
+    """Test device failure simulation through CLI with real NATS."""
+    async with NatsTestServer() as nats_url:
+        # Initialize Weaver
+        weaver = Weaver(nats_url)
+        await weaver.initialize()
+        
+        # Set up monitoring
+        test_nc = await nats.connect(nats_url)
+        published_messages = []
+        
+        async def message_collector(msg: Msg):
+            published_messages.append((msg.subject, msg.data))
+        
+        # Subscribe to both external and replica fail messages
+        await test_nc.subscribe(torchLoomConstants.subjects.EXTERNAL, cb=message_collector)
+        await test_nc.subscribe(torchLoomConstants.subjects.REPLICA_FAIL, cb=message_collector)
+        
+        # Start Weaver subscriptions
+        await weaver.subscribe_nc(
+            torchLoomConstants.subjects.EXTERNAL,
+            weaver.message_handler
+        )
+        
+        try:
+            # Use CLI client to register and fail devices
+            async with TorchLoomClient(nats_url) as cli_client:
+                # First register devices
+                await cli_client.register_device("device1", "replica1")
+                await cli_client.register_device("device1", "replica2")
+                
+                # Wait for registration processing
+                await asyncio.sleep(0.5)
+                
+                # Clear messages before failure test
+                published_messages.clear()
+                
+                # Simulate device failure
+                await cli_client.fail_device("device1")
+            
+            # Wait for failure processing
+            await asyncio.sleep(0.5)
+            
+            # Check that replica failure events were published
+            replica_fail_messages = [
+                msg for subject, msg in published_messages 
+                if subject == torchLoomConstants.subjects.REPLICA_FAIL
+            ]
+            assert len(replica_fail_messages) == 2  # Should have 2 replica failures
+            
+        finally:
+            await test_nc.close()
+            await weaver.stop()
+
+
+@pytest.mark.asyncio
+async def test_cli_learning_rate_update():
+    """Test learning rate updates through CLI with real NATS."""
+    async with NatsTestServer() as nats_url:
+        # Initialize Weaver
+        weaver = Weaver(nats_url)
+        await weaver.initialize()
+        
+        # Set up monitoring
+        test_nc = await nats.connect(nats_url)
+        published_messages = []
+        
+        async def message_collector(msg: Msg):
+            published_messages.append((msg.subject, msg.data))
+        
+        # Subscribe to learning rate updates
+        await test_nc.subscribe("torchLoom.training.reset_lr", cb=message_collector)
+        
+        # Start Weaver subscriptions - subscribe to CONFIG_INFO for learning rate updates
+        await weaver.subscribe_nc(
+            torchLoomConstants.subjects.CONFIG_INFO,
+            weaver.message_handler
+        )
+        
+        try:
+            # Use CLI client to update learning rate
+            async with TorchLoomClient(nats_url) as cli_client:
+                await cli_client.reset_learning_rate("0.001")
+                await asyncio.sleep(0.2)  # Small delay between messages
+                await cli_client.reset_learning_rate("0.0005")
+            
+            # Wait for processing
+            await asyncio.sleep(1.0)  # Increased wait time
+            
+            # Debug: print all received messages
+            print(f"All published messages: {published_messages}")
+            
+            # Check that learning rate updates were published
+            lr_messages = [
+                msg for subject, msg in published_messages 
+                if subject == "torchLoom.training.reset_lr"
+            ]
+            print(f"Learning rate messages: {lr_messages}")
+            assert len(lr_messages) >= 1  # Expecting at least 1 message for now
+            assert lr_messages[0] == b"0.001"
+            
+        finally:
+            await test_nc.close()
+            await weaver.stop()
+
+
+@pytest.mark.asyncio
+async def test_cli_config_info():
+    """Test configuration info through CLI with real NATS."""
+    async with NatsTestServer() as nats_url:
+        # Initialize Weaver
+        weaver = Weaver(nats_url)
+        await weaver.initialize()
+        
+        # Set up monitoring
+        test_nc = await nats.connect(nats_url)
+        published_messages = []
+        
+        async def message_collector(msg: Msg):
+            published_messages.append((msg.subject, msg.data))
+        
+        # Subscribe to config info and learning rate updates
+        await test_nc.subscribe(torchLoomConstants.subjects.CONFIG_INFO, cb=message_collector)
+        await test_nc.subscribe("torchLoom.training.reset_lr", cb=message_collector)
+        
+        # Start Weaver subscriptions
+        await weaver.subscribe_nc(
+            torchLoomConstants.subjects.CONFIG_INFO,
+            weaver.message_handler
+        )
+        
+        try:
+            # Use CLI client to send config info
+            async with TorchLoomClient(nats_url) as cli_client:
+                # Config with learning rate
+                await cli_client.send_config_info({
+                    "learning_rate": "0.002",
+                    "batch_size": "32"
+                })
+                
+                # Config without learning rate
+                await cli_client.send_config_info({
+                    "batch_size": "64",
+                    "num_workers": "4"
+                })
+            
+            # Wait for processing
+            await asyncio.sleep(0.5)
+            
+            # Check messages
+            lr_messages = [
+                msg for subject, msg in published_messages 
+                if subject == "torchLoom.training.reset_lr"
+            ]
+            config_messages = [
+                msg for subject, msg in published_messages 
+                if subject == torchLoomConstants.subjects.CONFIG_INFO
+            ]
+            
+            # Should have one learning rate update from the first config
+            assert len(lr_messages) == 1
+            assert lr_messages[0] == b"0.002"
+            
+            # Should have two config messages
+            assert len(config_messages) == 2
+            
+        finally:
+            await test_nc.close()
+            await weaver.stop()
+
+
+@pytest.mark.asyncio
+async def test_cli_full_workflow():
+    """Test a complete workflow using CLI with device registration, failure, and recovery."""
+    async with NatsTestServer() as nats_url:
+        # Initialize Weaver
+        weaver = Weaver(nats_url)
+        await weaver.initialize()
+        
+        # Set up monitoring
+        test_nc = await nats.connect(nats_url)
+        published_messages = []
+        
+        async def message_collector(msg: Msg):
+            published_messages.append((msg.subject, msg.data))
+        
+        # Subscribe to all relevant subjects
+        await test_nc.subscribe(torchLoomConstants.subjects.EXTERNAL, cb=message_collector)
+        await test_nc.subscribe(torchLoomConstants.subjects.REPLICA_FAIL, cb=message_collector)
+        await test_nc.subscribe("torchLoom.training.reset_lr", cb=message_collector)
+        
+        # Start Weaver subscriptions
+        await weaver.subscribe_nc(
+            torchLoomConstants.subjects.EXTERNAL,
+            weaver.message_handler
+        )
+        
+        try:
+            async with TorchLoomClient(nats_url) as cli_client:
+                # Step 1: Register initial training setup
+                await cli_client.register_device("gpu1", "replica1")
+                await cli_client.register_device("gpu2", "replica2")
+                await cli_client.register_device("gpu3", "replica3")
+                
+                # Set initial learning rate
+                await cli_client.reset_learning_rate("0.01")
+                
+                # Wait for setup
+                await asyncio.sleep(0.5)
+                
+                # Verify initial setup
+                assert len(weaver.device_to_replicas) == 3
+                assert weaver.get_replicas_for_device("gpu1") == {"replica1"}
+                
+                # Clear messages for failure test
+                published_messages.clear()
+                
+                # Step 2: Simulate GPU failure
+                await cli_client.fail_device("gpu1")
+                
+                # Wait for failure processing
+                await asyncio.sleep(0.5)
+                
+                # Check replica failure was handled
+                replica_fail_messages = [
+                    msg for subject, msg in published_messages 
+                    if subject == torchLoomConstants.subjects.REPLICA_FAIL
+                ]
+                assert len(replica_fail_messages) == 1
+                
+                # Step 3: Register replacement GPU
+                await cli_client.register_device("gpu4", "replica1")  # Replace failed gpu1
+                
+                # Adjust learning rate for recovery
+                await cli_client.reset_learning_rate("0.005")
+                
+                # Wait for recovery processing
+                await asyncio.sleep(0.5)
+                
+                # Verify recovery
+                assert "gpu4" in weaver.device_to_replicas
+                assert weaver.get_replicas_for_device("gpu4") == {"replica1"}
+                
+                # Check learning rate updates
+                lr_messages = [
+                    msg for subject, msg in published_messages 
+                    if subject == "torchLoom.training.reset_lr"
+                ]
+                assert len(lr_messages) >= 1  # At least the recovery LR update
+            
+        finally:
+            await test_nc.close()
+            await weaver.stop() 

@@ -37,7 +37,7 @@ class MonitorStream(StreamSpec):
     subjects = MonitorSubjects()
 
 @dataclass
-class torchLoomConstants:
+class torchLoomConstantsClass:
     """Constants for torchLoom communication channels and configuration."""
     subjects: torchLoomSubjects = torchLoomSubjects()
     weaver_stream: WeaverStream = WeaverStream()
@@ -49,6 +49,9 @@ class torchLoomConstants:
         logger.debug(f"Weaver stream: {self.weaver_stream.STREAM}, Consumer: {self.weaver_stream.CONSUMER}")
         logger.debug(f"Monitor stream: {self.monitor_stream.STREAM}, Consumer: {self.monitor_stream.CONSUMER}")
         logger.debug(f"Subject paths: DR_SUBJECT={self.subjects.DR_SUBJECT}, EXTERNAL={self.subjects.EXTERNAL}")
+
+# Create a global instance for easy access
+torchLoomConstants = torchLoomConstantsClass()
 
 # Log important constants on module import
 logger.info("torchLoom constants module loaded")

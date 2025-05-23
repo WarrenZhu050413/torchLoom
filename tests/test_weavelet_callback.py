@@ -42,11 +42,11 @@ def test_callback_updates_optimizer():
             assert hasattr(model, "weavelet")
             assert model.weavelet._replica_id == "test_replica"
 
-                # Test optimizer update directly - now using enhanced handler system
+            # Test optimizer update directly - now using enhanced handler system
             initial_optimizer_type = model.optimizer_type
             assert initial_optimizer_type == "SGD"
 
-                # Test the enhanced handler dispatch system
+            # Test the enhanced handler dispatch system
             model.update_optimizer("Adam")
             assert model.optimizer_type == "Adam"
             assert isinstance(trainer.optimizers[0], torch.optim.Adam)
@@ -213,20 +213,20 @@ def test_weavelet_config_handler_backward_compatibility():
                 mock_process_instance.is_alive.return_value = True
                 mock_process_instance.pid = 12345
 
-            model = LightningTransformer(vocab_size=10, replica_id="test_replica")
+                model = LightningTransformer(vocab_size=10, replica_id="test_replica")
 
-            # Set up a dummy trainer
-            trainer = DummyTrainer(model.configure_optimizers())
-            model.trainer = trainer
+                # Set up a dummy trainer
+                trainer = DummyTrainer(model.configure_optimizers())
+                model.trainer = trainer
 
                 # Test the config handler directly - handlers are automatically called now
-            assert model.optimizer_type == "SGD"
+                assert model.optimizer_type == "SGD"
 
                 # Test config update via the enhanced system (automatic dispatch)
                 config_update = {"optimizer_type": "Adam"}
                 model.weavelet._dispatch_handlers(config_update)
-            assert model.optimizer_type == "Adam"
-            assert isinstance(trainer.optimizers[0], torch.optim.Adam)
+                assert model.optimizer_type == "Adam"
+                assert isinstance(trainer.optimizers[0], torch.optim.Adam)
 
                 # Test multiple config parameters including learning rate
                 config_update = {"optimizer_type": "SGD", "learning_rate": 0.001}

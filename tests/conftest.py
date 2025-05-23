@@ -14,12 +14,16 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from torchLoom.config import Config
 
 # Override log file paths for testing to avoid writing to real log files
-Config.MANAGER_torchLoom_LOG_FILE = "/tmp/test_torchLoom.log"
-Config.MANAGER_RUNTIME_LOG_FILE = "/tmp/test_manager.log"
-Config.torchLoom_CONSTANTS_LOG_FILE = "/tmp/test_torchLoom_constants.log"
-Config.torchLoom_UTILS_LOG_FILE = "/tmp/test_torchLoom_utils.log"
-Config.torchLoom_CONTROLLER_LOG_FILE = "/tmp/test_torchLoom_weaver.log"
-Config.torchLoom_MONITOR_CLI_LOG_FILE = "/tmp/test_torchLoom_monitor_cli.log"
+# Instead, write them to a dedicated directory within the tests folder.
+log_dir = "./tests/log"
+os.makedirs(log_dir, exist_ok=True)
+
+Config.MANAGER_torchLoom_LOG_FILE = os.path.join(log_dir, "test_torchLoom.log")
+Config.MANAGER_RUNTIME_LOG_FILE = os.path.join(log_dir, "test_manager.log")
+Config.torchLoom_CONSTANTS_LOG_FILE = os.path.join(log_dir, "test_torchLoom_constants.log")
+Config.torchLoom_UTILS_LOG_FILE = os.path.join(log_dir, "test_torchLoom_utils.log")
+Config.torchLoom_CONTROLLER_LOG_FILE = os.path.join(log_dir, "test_torchLoom_weaver.log")
+Config.torchLoom_MONITOR_CLI_LOG_FILE = os.path.join(log_dir, "test_torchLoom_monitor_cli.log")
 
 @pytest.fixture
 def event_loop():
