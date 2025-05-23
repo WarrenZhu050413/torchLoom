@@ -2,10 +2,14 @@ import queue
 from unittest.mock import Mock, patch
 
 import torch
+from train_lightning import (
+    EnhancedLightningTransformer,
+    LightningTransformer,
+    WeaveletCallback,
+)
 
-from torchLoom.lightning import weavelet_handler
+from torchLoom.lightning_wrapper import weavelet_handler
 from torchLoom.weavelet import Weavelet
-from train_lightning import EnhancedLightningTransformer, LightningTransformer, WeaveletCallback
 
 
 class DummyTrainer:

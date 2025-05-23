@@ -6,7 +6,7 @@ and subscription management using the extracted components.
 """
 
 import asyncio
-from typing import Dict, Set
+from typing import Dict, Optional, Set
 
 from nats.aio.msg import Msg
 
@@ -19,17 +19,17 @@ from .handlers import (
     ConfigurationHandler,
     DeviceRegistrationHandler,
     DeviceReplicaMapper,
+    DrainEventHandler,
     FailureHandler,
-    MessageHandler,
-    TrainingStatusHandler,
     GPUStatusHandler,
+    HeartbeatHandler,
+    MessageHandler,
     NetworkStatusHandler,
+    TrainingStatusHandler,
     UICommandHandler,
+    WeaverCommandHandler,
 )
-from .publishers import (
-    UIUpdatePublisher,
-    DemoDataSimulator,
-)
+from .publishers import DemoDataSimulator, UIUpdatePublisher
 from .status_tracker import StatusTracker
 from .subscription import ConnectionManager, SubscriptionManager
 from .websocket_server import WebSocketServer
@@ -46,7 +46,60 @@ class Weaver:
     handling events and managing resources. It runs in a separate thread to
     avoid blocking the main thread.
 
-    It is the sole producer of events.
+    It is the sole producer of events and comes with comprehensive default handlers
+    for all standard torchLoom message types.
+
+    ## Default Handlers
+
+    The Weaver includes the following default handlers out of the box:
+
+    - **DeviceRegistrationHandler**: Handles device registration from weavelets
+    - **HeartbeatHandler**: Monitors weavelet liveness via heartbeat messages
+    - **TrainingStatusHandler**: Processes training progress updates from weavelets
+    - **GPUStatusHandler**: Handles GPU status and utilization updates
+    - **NetworkStatusHandler**: Processes network connectivity and performance data
+    - **FailureHandler**: Manages device and replica failure scenarios
+    - **DrainEventHandler**: Handles graceful device drain requests
+    - **UICommandHandler**: Processes commands from the UI (pause/resume/config changes)
+    - **WeaverCommandHandler**: Handles command acknowledgments from weavelets
+    - **ConfigurationHandler**: Manages configuration change events
+
+    ## Customizing Handlers
+
+    Users can easily customize or replace any default handler:
+
+    ```python
+    # Create custom handler
+    class MyCustomHeartbeatHandler(MessageHandler):
+        async def handle(self, env: EventEnvelope) -> None:
+            # Custom heartbeat logic
+            pass
+
+    # Initialize weaver with defaults
+    weaver = Weaver()
+    await weaver.initialize()
+
+    # Override specific handler
+    custom_handler = MyCustomHeartbeatHandler()
+    weaver.override_handler("heartbeat", custom_handler)
+
+    # Add completely new handler
+    weaver.add_custom_handler("my_custom_event", my_custom_handler)
+
+    # List all handlers
+    handlers = weaver.list_handlers()
+    print(handlers)  # Shows all registered handlers
+    ```
+
+    ## Zero-Configuration Usage
+
+    For most use cases, no handler configuration is needed:
+
+    ```python
+    weaver = Weaver(enable_ui=True)
+    await weaver.initialize()
+    # All default handlers are ready to use!
+    ```
     """
 
     def __init__(
@@ -102,6 +155,9 @@ class Weaver:
             "register_device": DeviceRegistrationHandler(self._device_mapper),
             "failure": FailureHandler(self._device_mapper, nc),
             "configuration": ConfigurationHandler(nc),
+            "heartbeat": HeartbeatHandler(self.status_tracker, nc),
+            "drain": DrainEventHandler(self._device_mapper, self.status_tracker),
+            "weaver_command": WeaverCommandHandler(self.status_tracker, nc),
             "training_status": TrainingStatusHandler(self.status_tracker),
             "gpu_status": GPUStatusHandler(self.status_tracker),
             "network_status": NetworkStatusHandler(self.status_tracker),
@@ -134,6 +190,18 @@ class Weaver:
             if env.HasField("config_info"):
                 await self._handlers["configuration"].handle(env)
 
+            # Drain event handling
+            if env.HasField("drain"):
+                await self._handlers["drain"].handle(env)
+
+            # Heartbeat handling
+            if env.HasField("heartbeat"):
+                await self._handlers["heartbeat"].handle(env)
+
+            # Weaver command response handling
+            if env.HasField("weaver_command"):
+                await self._handlers["weaver_command"].handle(env)
+
             # UI-related message handling
             if env.HasField("ui_command"):
                 await self._handlers["ui_commands"].handle(env)
@@ -145,13 +213,12 @@ class Weaver:
             if env.HasField("gpu_status"):
                 await self._handlers["gpu_status"].handle(env)
 
-            # External Monitoring -> Weaver message handling  
+            # External Monitoring -> Weaver message handling
             if env.HasField("network_status"):
                 await self._handlers["network_status"].handle(env)
 
-            # Legacy message handling (backward compatibility)
-            if env.HasField("ui_status_update"):
-                await self.ui_update_handler.handle(env)
+            # Note: ui_status_update is handled by the UIUpdatePublisher in the background task
+            # No need to handle it here as it's an outbound message type
 
         except Exception as e:
             logger.exception(f"Error handling message: {e}")
@@ -246,6 +313,84 @@ class Weaver:
         """Get replica to devices mapping."""
         return self._device_mapper.replica_to_devices
 
+    def override_handler(self, event_type: str, handler: MessageHandler) -> None:
+        """Override a default handler with a custom implementation.
+
+        Args:
+            event_type: The event type to override (e.g., "heartbeat", "training_status")
+            handler: The custom handler instance to use
+
+        Example:
+            # Override the heartbeat handler with custom logic
+            custom_handler = MyCustomHeartbeatHandler(...)
+            weaver.override_handler("heartbeat", custom_handler)
+        """
+        if not self._handlers:
+            raise RuntimeError("Weaver not initialized. Call initialize() first.")
+
+        self._handlers[event_type] = handler
+        logger.info(f"Overrode handler for event type: {event_type}")
+
+    def add_custom_handler(self, event_type: str, handler: MessageHandler) -> None:
+        """Add a handler for a custom event type.
+
+        Args:
+            event_type: The custom event type name
+            handler: The handler instance to use
+
+        Note: You'll also need to add the corresponding HasField check in a custom
+        message_handler if you want to handle custom protobuf fields.
+        """
+        if not self._handlers:
+            raise RuntimeError("Weaver not initialized. Call initialize() first.")
+
+        self._handlers[event_type] = handler
+        logger.info(f"Added custom handler for event type: {event_type}")
+
+    def get_handler(self, event_type: str) -> Optional[MessageHandler]:
+        """Get the current handler for an event type.
+
+        Args:
+            event_type: The event type to get the handler for
+
+        Returns:
+            The handler instance or None if not found
+        """
+        return self._handlers.get(event_type) if self._handlers else None
+
+    def list_handlers(self) -> Dict[str, str]:
+        """List all currently registered handlers.
+
+        Returns:
+            Dictionary mapping event types to handler class names
+        """
+        if not self._handlers:
+            return {}
+        return {
+            event_type: handler.__class__.__name__
+            for event_type, handler in self._handlers.items()
+        }
+
+    def get_supported_events(self) -> Dict[str, str]:
+        """Get all supported event types from the EventEnvelope protobuf.
+
+        Returns:
+            Dictionary mapping protobuf field names to their descriptions
+        """
+        return {
+            "register_device": "Device registration from weavelets",
+            "monitored_fail": "Device failure notifications",
+            "config_info": "Configuration change events",
+            "drain": "Graceful device drain requests",
+            "heartbeat": "Weavelet liveness monitoring",
+            "weaver_command": "Command acknowledgments from weavelets",
+            "training_status": "Training progress updates",
+            "gpu_status": "GPU status and utilization data",
+            "network_status": "Network connectivity and performance",
+            "ui_command": "Commands from the UI",
+            "ui_status_update": "UI status updates (outbound only)",
+        }
+
 
 async def main():
     """Main function to start the weaver."""
@@ -301,7 +446,7 @@ async def main():
                 )
             )
 
-            # UI -> Weaver subscriptions  
+            # UI -> Weaver subscriptions
             tg.create_task(
                 weaver.subscribe_nc(
                     subject=torchLoomConstants.subjects.UI_COMMANDS,

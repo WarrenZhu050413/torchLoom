@@ -8,55 +8,41 @@ This package contains the refactored Weaver implementation with separated concer
 - core: Main Weaver class
 """
 
+from .core import Weaver
+
 # Message handlers (messages TO the weaver)
-from .handlers import (
-    MessageHandler,
-    # Weavelet -> Weaver handlers
-    DeviceRegistrationHandler,
-    HeartbeatHandler,
-    TrainingStatusHandler,
-    GPUStatusHandler,
-    # External -> Weaver handlers
-    FailureHandler,
-    NetworkStatusHandler,
-    # UI -> Weaver handlers
-    UICommandHandler,
+from .handlers import (  # Weavelet -> Weaver handlers; External -> Weaver handlers; UI -> Weaver handlers; Utility classes
     ConfigurationHandler,
-    # Utility classes
+    DeviceRegistrationHandler,
     DeviceReplicaMapper,
+    FailureHandler,
+    GPUStatusHandler,
+    HeartbeatHandler,
+    MessageHandler,
+    NetworkStatusHandler,
+    TrainingStatusHandler,
+    UICommandHandler,
 )
 
 # Publishers (messages FROM the weaver)
-from .publishers import (
-    Publisher,
-    # Weaver -> UI publishers
-    UIUpdatePublisher,
-    # Weaver -> Weavelet publishers
-    WeaveletCommandPublisher,
-    HeartbeatMonitor,
-    # Demo utilities
+from .publishers import (  # Weaver -> UI publishers; Weaver -> Weavelet publishers; Demo utilities;
     DemoDataSimulator,
-    # Legacy compatibility aliases
-    UIUpdateHandler,
-    WeaveletCommandHandler,
+    HeartbeatMonitor,
+    Publisher,
+    UIUpdatePublisher,
+    WeaveletCommandPublisher,
 )
 
 # Core infrastructure
-from .subscription import (
-    StreamManager,
-    SubscriptionManager,
-    ConnectionManager,
-)
-from .core import Weaver
+from .subscription import ConnectionManager, StreamManager, SubscriptionManager
 
 __all__ = [
     # Core
     "Weaver",
-    
     # Message handlers (TO weaver)
     "MessageHandler",
     "DeviceRegistrationHandler",
-    "HeartbeatHandler", 
+    "HeartbeatHandler",
     "TrainingStatusHandler",
     "GPUStatusHandler",
     "FailureHandler",
@@ -64,19 +50,14 @@ __all__ = [
     "UICommandHandler",
     "ConfigurationHandler",
     "DeviceReplicaMapper",
-    
     # Publishers (FROM weaver)
     "Publisher",
     "UIUpdatePublisher",
     "WeaveletCommandPublisher",
     "HeartbeatMonitor",
     "DemoDataSimulator",
-    # Legacy compatibility
-    "UIUpdateHandler",
-    "WeaveletCommandHandler",
-    
     # Infrastructure
     "StreamManager",
     "SubscriptionManager",
     "ConnectionManager",
-] 
+]

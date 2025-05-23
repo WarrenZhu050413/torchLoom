@@ -15,7 +15,7 @@ from torchLoom.config import Config
 
 # Override log file paths for testing to avoid writing to real log files
 # Instead, write them to a dedicated directory within the tests folder.
-log_dir = "./tests/log"
+log_dir = "./torchLoom/tests/log"
 os.makedirs(log_dir, exist_ok=True)
 
 Config.MANAGER_torchLoom_LOG_FILE = os.path.join(log_dir, "test_torchLoom.log")

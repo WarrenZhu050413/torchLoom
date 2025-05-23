@@ -7,7 +7,7 @@ import logging
 import multiprocessing
 import time
 import uuid
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Type
 
 from torchLoom.config import Config
 from torchLoom.constants import torchLoomConstants
@@ -29,10 +29,18 @@ class Weavelet:
         self,
         replica_id: Optional[str] = None,
         torchLoom_addr: str = torchLoomConstants.DEFAULT_ADDR,
-        config_pipe: Optional[Tuple["multiprocessing.connection.Connection", 
-                                  "multiprocessing.connection.Connection"]] = None,
-        status_pipe: Optional[Tuple["multiprocessing.connection.Connection", 
-                                   "multiprocessing.connection.Connection"]] = None,
+        config_pipe: Optional[
+            Tuple[
+                "multiprocessing.connection.Connection",
+                "multiprocessing.connection.Connection",
+            ]
+        ] = None,
+        status_pipe: Optional[
+            Tuple[
+                "multiprocessing.connection.Connection",
+                "multiprocessing.connection.Connection",
+            ]
+        ] = None,
     ):
         # Core identifiers
         self._replica_id = replica_id or f"weavelet:{uuid.uuid4()}"
@@ -45,13 +53,17 @@ class Weavelet:
         # Inter-process communication using pipes
         # Config pipe: listener -> main (listener sends config updates to main process)
         if config_pipe is None:
-            self._config_receiver, self._config_sender = multiprocessing.Pipe(duplex=False)
+            self._config_receiver, self._config_sender = multiprocessing.Pipe(
+                duplex=False
+            )
         else:
             self._config_receiver, self._config_sender = config_pipe
-            
+
         # Status pipe: main -> listener (main sends status updates to listener)
         if status_pipe is None:
-            self._status_receiver, self._status_sender = multiprocessing.Pipe(duplex=False)
+            self._status_receiver, self._status_sender = multiprocessing.Pipe(
+                duplex=False
+            )
         else:
             self._status_receiver, self._status_sender = status_pipe
 
@@ -65,7 +77,11 @@ class Weavelet:
         # Enhanced handler system using the new registry
         self._handler_registry = HandlerRegistry()
         self._auto_dispatch = True
-        
+
+        # Default handlers setup
+        self._default_handlers_enabled = True
+        self._target_object = None  # Will be set when using with Lightning wrapper
+
         # Logger for this class
         self._logger = logging.getLogger(__name__)
 
@@ -92,6 +108,7 @@ class Weavelet:
                 # Implementation here
                 pass
         """
+
         def decorator(func):
             self.register_handler(config_key, func, expected_type)
             return func
@@ -165,9 +182,9 @@ class Weavelet:
         # If any updates were found and consolidated, dispatch handlers for the latest values
         if latest_updates:
             self._dispatch_handlers(latest_updates)
-            return True # Return True if updates were processed
+            return True  # Return True if updates were processed
 
-        return False # Return False if no updates were found
+        return False  # Return False if no updates were found
 
     def enable_auto_dispatch(self) -> None:
         """Enable automatic handler dispatch."""
@@ -177,9 +194,82 @@ class Weavelet:
         """Disable automatic handler dispatch."""
         self._auto_dispatch = False
 
+    def enable_default_handlers(self, target_object: Optional[Any] = None) -> None:
+        """Enable default handlers for common configuration parameters.
+
+        Args:
+            target_object: The object that will receive configuration updates (e.g., Lightning module)
+                          If None, only logging handlers are registered.
+        """
+        self._default_handlers_enabled = True
+        self._target_object = target_object
+        self._handler_registry.register_default_handlers(target_object)
+
+    def disable_default_handlers(self) -> None:
+        """Disable default handlers (users must register all handlers manually)."""
+        self._default_handlers_enabled = False
+        # Note: This doesn't remove already registered handlers, just prevents auto-registration
+
+    def set_target_object(self, target_object: Any) -> None:
+        """Set the target object for configuration updates.
+
+        Args:
+            target_object: The object that will receive configuration updates (e.g., Lightning module)
+        """
+        self._target_object = target_object
+        # Re-register default handlers with the new target object
+        if self._default_handlers_enabled:
+            self._handler_registry.register_default_handlers(target_object)
+
+    def get_registered_handlers(self) -> Dict[str, Type]:
+        """Get all currently registered handlers.
+
+        Returns:
+            Dictionary mapping config keys to their expected types
+        """
+        return self._handler_registry.list_handlers()
+
+    def get_supported_config_parameters(self) -> Dict[str, str]:
+        """Get all supported configuration parameters and their descriptions.
+
+        Returns:
+            Dictionary mapping config keys to their descriptions
+        """
+        descriptions = {
+            # Training parameters
+            "learning_rate": "Learning rate for optimizer",
+            "lr": "Learning rate (alias for learning_rate)",
+            "batch_size": "Training batch size",
+            "momentum": "Optimizer momentum",
+            "weight_decay": "Weight decay regularization",
+            # Optimizer parameters
+            "optimizer_type": "Type of optimizer (adam, sgd, etc.)",
+            "optimizer": "Optimizer type (alias)",
+            # Training control
+            "training_enabled": "Enable/disable training",
+            "pause_training": "Pause training execution",
+            "resume_training": "Resume paused training",
+            # Model parameters
+            "dropout_rate": "Dropout rate for regularization",
+            "dropout": "Dropout rate (alias)",
+            # Logging and debugging
+            "log_level": "Logging level (DEBUG, INFO, WARNING, ERROR)",
+            "logging_interval": "Interval for logging updates",
+            "verbose": "Enable verbose output",
+            # Advanced parameters
+            "gradient_clip_val": "Gradient clipping value",
+            "accumulate_grad_batches": "Number of batches to accumulate gradients",
+        }
+
+        return descriptions
+
     def start(self) -> None:
         """Start the weavelet in a separate process."""
         try:
+            # Register default handlers if enabled
+            if self._default_handlers_enabled:
+                self._handler_registry.register_default_handlers(self._target_object)
+
             self._process = multiprocessing.Process(
                 target=self._run_weavelet_listener_process,
                 args=(
@@ -197,6 +287,10 @@ class Weavelet:
             time.sleep(0.1)
 
             print(f"Weavelet process started with PID: {self._process.pid}")
+
+            # Log registered handlers
+            handlers = self.get_registered_handlers()
+            print(f"Weavelet has {len(handlers)} registered configuration handlers")
         except Exception as e:
             print(f"Failed to start weavelet process: {e}")
             raise
@@ -223,46 +317,46 @@ class Weavelet:
                         self._process.join()
 
                 print("Weavelet process stopped successfully")
-            
+
             # Clean up pipe resources
             try:
                 print("Closing pipes...")
-                
+
                 # Close config pipe connections
-                if hasattr(self, '_config_receiver') and self._config_receiver:
+                if hasattr(self, "_config_receiver") and self._config_receiver:
                     try:
                         self._config_receiver.close()
                         print("Config receiver closed")
                     except Exception as e:
                         print(f"Error closing config receiver: {e}")
-                        
-                if hasattr(self, '_config_sender') and self._config_sender:
+
+                if hasattr(self, "_config_sender") and self._config_sender:
                     try:
                         self._config_sender.close()
                         print("Config sender closed")
                     except Exception as e:
                         print(f"Error closing config sender: {e}")
-                        
+
                 # Close status pipe connections
-                if hasattr(self, '_status_receiver') and self._status_receiver:
+                if hasattr(self, "_status_receiver") and self._status_receiver:
                     try:
                         self._status_receiver.close()
                         print("Status receiver closed")
                     except Exception as e:
                         print(f"Error closing status receiver: {e}")
-                        
-                if hasattr(self, '_status_sender') and self._status_sender:
+
+                if hasattr(self, "_status_sender") and self._status_sender:
                     try:
                         self._status_sender.close()
                         print("Status sender closed")
                     except Exception as e:
                         print(f"Error closing status sender: {e}")
-                        
+
                 print("Multiprocessing resources cleaned up")
-                    
+
             except Exception as e:
                 print(f"Error cleaning up multiprocessing resources: {e}")
-                
+
         except Exception as e:
             print(f"Error stopping weavelet process: {e}")
 
