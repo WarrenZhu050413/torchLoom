@@ -4,6 +4,8 @@ Async weavelet listener implementation.
 
 import asyncio
 import multiprocessing
+import json
+import time
 from typing import Any, Awaitable, Callable, Dict, Optional
 
 from nats.aio.client import Client
@@ -338,17 +340,85 @@ class WeaveletListener:
                 self._logger.warning("Cannot publish status - not connected to NATS")
                 return
 
-            # Create a status message (this could be extended with proper protobuf message)
-            envelope = EventEnvelope() if EventEnvelope else None
-            if not envelope:
+            # Import constants for subject names
+            from torchLoom.constants import torchLoomConstants
+            
+            # Create appropriate protobuf messages based on status type
+            if not EventEnvelope:
                 self._logger.warning("EventEnvelope not available, skipping status publish")
                 return
-            # Add status fields as needed based on your protobuf schema
 
+            # Extract basic information
+            replica_id = status.get('replica_id', self._replica_id)
+            device_id = status.get('device_id', f"device_{replica_id}")
+            status_type = status.get('type', 'training_metrics')
+            
+            # Publish to UI_STATUS_UPDATE for general UI consumption (JSON format)
+            ui_message = {
+                'type': status_type,
+                'replica_id': replica_id,
+                'device_id': device_id,
+                'timestamp': status.get('timestamp', time.time()),
+                **status  # Include all original status data
+            }
+            
             await self._nc.publish(
-                "torchLoom.training.status", envelope.SerializeToString()
+                torchLoomConstants.subjects.UI_STATUS_UPDATE,
+                json.dumps(ui_message).encode('utf-8')
             )
-            self._logger.debug(f"Published training status: {status}")
+            self._logger.debug(f"Published UI status: {status_type} for {replica_id}")
+            
+            # Also publish specific protobuf messages for structured handling
+            if status_type in ['training_metrics', 'epoch_complete', 'epoch_start']:
+                # Create TrainingProgress protobuf message
+                envelope = EventEnvelope()
+                progress = envelope.training_progress
+                progress.replica_id = replica_id
+                progress.current_step = status.get('epoch', 0)
+                progress.step_progress = status.get('step_progress', 0.0)
+                progress.status = "training" if status_type != 'training_complete' else "completed"
+                progress.last_active_step = status.get('step', status.get('batch_idx', 0))
+                
+                await self._nc.publish(
+                    torchLoomConstants.subjects.TRAINING_PROGRESS,
+                    envelope.SerializeToString()
+                )
+                
+                # Create GPUStatus protobuf message if system metrics are available
+                if 'system' in status:
+                    envelope_gpu = EventEnvelope()
+                    gpu_status = envelope_gpu.gpu_status
+                    gpu_status.gpu_id = device_id
+                    gpu_status.replica_id = replica_id
+                    gpu_status.server_id = status.get('server_id', 'local_server')
+                    gpu_status.status = "active"
+                    
+                    system_metrics = status['system']
+                    gpu_status.utilization = system_metrics.get('gpu_utilization', 0.0)
+                    gpu_status.temperature = 40.0  # Default temperature
+                    
+                    # Add configuration parameters
+                    if 'config' in status:
+                        config_data = status['config']
+                        if isinstance(config_data, dict):
+                            for key, value in config_data.items():
+                                gpu_status.config[key] = str(value)
+                    
+                    # Add current learning rate and other metrics
+                    if 'learning_rate' in status:
+                        gpu_status.config['learning_rate'] = str(status['learning_rate'])
+                    if 'loss' in status:
+                        gpu_status.config['current_loss'] = str(status['loss'])
+                    if 'accuracy' in status:
+                        gpu_status.config['current_accuracy'] = str(status['accuracy'])
+                    
+                    await self._nc.publish(
+                        torchLoomConstants.subjects.GPU_STATUS,
+                        envelope_gpu.SerializeToString()
+                    )
+                    
+            self._logger.debug(f"Published training status: {status_type} for {replica_id}")
+            
         except Exception as e:
             self._logger.exception(f"Failed to publish training status: {e}")
 
@@ -361,13 +431,46 @@ class WeaveletListener:
     async def _cleanup(self) -> None:
         """Clean up resources."""
         try:
-            # Cancel all subscriptions
-            await cancel_subscriptions(self._subscriptions)
+            self._logger.info("Starting WeaveletListener cleanup...")
+            
+            # Cancel all subscriptions and wait for them to complete
+            for subject, (sub, task) in self._subscriptions.items():
+                try:
+                    self._logger.info(f"Cleaning up subscription for {subject}")
+                    
+                    # Cancel the task first
+                    if not task.cancelled():
+                        task.cancel()
+                        try:
+                            await task
+                        except asyncio.CancelledError:
+                            pass
+                    
+                    # Unsubscribe and drain if it's a subscription object
+                    if hasattr(sub, 'unsubscribe'):
+                        await sub.unsubscribe()
+                    elif hasattr(sub, 'drain'):
+                        await sub.drain()
+                        
+                except Exception as e:
+                    self._logger.warning(f"Error cleaning up subscription {subject}: {e}")
+            
             self._subscriptions.clear()
 
-            # Close NATS connection
+            # Close NATS connection more thoroughly
             if self._nc and not self._nc.is_closed:
-                await self._nc.close()
+                self._logger.info("Draining and closing NATS connection...")
+                try:
+                    # Drain the connection first to ensure all pending messages are sent
+                    await self._nc.drain()
+                except Exception as e:
+                    self._logger.warning(f"Error draining NATS connection: {e}")
+                
+                try:
+                    # Then close the connection
+                    await self._nc.close()
+                except Exception as e:
+                    self._logger.warning(f"Error closing NATS connection: {e}")
 
             self._logger.info("WeaveletListener cleanup completed")
         except Exception as e:

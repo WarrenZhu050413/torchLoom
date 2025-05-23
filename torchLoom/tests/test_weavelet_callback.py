@@ -5,7 +5,7 @@ import torch
 
 from torchLoom.lightning_integration import weavelet_handler
 from torchLoom.weavelet import Weavelet
-from train import EnhancedLightningTransformer, LightningTransformer, WeaveletCallback
+from train_lightning import EnhancedLightningTransformer, LightningTransformer, WeaveletCallback
 
 
 class DummyTrainer:

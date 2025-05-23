@@ -205,6 +205,54 @@ class Weavelet:
                         self._process.join()
 
                 print("Weavelet process stopped successfully")
+            
+            # Ensure process is completely finished before closing queues
+            if self._process:
+                # Wait a bit more to ensure subprocess cleanup is complete
+                time.sleep(0.5)
+                
+            # Clean up multiprocessing resources
+            try:
+                # Close and join queues with timeout and error handling
+                if self._config_queue:
+                    print("Closing config queue...")
+                    try:
+                        self._config_queue.close()
+                        # Use a timeout for join_thread to prevent hanging
+                        import threading
+                        join_thread = threading.Thread(target=self._config_queue.join_thread)
+                        join_thread.start()
+                        join_thread.join(timeout=3)
+                        if join_thread.is_alive():
+                            print("Config queue join_thread timed out")
+                        else:
+                            print("Config queue closed and joined")
+                    except Exception as e:
+                        print(f"Error closing config queue: {e}")
+                        
+                if self._status_queue:
+                    print("Closing status queue...")
+                    try:
+                        self._status_queue.close()
+                        # Use a timeout for join_thread to prevent hanging
+                        import threading
+                        join_thread = threading.Thread(target=self._status_queue.join_thread)
+                        join_thread.start()
+                        join_thread.join(timeout=3)
+                        if join_thread.is_alive():
+                            print("Status queue join_thread timed out")
+                        else:
+                            print("Status queue closed and joined")
+                    except Exception as e:
+                        print(f"Error closing status queue: {e}")
+                        
+                # Note: multiprocessing.Event doesn't have close/join methods
+                # but setting it should be sufficient for cleanup
+                print("Multiprocessing resources cleaned up")
+                    
+            except Exception as e:
+                print(f"Error cleaning up multiprocessing resources: {e}")
+                
         except Exception as e:
             print(f"Error stopping weavelet process: {e}")
 

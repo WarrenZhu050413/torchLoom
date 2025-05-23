@@ -99,6 +99,22 @@ class TorchLoomClient:
         )
         logger.info(f"Published config info event with parameters: {config_params}")
     
+    async def set_batch_size(self, batch_size: int):
+        """Set the training batch size."""
+        await self.send_config_info({"batch_size": str(batch_size)})
+    
+    async def pause_training(self):
+        """Pause training."""
+        await self.send_config_info({"pause_training": "true"})
+    
+    async def resume_training(self):
+        """Resume training."""
+        await self.send_config_info({"pause_training": "false"})
+    
+    async def set_training_params(self, **params):
+        """Set multiple training parameters at once."""
+        await self.send_config_info(params)
+    
     async def __aenter__(self):
         """Async context manager entry."""
         await self.connect()
@@ -177,6 +193,93 @@ class MyShell(cmd.Cmd):
             config_params[key] = value
         
         asyncio.run(self.client.send_config_info(config_params))
+    
+    def do_set_batch_size(self, line):
+        """Set the training batch size
+        
+        Usage: set_batch_size <batch_size>
+        """
+        try:
+            batch_size = int(line.strip())
+            if batch_size <= 0:
+                print("Batch size must be a positive integer")
+                return
+            asyncio.run(self.client.set_batch_size(batch_size))
+            print(f"Set batch size to {batch_size}")
+        except ValueError:
+            print("Invalid batch size. Must be an integer.")
+    
+    def do_pause_training(self, line):
+        """Pause training
+        
+        Usage: pause_training
+        """
+        asyncio.run(self.client.pause_training())
+        print("Training paused")
+    
+    def do_resume_training(self, line):
+        """Resume training
+        
+        Usage: resume_training
+        """
+        asyncio.run(self.client.resume_training())
+        print("Training resumed")
+    
+    def do_set_lr(self, line):
+        """Set learning rate (enhanced version)
+        
+        Usage: set_lr <learning_rate>
+        """
+        try:
+            lr = float(line.strip())
+            if lr <= 0:
+                print("Learning rate must be positive")
+                return
+            asyncio.run(self.client.reset_learning_rate(str(lr)))
+            print(f"Set learning rate to {lr}")
+        except ValueError:
+            print("Invalid learning rate. Must be a number.")
+    
+    def do_training_config(self, line):
+        """Set multiple training parameters at once
+        
+        Usage: training_config lr=0.01 batch_size=64 pause_training=false
+        """
+        parts = line.strip().split()
+        if not parts:
+            print("Usage: training_config param1=value1 param2=value2 ...")
+            print("Available parameters: learning_rate, batch_size, pause_training")
+            return
+        
+        config_params = {}
+        for part in parts:
+            if '=' not in part:
+                print(f"Invalid parameter format: {part}. Use key=value format.")
+                return
+            key, value = part.split('=', 1)
+            
+            # Validate common parameters
+            if key == "learning_rate":
+                try:
+                    float(value)
+                except ValueError:
+                    print(f"Invalid learning rate: {value}")
+                    return
+            elif key == "batch_size":
+                try:
+                    int(value)
+                except ValueError:
+                    print(f"Invalid batch size: {value}")
+                    return
+            elif key == "pause_training":
+                if value.lower() not in ["true", "false"]:
+                    print(f"Invalid pause_training value: {value}. Use 'true' or 'false'.")
+                    return
+            
+            config_params[key] = value
+        
+        asyncio.run(self.client.send_config_info(config_params))
+        print(f"Updated training configuration: {config_params}")
 
     def do_exit(self, line):
         """Exit the CLI"""

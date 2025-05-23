@@ -9,7 +9,7 @@ logger = setup_logger(
 
 NC = "nc"
 JS = "js"
-
+NATS_SERVER_PATH = "./nats/nats-server"
 
 class torchLoomSubjects:
     MONITOR: str = "torchLoom.monitored.failure"
