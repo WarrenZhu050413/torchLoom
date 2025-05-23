@@ -1,12 +1,13 @@
-# Plan for Updating TODO and Suggesting Additional Features
+# Plan for Weavelet Integration
 
 ## Goal
-Enhance TODO.md with more detailed tasks for runtime configuration features beyond learning rate and incorporate the PyTorch Lightning integration.
+Integrate a weavelet process into the Lightning training example so it can receive configuration updates from the weaver. The weavelet should run in a separate process and communicate optimizer type changes to the training process. Callback hooks will check the weavelet queue and update the optimizer when required.
 
 ## Steps
-- Review existing TODO.md and controller/runtime code for context.
-- Identify new adjustable parameters that could be controlled via JetStream messages.
-- Update TODO.md with bullet points describing the new runtime control features, the Lightning integration via callback or context manager, and clearer instructions for each item.
-- Keep the style of bullet points (no numbering) per AGENTs instructions.
-- Commit the plan and the updated TODO.md.
-
+- Create a new module `torchLoom/weavelet.py` with a simple async loop that connects to NATS and listens for config messages. When an `optimizer_type` value is found it is put on a multiprocessing queue.
+- Update `train.py`:
+  - Spawn the weavelet process before starting training.
+  - Extend `LightningTransformer` with dynamic optimizer creation and an `update_optimizer` method.
+  - Add `WeaveletCallback` that checks the queue at the start of each epoch and applies optimizer updates.
+- Add unit tests verifying that `update_optimizer` and the callback correctly change the optimizer based on queued values.
+- Run `pytest` to ensure the repository remains stable.
