@@ -1,4 +1,5 @@
 import multiprocessing as mp
+import os
 import time
 from typing import Optional
 
@@ -8,7 +9,7 @@ from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.demos import Transformer
 from torch.utils.data import DataLoader, Dataset
 
-from torchLoom.weavelet import Weavelet
+from torchLoom.weavelet import WeaveletProcess
 
 
 class RandomTextDataset(Dataset):
@@ -32,11 +33,10 @@ class LightningTransformer(L.LightningModule):
         self.lr = 0.1
         self.optimizer = None
 
-        # Initialize weavelet for weaver communication
-        self.weavelet = Weavelet(replica_id=replica_id)
-        self.weavelet.register_config_handler("optimizer_type", self.update_optimizer)
+        # Initialize process-based weavelet for weaver communication
+        self.weavelet = WeaveletProcess(replica_id=replica_id)
 
-        # Start weavelet in background
+        # Start weavelet process
         self.weavelet.start()
 
     def forward(self, inputs, target):
@@ -48,7 +48,12 @@ class LightningTransformer(L.LightningModule):
         loss = torch.nn.functional.nll_loss(output, target.view(-1))
         time.sleep(1)
 
-        # Publish training status to weaver
+        # Check for config updates from weavelet process
+        config_update = self.weavelet.get_config_update()
+        if config_update:
+            self.handle_config_update(config_update)
+
+        # Publish training status to weaver via weavelet process
         self.weavelet.publish_training_status(
             {
                 "batch_idx": batch_idx,
@@ -58,6 +63,13 @@ class LightningTransformer(L.LightningModule):
         )
 
         return loss
+
+    def handle_config_update(self, config_params: dict) -> None:
+        """Handle configuration updates from the weavelet process."""
+        for key, value in config_params.items():
+            if key == "optimizer_type":
+                self.update_optimizer(value)
+            # Add other config parameter handlers here as needed
 
     def _create_optimizer(self):
         if self.optimizer_type == "Adam":
@@ -69,7 +81,7 @@ class LightningTransformer(L.LightningModule):
         return self.optimizer
 
     def update_optimizer(self, optimizer_type: str) -> None:
-        """Update optimizer type - called by weavelet when config changes."""
+        """Update optimizer type - called when config changes are received."""
         if optimizer_type == self.optimizer_type:
             return
 
@@ -84,33 +96,55 @@ class LightningTransformer(L.LightningModule):
     def on_train_end(self):
         """Clean up weavelet when training ends."""
         if hasattr(self, "weavelet"):
-            self.weavelet.stop()
-
-
-dataset = RandomTextDataset(vocab_size=1000)
-dataloader = DataLoader(dataset, batch_size=32)
+            try:
+                # Stop weavelet process
+                self.weavelet.stop()
+            except Exception as e:
+                print(f"Warning: Error stopping weavelet: {e}")
 
 
 class WeaveletCallback(Callback):
-    """Simplified callback that just ensures weavelet is running."""
+    """Callback to monitor weavelet process lifecycle."""
 
     def on_train_start(self, trainer, pl_module):
         if hasattr(pl_module, "weavelet"):
             print(
-                f"Training started with weavelet for replica: {pl_module.weavelet._replica_id}"
+                f"Training started with weavelet process for replica: {pl_module.weavelet._replica_id}"
             )
+
+    def on_train_epoch_start(self, trainer, pl_module):
+        """Check for config updates at the start of each epoch."""
+        if hasattr(pl_module, "weavelet"):
+            config_update = pl_module.weavelet.get_config_update()
+            if config_update:
+                pl_module.handle_config_update(config_update)
 
     def on_train_end(self, trainer, pl_module):
         if hasattr(pl_module, "weavelet"):
-            print("Training ended, stopping weavelet")
-            pl_module.weavelet.stop()
+            print("Training ended, stopping weavelet process")
+            try:
+                pl_module.weavelet.stop()
+            except Exception as e:
+                print(f"Warning: Error stopping weavelet: {e}")
 
-
-model = LightningTransformer(
-    vocab_size=dataset.vocab_size, replica_id="lightning_trainer_1"
-)
 
 if __name__ == "__main__":
+    # Set multiprocessing start method for better compatibility
+    try:
+        if os.name == "posix":
+            mp.set_start_method('spawn', force=True)
+        else: 
+            mp.set_start_method('fork', force=True)
+    except RuntimeError:
+        pass  # Start method may already be set
+    
+    dataset = RandomTextDataset(vocab_size=1000)
+    dataloader = DataLoader(dataset, batch_size=32)
+
+    model = LightningTransformer(
+        vocab_size=dataset.vocab_size, replica_id="lightning_trainer_1"
+    )
+
     callback = WeaveletCallback()
     trainer = L.Trainer(fast_dev_run=100, callbacks=[callback])
     trainer.fit(model=model, train_dataloaders=dataloader)

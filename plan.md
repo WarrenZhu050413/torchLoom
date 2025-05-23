@@ -3,85 +3,36 @@
 ## Goal
 Integrate a weavelet process into the Lightning training example so it can receive configuration updates from the weaver. The weavelet should run in a separate process and communicate optimizer type changes to the training process. Callback hooks will check the weavelet queue and update the optimizer when required.
 
-## Steps
-- ✅ Create a new module `torchLoom/weavelet.py` with a simple async loop that connects to NATS and listens for config messages. When an `optimizer_type` value is found it is put on a multiprocessing queue.
-- ✅ Update `train.py`:
-  - ✅ Spawn the weavelet process before starting training.
-  - ✅ Extend `LightningTransformer` with dynamic optimizer creation and an `update_optimizer` method.
-  - ✅ Add `WeaveletCallback` that checks the queue at the start of each epoch and applies optimizer updates.
-- ✅ Add unit tests verifying that `update_optimizer` and the callback correctly change the optimizer based on queued values.
-- ✅ Run `pytest` to ensure the repository remains stable.
+## Current Task: Process-Based Weavelet (✅ COMPLETED)
+**Objective**: Refactor the existing thread-based Weavelet to run in a separate process instead of a background thread, similar to the distributed training patterns shown in the user's example.
 
-## Completed Implementation
+**Changes Required**:
+- ✅ Convert ThreadPoolExecutor-based background execution to multiprocessing.Process
+- ✅ Implement proper inter-process communication using multiprocessing.Queue
+- ✅ Add process lifecycle management (start, stop, cleanup)
+- ✅ Maintain all existing functionality (NATS communication, config handling, status publishing)
+- ✅ Follow the pattern from distributed training examples with proper multiprocessing handling
 
-### Comprehensive Weavelet Class (New)
-**Implemented**: A full-featured `Weavelet` class that replaces the simple multiprocessing approach with a comprehensive weaver communication system similar to the marduk pattern.
+**Implementation Summary**:
+1. ✅ Created `WeaveletProcess` class that manages a separate process for weavelet operations
+2. ✅ Implemented `AsyncWeavelet` class that runs inside the process with full async capabilities
+3. ✅ Added proper inter-process communication using multiprocessing.Queue for config updates and status publishing
+4. ✅ Implemented robust process lifecycle management with graceful shutdown, termination, and cleanup
+5. ✅ Updated training integration to use queue-based communication instead of direct handler registration
+6. ✅ Fixed multiprocessing compatibility issues on macOS by proper start method handling
+7. ✅ Maintained backward compatibility with the old `Weavelet` name and `weavelet_process` function
 
-**Key Features**:
-- **Integrated Communication**: Manages all communication between training processes and the weaver
-- **Background Threading**: Runs async operations in a background thread using ThreadPoolExecutor
-- **Device Registration**: Automatically registers device-to-replica mappings with the weaver
-- **Config Handler Registry**: Allows registration of handlers for different configuration parameters
-- **Status Publishing**: Can publish training status updates back to the weaver
-- **Robust Error Handling**: Includes proper cleanup and error handling
-- **Fallback Support**: Works on systems without NVIDIA libraries (e.g., Mac) using fallback device UUIDs
+**Key Features Implemented**:
+- **Separate Process Execution**: Weavelet runs in its own process using multiprocessing.Process
+- **Inter-Process Communication**: Configuration updates and status publishing via multiprocessing.Queue
+- **Robust Process Management**: Graceful shutdown, forced termination, and cleanup with timeouts
+- **Async NATS Integration**: Full async support for NATS communication within the process
+- **macOS Compatibility**: Proper handling of multiprocessing start methods and import protection
+- **Test Coverage**: All existing tests updated and passing with the new implementation
 
-**Architecture**:
-- **Event Loop Management**: Creates and manages its own asyncio event loop in a background thread
-- **NATS Subscriptions**: Subscribes to both JetStream and regular NATS subjects
-- **Message Handling**: Processes incoming config updates and replica failure notifications
-- **Thread Safety**: Properly handles cross-thread communication for status publishing
-
-### Updated Training Integration
-**Enhanced**: The `LightningTransformer` now integrates the weavelet directly instead of using multiprocessing:
-
-- **Direct Integration**: Weavelet is created and started within the Lightning module
-- **Config Handlers**: Registers the `update_optimizer` method as a config handler
-- **Status Reporting**: Publishes training status (batch index, loss, optimizer type) to the weaver
-- **Cleanup**: Properly stops the weavelet when training ends
-
-### Simplified Callback
-**Modernized**: The `WeaveletCallback` is now simplified and focuses on lifecycle management:
-
-- **Startup Verification**: Ensures weavelet is running when training starts
-- **Cleanup Assistance**: Helps with proper weavelet shutdown when training ends
-- **No Queue Management**: No longer needs to manage multiprocessing queues
-
-### Backward Compatibility
-**Maintained**: The old `weavelet_process` function is still available for backward compatibility, but it now uses the new `Weavelet` class internally.
-
-## Issues Resolved
-
-### Pyre Type Checker Error (Fixed)
-**Problem**: The Pyre linter was incorrectly inferring that `opt_type` from `queue.get_nowait()` was a Tensor instead of a string, causing this error:
-```
-Object of type "Tensor" is not callable
-Attribute "__call__" is unknown
-```
-
-**Root Cause**: The multiprocessing queue's `get_nowait()` method returns `Any` type, and Pyre couldn't infer that it should be a string in this context.
-
-**Solution**: Added explicit type annotation in `train.py` line 69:
-```python
-opt_type: str = self.queue.get_nowait()
-```
-
-**Verification**: 
-- Test passed showing queue returns string type correctly
-- Related pytest tests continue to pass
-- Code imports and runs without runtime errors
-
-This fix ensures that Pyre understands the expected type while maintaining all existing functionality.
-
-### Device UUID Fallback (New)
-**Problem**: The system failed on machines without NVIDIA libraries (e.g., Mac, CPU-only systems).
-
-**Solution**: Enhanced `get_device_uuid()` to provide fallback UUIDs using machine hostname and UUID generation when NVIDIA libraries are unavailable.
-
-**Result**: The system now works across all environments, including development machines without GPUs.
-
-## Next Steps
-- Test the comprehensive weavelet with actual NATS server and weaver integration
-- Add more configuration parameter handlers (learning rate, batch size, etc.)
-- Enhance status reporting with more detailed training metrics
-- Consider adding recovery logic for replica failure scenarios
+**Testing Results**:
+- ✅ All unit tests pass (tests/test_weavelet_callback.py)
+- ✅ Demo script runs successfully with process-based weavelet
+- ✅ Process startup, communication, and shutdown work correctly
+- ✅ Configuration updates flow properly through the queue system
+- ✅ Status publishing works as expected

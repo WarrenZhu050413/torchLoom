@@ -1,8 +1,7 @@
 import asyncio
-import threading
+import multiprocessing
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Awaitable, Callable, Dict, Optional
 
 from nats.aio.client import Client
@@ -19,18 +18,152 @@ from torchLoom.torchLoom_pb2 import EventEnvelope
 from torchLoom.utils import cancel_subscriptions, get_device_uuid
 
 
-class Weavelet:
-    """Weavelet for torchLoom training processes.
+class WeaveletProcess:
+    """Process-based Weavelet for torchLoom training processes.
 
     This class manages all communication between training processes and the weaver,
     including receiving configuration updates and sending training status updates.
-    It runs async operations in a background thread similar to the marduk pattern.
+    It runs in a separate process using multiprocessing.Process.
     """
 
     def __init__(
         self,
         replica_id: Optional[str] = None,
         torchLoom_addr: str = torchLoomConstants.DEFAULT_ADDR,
+        config_queue: Optional[multiprocessing.Queue] = None,
+        status_queue: Optional[multiprocessing.Queue] = None,
+    ):
+        # Core identifiers
+        self._replica_id = replica_id or f"weavelet:{uuid.uuid4()}"
+        self._device_uuid: Optional[str] = None
+
+        # NATS connection setup
+        self._torchLoom_addr = torchLoom_addr
+        self._nc: Optional[Client] = None
+        self._js: Optional[JetStreamContext] = None
+        self._subscriptions: Dict[str, Any] = {}
+        self._stop_event = multiprocessing.Event()
+
+        # Inter-process communication
+        self._config_queue = config_queue or multiprocessing.Queue()
+        self._status_queue = status_queue or multiprocessing.Queue()
+
+        # Process management
+        self._process: Optional[multiprocessing.Process] = None
+
+        # Configuration
+        self._nc_timeout = Config.NC_TIMEOUT or 1
+        self._exception_sleep = Config.EXCEPTION_RETRY_TIME or 1
+
+    def start(self) -> None:
+        """Start the weavelet in a separate process."""
+        try:
+            self._process = multiprocessing.Process(
+                target=self._run_weavelet_process,
+                args=(
+                    self._replica_id,
+                    self._torchLoom_addr,
+                    self._config_queue,
+                    self._status_queue,
+                    self._stop_event,
+                ),
+                name=f"weavelet-{self._replica_id}",
+            )
+            self._process.start()
+            
+            # Give the process a moment to start
+            time.sleep(0.1)
+            
+            print(f"Weavelet process started with PID: {self._process.pid}")
+        except Exception as e:
+            print(f"Failed to start weavelet process: {e}")
+            raise
+
+    def stop(self) -> None:
+        """Stop the weavelet process and clean up resources."""
+        try:
+            if self._process and self._process.is_alive():
+                print("Stopping weavelet process")
+                self._stop_event.set()
+                
+                # Wait for the process to finish gracefully
+                self._process.join(timeout=5)
+                
+                # If still alive, terminate forcefully
+                if self._process.is_alive():
+                    print("Force terminating weavelet process")
+                    self._process.terminate()
+                    self._process.join(timeout=2)
+                    
+                    # Last resort - kill
+                    if self._process.is_alive():
+                        self._process.kill()
+                        self._process.join()
+                
+                print("Weavelet process stopped successfully")
+        except Exception as e:
+            print(f"Error stopping weavelet process: {e}")
+
+    def get_config_update(self, timeout: float = 0.1) -> Optional[Dict[str, str]]:
+        """Get configuration update from the weavelet process if available."""
+        try:
+            return self._config_queue.get_nowait()
+        except:
+            return None
+
+    def publish_training_status(self, status: Dict[str, Any]) -> None:
+        """Send training status to the weavelet process for publishing."""
+        try:
+            self._status_queue.put_nowait(status)
+        except:
+            # Queue might be full, ignore for now
+            pass
+
+    @staticmethod
+    def _run_weavelet_process(
+        replica_id: str,
+        torchLoom_addr: str,
+        config_queue: multiprocessing.Queue,
+        status_queue: multiprocessing.Queue,
+        stop_event: multiprocessing.Event,
+    ) -> None:
+        """Main function that runs in the separate weavelet process."""
+        try:
+            # Create event loop for this process
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            # Create the async weavelet instance
+            weavelet = AsyncWeavelet(
+                replica_id=replica_id,
+                torchLoom_addr=torchLoom_addr,
+                config_queue=config_queue,
+                status_queue=status_queue,
+                stop_event=stop_event,
+            )
+            
+            # Run the async main loop
+            loop.run_until_complete(weavelet.run())
+        except Exception as e:
+            print(f"Error in weavelet process: {e}")
+        finally:
+            # Clean up
+            try:
+                loop.close()
+            except:
+                pass
+
+
+class AsyncWeavelet:
+    """Async implementation of weavelet that runs inside the process."""
+
+    def __init__(
+        self,
+        replica_id: str,
+        torchLoom_addr: str,
+        config_queue: multiprocessing.Queue,
+        status_queue: multiprocessing.Queue,
+        stop_event: multiprocessing.Event,
     ):
         # Setup logging
         self._logger = setup_logger(
@@ -41,7 +174,7 @@ class Weavelet:
         )
 
         # Core identifiers
-        self._replica_id = replica_id or f"weavelet:{uuid.uuid4()}"
+        self._replica_id = replica_id
         self._device_uuid: Optional[str] = None
 
         # NATS connection setup
@@ -49,60 +182,50 @@ class Weavelet:
         self._nc: Optional[Client] = None
         self._js: Optional[JetStreamContext] = None
         self._subscriptions: Dict[str, Any] = {}
-        self._stop_nats = asyncio.Event()
+
+        # Inter-process communication
+        self._config_queue = config_queue
+        self._status_queue = status_queue
+        self._stop_event = stop_event
 
         # Configuration
         self._nc_timeout = Config.NC_TIMEOUT or 1
         self._exception_sleep = Config.EXCEPTION_RETRY_TIME or 1
 
-        # Callback registry for different message types
-        self._message_handlers: Dict[str, Callable[[str], None]] = {}
+        self._logger.info(f"AsyncWeavelet initialized with replica_id: {self._replica_id}")
 
-        # Event loop management
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._loop_thread: Optional[ThreadPoolExecutor] = None
-
-        self._logger.info(f"Weavelet initialized with replica_id: {self._replica_id}")
-
-    def register_config_handler(
-        self, config_key: str, handler: Callable[[str], None]
-    ) -> None:
-        """Register a handler for specific configuration updates.
-
-        Args:
-            config_key: The configuration parameter key (e.g., 'optimizer_type')
-            handler: Function to call when this config parameter changes
-        """
-        self._message_handlers[config_key] = handler
-        self._logger.info(f"Registered handler for config key: {config_key}")
-
-    def start(self) -> None:
-        """Start the weavelet in a background thread."""
-        try:
-            # Start background thread to run the async event loop
-            self._loop_thread = ThreadPoolExecutor(
-                max_workers=1, thread_name_prefix="weavelet_loop"
-            )
-            self._loop_thread.submit(self._run_event_loop_in_background)
-
-            # Give the background thread a moment to start
-            time.sleep(0.1)
-
-            self._logger.info("Weavelet started successfully in background thread")
-        except Exception as e:
-            self._logger.exception(f"Failed to start weavelet: {e}")
-            raise
-
-    async def _async_start(self) -> None:
-        """Initialize async components."""
+    async def run(self) -> None:
+        """Main run loop for the async weavelet."""
         try:
             await self._connect()
             await self._setup_subscriptions()
             await self._register_device()
-            self._logger.info("Weavelet async initialization completed")
+            
+            # Start background tasks
+            tasks = [
+                asyncio.create_task(self._status_publisher_loop()),
+                asyncio.create_task(self._monitor_stop_event()),
+            ]
+            
+            self._logger.info("Weavelet async initialization completed, starting main loop")
+            
+            # Wait for stop signal or task completion
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            
+            # Cancel remaining tasks
+            for task in pending:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                    
+            self._logger.info("Weavelet main loop completed")
+            
         except Exception as e:
-            self._logger.exception(f"Error during weavelet async start: {e}")
-            raise
+            self._logger.exception(f"Error in weavelet run loop: {e}")
+        finally:
+            await self._cleanup()
 
     async def _connect(self) -> None:
         """Connect to NATS server."""
@@ -174,16 +297,12 @@ class Weavelet:
                 params = dict(envelope.config_info.config_params)
                 self._logger.info(f"Received config update: {params}")
 
-                # Call registered handlers for each config parameter
-                for key, value in params.items():
-                    if key in self._message_handlers:
-                        try:
-                            self._message_handlers[key](value)
-                            self._logger.info(f"Applied config update: {key} = {value}")
-                        except Exception as e:
-                            self._logger.exception(
-                                f"Error applying config {key} = {value}: {e}"
-                            )
+                # Send config updates to the main process via queue
+                try:
+                    self._config_queue.put_nowait(params)
+                    self._logger.info(f"Sent config update to main process: {params}")
+                except:
+                    self._logger.warning("Config queue is full, dropping update")
 
             await msg.ack()
         except Exception as e:
@@ -223,7 +342,7 @@ class Weavelet:
 
             async def listen_to_js_subscription():
                 self._logger.info(f"Started listening on JetStream {subject}")
-                while not self._stop_nats.is_set():
+                while not self._stop_event.is_set():
                     try:
                         msgs = await psub.fetch(1, timeout=1)
                         for msg in msgs:
@@ -252,7 +371,7 @@ class Weavelet:
 
             async def listen_to_nc_subscription():
                 self._logger.info(f"Started listening on NATS {subject}")
-                while not self._stop_nats.is_set():
+                while not self._stop_event.is_set():
                     try:
                         msg = await sub.next_msg(timeout=self._nc_timeout)
                         await message_handler(msg)
@@ -270,77 +389,27 @@ class Weavelet:
             self._logger.exception(f"Failed to subscribe to NATS {subject}: {e}")
             raise
 
-    def _run_event_loop_in_background(self) -> None:
-        """Run the event loop in a background thread."""
-        try:
-            # Create a new event loop for this thread
-            self._loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._loop)
-            
-            # Initialize async components
-            self._loop.run_until_complete(self._async_start())
-            
-            # Run the event loop until stopped
-            self._loop.run_forever()
-            
-        except Exception as e:
-            self._logger.exception(f"Error in background event loop: {e}")
-        finally:
-            # Clean up async components
+    async def _status_publisher_loop(self) -> None:
+        """Background task to publish training status updates."""
+        self._logger.info("Started status publisher loop")
+        while not self._stop_event.is_set():
             try:
-                if self._loop and not self._loop.is_closed():
-                    self._loop.run_until_complete(self._async_stop())
-            except Exception as e:
-                self._logger.exception(f"Error during async cleanup: {e}")
-            finally:
-                if self._loop and not self._loop.is_closed():
-                    self._loop.close()
-
-    def stop(self) -> None:
-        """Stop the weavelet and clean up resources."""
-        try:
-            self._logger.info("Stopping weavelet")
-            self._stop_nats.set()
-            
-            if self._loop and not self._loop.is_closed():
-                # Stop the event loop from the main thread
-                self._loop.call_soon_threadsafe(self._loop.stop)
-            
-            if self._loop_thread:
-                # Wait for the background thread to finish
-                self._loop_thread.shutdown(wait=True, timeout=10)
+                # Check for status updates from main process
+                try:
+                    status = self._status_queue.get_nowait()
+                    await self._publish_status(status)
+                except:
+                    # No status update available, continue
+                    pass
                 
-            self._logger.info("Weavelet stopped successfully")
-        except Exception as e:
-            self._logger.exception(f"Error stopping weavelet: {e}")
-
-    async def _async_stop(self) -> None:
-        """Stop async components."""
-        try:
-            await cancel_subscriptions(self._subscriptions)
-            self._subscriptions.clear()
-
-            if self._nc and not self._nc.is_closed:
-                await self._nc.close()
-
-            self._logger.info("Weavelet async components stopped")
-        except Exception as e:
-            self._logger.exception(f"Error stopping async components: {e}")
-
-    def publish_training_status(self, status: Dict[str, Any]) -> None:
-        """Publish training status updates to the weaver."""
-        if self._loop and not self._loop.is_closed():
-            try:
-                # Schedule the async call in the background thread's event loop
-                future = asyncio.run_coroutine_threadsafe(
-                    self._async_publish_status(status), self._loop
-                )
-                # Don't wait for completion to avoid blocking training
+                # Sleep briefly to avoid busy waiting
+                await asyncio.sleep(0.1)
             except Exception as e:
-                self._logger.exception(f"Failed to schedule status publish: {e}")
+                self._logger.exception(f"Error in status publisher loop: {e}")
+                await asyncio.sleep(self._exception_sleep)
 
-    async def _async_publish_status(self, status: Dict[str, Any]) -> None:
-        """Async method to publish training status."""
+    async def _publish_status(self, status: Dict[str, Any]) -> None:
+        """Publish training status to NATS."""
         try:
             if not self._nc:
                 self._logger.warning("Cannot publish status - not connected to NATS")
@@ -357,21 +426,43 @@ class Weavelet:
         except Exception as e:
             self._logger.exception(f"Failed to publish training status: {e}")
 
+    async def _monitor_stop_event(self) -> None:
+        """Monitor the stop event and exit when signaled."""
+        while not self._stop_event.is_set():
+            await asyncio.sleep(0.1)
+        self._logger.info("Stop event detected, shutting down")
 
-# Backward compatibility - simple function that creates a weavelet
+    async def _cleanup(self) -> None:
+        """Clean up resources."""
+        try:
+            # Cancel all subscriptions
+            await cancel_subscriptions(self._subscriptions)
+            self._subscriptions.clear()
+            
+            # Close NATS connection
+            if self._nc and not self._nc.is_closed:
+                await self._nc.close()
+                
+            self._logger.info("Weavelet cleanup completed")
+        except Exception as e:
+            self._logger.exception(f"Error during cleanup: {e}")
+
+
+Weavelet = WeaveletProcess
+
+
+# Backward compatibility function
 def weavelet_process(queue, addr: str = torchLoomConstants.DEFAULT_ADDR) -> None:
-    """Backward compatibility function that mimics the old multiprocessing approach."""
-    weavelet = Weavelet(torchLoom_addr=addr)
-    
-    def handle_optimizer_change(optimizer_type: str):
-        queue.put(optimizer_type)
-    
-    weavelet.register_config_handler("optimizer_type", handle_optimizer_change)
+    """Backward compatibility function that creates a process-based weavelet."""
+    weavelet = WeaveletProcess(torchLoom_addr=addr, config_queue=queue)
     weavelet.start()
     
     try:
-        # Keep the process running
+        # Keep the main thread running and monitor for config updates
         while True:
-            time.sleep(1)
+            config_update = weavelet.get_config_update()
+            if config_update and "optimizer_type" in config_update:
+                queue.put(config_update["optimizer_type"])
+            time.sleep(0.1)
     except KeyboardInterrupt:
         weavelet.stop()

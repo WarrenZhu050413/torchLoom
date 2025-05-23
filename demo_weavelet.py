@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Demonstration of the new Weavelet class for torchLoom.
+Demonstration of the new process-based Weavelet class for torchLoom.
 
 This script shows how the Weavelet integrates with Lightning training
-and manages communication with the weaver.
+and manages communication with the weaver through a separate process.
 """
 
+import multiprocessing as mp
 import time
 from train import LightningTransformer, WeaveletCallback
 import lightning as L
@@ -13,8 +14,8 @@ from torch.utils.data import DataLoader
 from train import RandomTextDataset
 
 def demo_weavelet():
-    """Demonstrate the new Weavelet functionality."""
-    print("🌟 torchLoom Weavelet Demo")
+    """Demonstrate the new process-based Weavelet functionality."""
+    print("🌟 torchLoom Process-Based Weavelet Demo")
     print("=" * 50)
     
     # Create dataset and model
@@ -48,7 +49,9 @@ def demo_weavelet():
     
     # Test config handler
     print("\n📨 Testing config handler...")
-    model.weavelet._message_handlers["optimizer_type"]("SGD")
+    # Simulate a config update from the weavelet process
+    test_config = {"optimizer_type": "SGD"}
+    model.handle_config_update(test_config)
     print(f"   Config handler changed optimizer to: {model.optimizer_type}")
     
     # Create a callback and create trainer for real training
@@ -69,18 +72,32 @@ def demo_weavelet():
     except Exception as e:
         print(f"⚠️  Training demo completed with: {e}")
     finally:
-        # Ensure cleanup
-        if hasattr(model, 'weavelet'):
-            model.weavelet.stop()
-        print("🛑 Weavelet stopped and cleaned up")
+        # Ensure cleanup with timeout protection
+        print("🛑 Stopping weavelet...")
+        try:
+            if hasattr(model, 'weavelet'):
+                model.weavelet.stop()
+            print("🛑 Weavelet process stopped and cleaned up")
+        except Exception as e:
+            print(f"⚠️  Warning: Error during weavelet cleanup: {e}")
+        
+        # Give a moment for cleanup to complete
+        time.sleep(0.5)
     
     print("\n🎉 Demo completed!")
     print("\nKey features demonstrated:")
     print("  ✓ Automatic device registration with weaver")
-    print("  ✓ Config handler for optimizer updates")
-    print("  ✓ Training status publishing")
+    print("  ✓ Config handler for optimizer updates via process queue")
+    print("  ✓ Training status publishing through process communication")
     print("  ✓ Proper lifecycle management")
-    print("  ✓ Background thread management")
+    print("  ✓ Separate process management with clean shutdown")
 
 if __name__ == "__main__":
+    # Set multiprocessing start method for better compatibility, preferring 'spawn'
+    try:
+        # 'spawn' is generally safer, especially with libraries like PyTorch/CUDA
+        mp.set_start_method('spawn', force=True)
+    except RuntimeError:
+        pass  # Start method may already be set
+    
     demo_weavelet() 
