@@ -11,11 +11,14 @@ import signal
 import sys
 from typing import Set
 
+# Add parent directory to Python path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import torch
 import torch.nn as nn
 import lightning as L
 from torchLoom.lightning import WeaveletWrapper, make_weavelet, weavelet_handler
-from torchLoom.weaver.status_handlers import HeartbeatHandler
+from torchLoom.weaver.inbound_handlers import HeartbeatHandler
 from torchLoom.weaver.status_tracker import StatusTracker
 
 

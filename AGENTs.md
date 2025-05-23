@@ -29,10 +29,12 @@
 ## Continuous Learning
 
 * Continuously add to AGENTS.md as you learn more about the codebase and its best practices.
+* Look at onboarding.md for more information about the codebase. Add and edit and clean up onboarding.md after you have completed a task.
 
 <Environment Specific Instructions>
 - Run tests through pytest
 - You should run not only tests, but the code that you have changed.
+  - The tests should be in the ./tests folder
 - Run linters after changes, by doing 
 ```sh
 lintrunner init
@@ -66,6 +68,8 @@ npm run dev -y
 ```
 
 No need to redownload Protobuf as it is alreadyd downloaded.
+
+After you finish a task, check TODO.md to see if there are any other tasks that you can do.
 
 <Design Philosophy>
 

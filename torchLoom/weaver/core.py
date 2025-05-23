@@ -15,23 +15,23 @@ from torchLoom.constants import torchLoomConstants
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
-from .handlers import (
+from .inbound_handlers import (
     ConfigurationHandler,
     DeviceRegistrationHandler,
     DeviceReplicaMapper,
     FailureHandler,
     MessageHandler,
-)
-from .status_tracker import StatusTracker
-from .subscription import ConnectionManager, SubscriptionManager
-from .status_handlers import (
-    DemoDataSimulator,
     TrainingStatusHandler,
     GPUStatusHandler,
     NetworkStatusHandler,
-    UIUpdateHandler,
-    WeaverCommandHandler,
+    UICommandHandler,
 )
+from .outbound_handlers import (
+    UIUpdateHandler,
+    DemoDataSimulator,
+)
+from .status_tracker import StatusTracker
+from .subscription import ConnectionManager, SubscriptionManager
 from .websocket_server import WebSocketServer
 
 logger = setup_logger(
@@ -105,7 +105,7 @@ class Weaver:
             "training_status": TrainingStatusHandler(self.status_tracker),
             "gpu_status": GPUStatusHandler(self.status_tracker),
             "network_status": NetworkStatusHandler(self.status_tracker),
-            "ui_commands": WeaverCommandHandler(self.status_tracker, nc),
+            "ui_commands": UICommandHandler(self.status_tracker, nc),
         }
 
         # Initialize UI update handler (for publishing consolidated updates)
