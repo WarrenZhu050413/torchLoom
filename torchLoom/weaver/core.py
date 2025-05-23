@@ -24,12 +24,13 @@ from .handlers import (
 )
 from .status_tracker import StatusTracker
 from .subscription import ConnectionManager, SubscriptionManager
-from .ui_handlers import (
+from .status_handlers import (
     DemoDataSimulator,
-    ProgressUpdateHandler,
-    StatusUpdateHandler,
-    TopologyUpdateHandler,
-    UICommandHandler,
+    TrainingStatusHandler,
+    GPUStatusHandler,
+    NetworkStatusHandler,
+    UIUpdateHandler,
+    WeaverCommandHandler,
 )
 from .websocket_server import WebSocketServer
 
@@ -84,9 +85,6 @@ class Weaver:
         """Initialize NATS connection and JetStream."""
         nc, js = await self._connection_manager.initialize()
 
-        # Update status tracker with NATS client
-        self.status_tracker.nats_client = nc
-
         # Initialize subscription manager
         self._subscription_manager = SubscriptionManager(nc, js, self._stop_nats)
 
@@ -104,11 +102,14 @@ class Weaver:
             "register_device": DeviceRegistrationHandler(self._device_mapper),
             "failure": FailureHandler(self._device_mapper, nc),
             "configuration": ConfigurationHandler(nc),
-            "gpu_status": StatusUpdateHandler(self.status_tracker),
-            "training_progress": ProgressUpdateHandler(self.status_tracker),
-            "ui_command": UICommandHandler(self.status_tracker, nc),
-            "system_topology": TopologyUpdateHandler(self.status_tracker),
+            "training_status": TrainingStatusHandler(self.status_tracker),
+            "gpu_status": GPUStatusHandler(self.status_tracker),
+            "network_status": NetworkStatusHandler(self.status_tracker),
+            "ui_commands": WeaverCommandHandler(self.status_tracker, nc),
         }
+
+        # Initialize UI update handler (for publishing consolidated updates)
+        self.ui_update_handler = UIUpdateHandler(self.status_tracker, nc)
 
         # Initialize demo data simulator
         self.demo_simulator = DemoDataSimulator(self.status_tracker)
@@ -134,17 +135,23 @@ class Weaver:
                 await self._handlers["configuration"].handle(env)
 
             # UI-related message handling
+            if env.HasField("ui_command"):
+                await self._handlers["ui_commands"].handle(env)
+
+            # Training Process -> Weaver message handling
+            if env.HasField("training_status"):
+                await self._handlers["training_status"].handle(env)
+
             if env.HasField("gpu_status"):
                 await self._handlers["gpu_status"].handle(env)
 
-            if env.HasField("training_progress"):
-                await self._handlers["training_progress"].handle(env)
+            # External Monitoring -> Weaver message handling  
+            if env.HasField("network_status"):
+                await self._handlers["network_status"].handle(env)
 
-            if env.HasField("ui_command"):
-                await self._handlers["ui_command"].handle(env)
-
-            if env.HasField("system_topology"):
-                await self._handlers["system_topology"].handle(env)
+            # Legacy message handling (backward compatibility)
+            if env.HasField("ui_status_update"):
+                await self.ui_update_handler.handle(env)
 
         except Exception as e:
             logger.exception(f"Error handling message: {e}")
@@ -162,6 +169,22 @@ class Weaver:
         if self.websocket_server:
             logger.info("Starting WebSocket UI server")
             await self.websocket_server.run_with_status_broadcaster()
+
+    async def start_ui_update_publisher(self) -> None:
+        """Start the background task to publish UI updates periodically."""
+        logger.info("Starting UI update publisher")
+
+        while not self._stop_nats.is_set():
+            try:
+                # Publish UI update every 2 seconds
+                if self.ui_update_handler:
+                    await self.ui_update_handler.publish_ui_update()
+
+                await asyncio.sleep(2.0)
+
+            except Exception as e:
+                logger.exception(f"Error in UI update publisher: {e}")
+                await asyncio.sleep(2.0)
 
     async def start_demo_simulation(self) -> None:
         """Start demo training simulation."""
@@ -256,22 +279,32 @@ async def main():
                 )
             )
 
-            # UI-related subscriptions
+            # Training Process -> Weaver subscriptions
+            tg.create_task(
+                weaver.subscribe_nc(
+                    subject=torchLoomConstants.subjects.TRAINING_STATUS,
+                    message_handler=weaver.message_handler,
+                )
+            )
             tg.create_task(
                 weaver.subscribe_nc(
                     subject=torchLoomConstants.subjects.GPU_STATUS,
                     message_handler=weaver.message_handler,
                 )
             )
+
+            # External Monitoring -> Weaver subscriptions
             tg.create_task(
                 weaver.subscribe_nc(
-                    subject=torchLoomConstants.subjects.TRAINING_PROGRESS,
+                    subject=torchLoomConstants.subjects.NETWORK_STATUS,
                     message_handler=weaver.message_handler,
                 )
             )
+
+            # UI -> Weaver subscriptions  
             tg.create_task(
                 weaver.subscribe_nc(
-                    subject=torchLoomConstants.subjects.UI_COMMAND,
+                    subject=torchLoomConstants.subjects.UI_COMMANDS,
                     message_handler=weaver.message_handler,
                 )
             )
@@ -282,6 +315,9 @@ async def main():
 
             # Demo simulation
             tg.create_task(weaver.start_demo_simulation())
+
+            # UI update publisher
+            tg.create_task(weaver.start_ui_update_publisher())
 
             logger.info("All services started successfully")
 

@@ -65,6 +65,8 @@ npm install
 npm run dev -y
 ```
 
+No need to redownload Protobuf as it is alreadyd downloaded.
+
 <Design Philosophy>
 
 # torchLoom Weavelet Design Philosophy

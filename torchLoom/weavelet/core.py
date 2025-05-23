@@ -5,10 +5,9 @@ Core Weavelet class for process-based configuration management.
 import asyncio
 import logging
 import multiprocessing
-import queue
 import time
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from torchLoom.config import Config
 from torchLoom.constants import torchLoomConstants
@@ -30,8 +29,10 @@ class Weavelet:
         self,
         replica_id: Optional[str] = None,
         torchLoom_addr: str = torchLoomConstants.DEFAULT_ADDR,
-        config_queue: Optional["multiprocessing.Queue[Any]"] = None,
-        status_queue: Optional["multiprocessing.Queue[Any]"] = None,
+        config_pipe: Optional[Tuple["multiprocessing.connection.Connection", 
+                                  "multiprocessing.connection.Connection"]] = None,
+        status_pipe: Optional[Tuple["multiprocessing.connection.Connection", 
+                                   "multiprocessing.connection.Connection"]] = None,
     ):
         # Core identifiers
         self._replica_id = replica_id or f"weavelet:{uuid.uuid4()}"
@@ -41,9 +42,18 @@ class Weavelet:
         self._torchLoom_addr = torchLoom_addr
         self._stop_event = multiprocessing.Event()
 
-        # Inter-process communication
-        self._config_queue = config_queue or multiprocessing.Queue()
-        self._status_queue = status_queue or multiprocessing.Queue()
+        # Inter-process communication using pipes
+        # Config pipe: listener -> main (listener sends config updates to main process)
+        if config_pipe is None:
+            self._config_receiver, self._config_sender = multiprocessing.Pipe(duplex=False)
+        else:
+            self._config_receiver, self._config_sender = config_pipe
+            
+        # Status pipe: main -> listener (main sends status updates to listener)
+        if status_pipe is None:
+            self._status_receiver, self._status_sender = multiprocessing.Pipe(duplex=False)
+        else:
+            self._status_receiver, self._status_sender = status_pipe
 
         # Process management
         self._process: Optional[multiprocessing.Process] = None
@@ -99,21 +109,28 @@ class Weavelet:
         registered handlers. Otherwise, it returns the config update dict.
         """
         try:
-            config_update = self._config_queue.get_nowait()
+            if self._config_receiver.poll(timeout):
+                config_update = self._config_receiver.recv()
 
-            if config_update and self._auto_dispatch:
-                # Automatically dispatch to registered handlers
-                self._dispatch_handlers(config_update)
-                return None  # No need to return since handlers were called
+                if config_update and self._auto_dispatch:
+                    # Automatically dispatch to registered handlers
+                    self._dispatch_handlers(config_update)
+                    return None  # No need to return since handlers were called
 
-            return config_update
-        except:
+                return config_update
+        except EOFError:
+            # Pipe has been closed
             return None
+        except Exception as e:
+            self._logger.warning(f"Error getting config update from pipe: {e}")
+            return None
+
+        return None
 
     def check_and_apply_updates(self) -> bool:
         """Check for configuration updates, consolidate to the latest for each key, and apply them automatically.
 
-        Retrieves all pending updates from the queue, determines the latest value
+        Retrieves all pending updates from the pipe, determines the latest value
         for each configuration key, and dispatches handlers only for these latest values.
 
         Returns:
@@ -124,32 +141,33 @@ class Weavelet:
 
         while True:
             try:
-                # Get all pending updates from the queue
-                config_update = self._config_queue.get_nowait()
-                updates_found = True # Mark that at least one update was found
+                # Check if data is available without blocking
+                if self._config_receiver.poll(0):
+                    config_update = self._config_receiver.recv()
+                    updates_found = True
 
-                # Consolidate updates, keeping the latest value for each key
-                if config_update:
-                    for key, value in config_update.items():
-                        latest_updates[key] = value
+                    # Consolidate updates, keeping the latest value for each key
+                    if config_update:
+                        for key, value in config_update.items():
+                            latest_updates[key] = value
+                else:
+                    # No more data available
+                    break
 
-            except queue.Empty:
-                # Queue is empty, stop processing
+            except EOFError:
+                # Pipe has been closed
                 break
             except Exception as e:
-                # Log any other errors during queue processing
-                self._logger.warning(f"Error getting config update from queue: {e}")
-                # Continue processing other items if possible, or break depending on severity
-                # For now, let's break to avoid infinite loops on persistent errors
+                # Log any other errors during pipe processing
+                self._logger.warning(f"Error getting config update from pipe: {e}")
                 break
-
 
         # If any updates were found and consolidated, dispatch handlers for the latest values
         if latest_updates:
             self._dispatch_handlers(latest_updates)
             return True # Return True if updates were processed
 
-        return False # Return False if no updates were found in the queue
+        return False # Return False if no updates were found
 
     def enable_auto_dispatch(self) -> None:
         """Enable automatic handler dispatch."""
@@ -167,8 +185,8 @@ class Weavelet:
                 args=(
                     self._replica_id,
                     self._torchLoom_addr,
-                    self._config_queue,
-                    self._status_queue,
+                    self._config_sender,  # Send side of config pipe
+                    self._status_receiver,  # Receive side of status pipe
                     self._stop_event,
                 ),
                 name=f"weavelet-{self._replica_id}",
@@ -206,48 +224,40 @@ class Weavelet:
 
                 print("Weavelet process stopped successfully")
             
-            # Ensure process is completely finished before closing queues
-            if self._process:
-                # Wait a bit more to ensure subprocess cleanup is complete
-                time.sleep(0.5)
-                
-            # Clean up multiprocessing resources
+            # Clean up pipe resources
             try:
-                # Close and join queues with timeout and error handling
-                if self._config_queue:
-                    print("Closing config queue...")
+                print("Closing pipes...")
+                
+                # Close config pipe connections
+                if hasattr(self, '_config_receiver') and self._config_receiver:
                     try:
-                        self._config_queue.close()
-                        # Use a timeout for join_thread to prevent hanging
-                        import threading
-                        join_thread = threading.Thread(target=self._config_queue.join_thread)
-                        join_thread.start()
-                        join_thread.join(timeout=3)
-                        if join_thread.is_alive():
-                            print("Config queue join_thread timed out")
-                        else:
-                            print("Config queue closed and joined")
+                        self._config_receiver.close()
+                        print("Config receiver closed")
                     except Exception as e:
-                        print(f"Error closing config queue: {e}")
+                        print(f"Error closing config receiver: {e}")
                         
-                if self._status_queue:
-                    print("Closing status queue...")
+                if hasattr(self, '_config_sender') and self._config_sender:
                     try:
-                        self._status_queue.close()
-                        # Use a timeout for join_thread to prevent hanging
-                        import threading
-                        join_thread = threading.Thread(target=self._status_queue.join_thread)
-                        join_thread.start()
-                        join_thread.join(timeout=3)
-                        if join_thread.is_alive():
-                            print("Status queue join_thread timed out")
-                        else:
-                            print("Status queue closed and joined")
+                        self._config_sender.close()
+                        print("Config sender closed")
                     except Exception as e:
-                        print(f"Error closing status queue: {e}")
+                        print(f"Error closing config sender: {e}")
                         
-                # Note: multiprocessing.Event doesn't have close/join methods
-                # but setting it should be sufficient for cleanup
+                # Close status pipe connections
+                if hasattr(self, '_status_receiver') and self._status_receiver:
+                    try:
+                        self._status_receiver.close()
+                        print("Status receiver closed")
+                    except Exception as e:
+                        print(f"Error closing status receiver: {e}")
+                        
+                if hasattr(self, '_status_sender') and self._status_sender:
+                    try:
+                        self._status_sender.close()
+                        print("Status sender closed")
+                    except Exception as e:
+                        print(f"Error closing status sender: {e}")
+                        
                 print("Multiprocessing resources cleaned up")
                     
             except Exception as e:
@@ -259,17 +269,20 @@ class Weavelet:
     def publish_training_status(self, status: Dict[str, Any]) -> None:
         """Send training status to the weavelet process for publishing."""
         try:
-            self._status_queue.put_nowait(status)
-        except:
-            # Queue might be full, ignore for now
+            if self._status_sender and not self._status_sender.closed:
+                self._status_sender.send(status)
+        except (BrokenPipeError, OSError):
+            # Pipe is broken or closed, ignore
             pass
+        except Exception as e:
+            self._logger.warning(f"Error sending status via pipe: {e}")
 
     @staticmethod
     def _run_weavelet_listener_process(
         replica_id: str,
         torchLoom_addr: str,
-        config_queue: "multiprocessing.Queue[Any]",
-        status_queue: "multiprocessing.Queue[Any]",
+        config_sender: "multiprocessing.connection.Connection",
+        status_receiver: "multiprocessing.connection.Connection",
         stop_event: "multiprocessing.Event",
     ) -> None:
         """Main function that runs in the separate weavelet listener process."""
@@ -282,8 +295,8 @@ class Weavelet:
             weavelet_listener = WeaveletListener(
                 replica_id=replica_id,
                 torchLoom_addr=torchLoom_addr,
-                config_queue=config_queue,
-                status_queue=status_queue,
+                config_sender=config_sender,
+                status_receiver=status_receiver,
                 stop_event=stop_event,
             )
 

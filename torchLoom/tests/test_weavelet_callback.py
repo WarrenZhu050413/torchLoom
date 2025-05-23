@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 
 import torch
 
-from torchLoom.lightning_integration import weavelet_handler
+from torchLoom.lightning import weavelet_handler
 from torchLoom.weavelet import Weavelet
 from train_lightning import EnhancedLightningTransformer, LightningTransformer, WeaveletCallback
 

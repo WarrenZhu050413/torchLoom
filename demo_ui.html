@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TorchLoom Demo UI</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status-section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .status-section h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .gpu-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+        }
+        .gpu-card {
+            border: 1px solid #ccc;
+            padding: 15px;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .status-active { border-left: 4px solid #4CAF50; }
+        .status-offline { border-left: 4px solid #f44336; }
+        .status-training { background-color: #e8f5e8; }
+        .status-paused { background-color: #fff3cd; }
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+        }
+        .controls {
+            margin-top: 20px;
+        }
+        button {
+            padding: 8px 16px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button.danger {
+            background-color: #dc3545;
+        }
+        button.danger:hover {
+            background-color: #c82333;
+        }
+        #messages {
+            height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            background-color: #fafafa;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .connection-status {
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>TorchLoom Demo UI</h1>
+        
+        <div id="connectionStatus" class="connection-status disconnected">
+            Disconnected from WebSocket
+        </div>
+        
+        <div class="status-section">
+            <h3>System Status</h3>
+            <div class="metric">
+                <span>Global Step:</span>
+                <span id="globalStep">0</span>
+            </div>
+            <div class="metric">
+                <span>Communication:</span>
+                <span id="commStatus">unknown</span>
+            </div>
+            <div class="metric">
+                <span>Active GPUs:</span>
+                <span id="activeGpus">0</span>
+            </div>
+            <div class="metric">
+                <span>Active Replicas:</span>
+                <span id="activeReplicas">0</span>
+            </div>
+        </div>
+        
+        <div class="status-section">
+            <h3>GPU Status</h3>
+            <div id="gpuGrid" class="gpu-grid">
+                <!-- GPU cards will be populated here -->
+            </div>
+        </div>
+        
+        <div class="status-section">
+            <h3>Training Status</h3>
+            <div id="trainingStatus">
+                <!-- Training status will be populated here -->
+            </div>
+        </div>
+        
+        <div class="status-section">
+            <h3>Controls</h3>
+            <div class="controls">
+                <button onclick="sendCommand('start_training', 'demo_replica_1')">Start Training</button>
+                <button onclick="sendCommand('pause_training', 'demo_replica_1')" class="danger">Pause Training</button>
+                <button onclick="sendCommand('resume_training', 'demo_replica_1')">Resume Training</button>
+                <button onclick="sendCommand('reactivate_group', 'demo_replica_1')">Reactivate Group</button>
+            </div>
+        </div>
+        
+        <div class="status-section">
+            <h3>Messages</h3>
+            <div id="messages"></div>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        let reconnectInterval = null;
+        
+        function connect() {
+            const wsUrl = 'ws://localhost:8080/ws';
+            
+            try {
+                socket = new WebSocket(wsUrl);
+                
+                socket.onopen = function(event) {
+                    console.log('Connected to WebSocket');
+                    updateConnectionStatus(true);
+                    addMessage('Connected to TorchLoom Weaver');
+                    
+                    if (reconnectInterval) {
+                        clearInterval(reconnectInterval);
+                        reconnectInterval = null;
+                    }
+                };
+                
+                socket.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log('Received:', data);
+                        updateUI(data);
+                        addMessage(`Received: ${data.type || 'status_update'}`);
+                    } catch (e) {
+                        console.error('Error parsing message:', e);
+                        addMessage(`Error parsing message: ${e.message}`);
+                    }
+                };
+                
+                socket.onclose = function(event) {
+                    console.log('WebSocket connection closed');
+                    updateConnectionStatus(false);
+                    addMessage('Connection closed - attempting to reconnect...');
+                    
+                    if (!reconnectInterval) {
+                        reconnectInterval = setInterval(connect, 3000);
+                    }
+                };
+                
+                socket.onerror = function(error) {
+                    console.error('WebSocket error:', error);
+                    addMessage(`WebSocket error: ${error.message || 'Unknown error'}`);
+                };
+                
+            } catch (e) {
+                console.error('Failed to create WebSocket:', e);
+                addMessage(`Failed to connect: ${e.message}`);
+                updateConnectionStatus(false);
+                
+                if (!reconnectInterval) {
+                    reconnectInterval = setInterval(connect, 3000);
+                }
+            }
+        }
+        
+        function updateConnectionStatus(connected) {
+            const statusEl = document.getElementById('connectionStatus');
+            if (connected) {
+                statusEl.className = 'connection-status connected';
+                statusEl.textContent = 'Connected to WebSocket';
+            } else {
+                statusEl.className = 'connection-status disconnected';
+                statusEl.textContent = 'Disconnected from WebSocket';
+            }
+        }
+        
+        function updateUI(data) {
+            // Update system status
+            if (data.global_step !== undefined) {
+                document.getElementById('globalStep').textContent = data.global_step;
+            }
+            if (data.communication_status) {
+                document.getElementById('commStatus').textContent = data.communication_status;
+            }
+            
+            // Update GPU status
+            if (data.gpus && Array.isArray(data.gpus)) {
+                updateGPUGrid(data.gpus);
+                document.getElementById('activeGpus').textContent = 
+                    data.gpus.filter(gpu => gpu.status === 'active').length;
+            }
+            
+            // Update training status
+            if (data.training_status && Array.isArray(data.training_status)) {
+                updateTrainingStatus(data.training_status);
+                document.getElementById('activeReplicas').textContent = 
+                    data.training_status.filter(replica => replica.status === 'training').length;
+            }
+        }
+        
+        function updateGPUGrid(gpus) {
+            const grid = document.getElementById('gpuGrid');
+            grid.innerHTML = '';
+            
+            gpus.forEach(gpu => {
+                const card = document.createElement('div');
+                card.className = `gpu-card status-${gpu.status}`;
+                
+                card.innerHTML = `
+                    <h4>${gpu.gpu_id}</h4>
+                    <div class="metric">
+                        <span>Status:</span>
+                        <span>${gpu.status}</span>
+                    </div>
+                    <div class="metric">
+                        <span>Replica:</span>
+                        <span>${gpu.replica_id}</span>
+                    </div>
+                    <div class="metric">
+                        <span>Utilization:</span>
+                        <span>${gpu.utilization ? gpu.utilization.toFixed(1) : 0}%</span>
+                    </div>
+                    <div class="metric">
+                        <span>Temperature:</span>
+                        <span>${gpu.temperature ? gpu.temperature.toFixed(1) : 0}°C</span>
+                    </div>
+                    <div class="metric">
+                        <span>Memory:</span>
+                        <span>${gpu.memory_used ? gpu.memory_used.toFixed(1) : 0}/${gpu.memory_total ? gpu.memory_total.toFixed(1) : 0} GB</span>
+                    </div>
+                    <div class="controls">
+                        <button onclick="sendCommand('deactivate_gpu', '${gpu.gpu_id}')" class="danger">Deactivate</button>
+                    </div>
+                `;
+                
+                grid.appendChild(card);
+            });
+        }
+        
+        function updateTrainingStatus(replicas) {
+            const container = document.getElementById('trainingStatus');
+            container.innerHTML = '';
+            
+            replicas.forEach(replica => {
+                const card = document.createElement('div');
+                card.className = `gpu-card status-${replica.status}`;
+                
+                card.innerHTML = `
+                    <h4>${replica.replica_id}</h4>
+                    <div class="metric">
+                        <span>Status:</span>
+                        <span>${replica.status}</span>
+                    </div>
+                    <div class="metric">
+                        <span>Current Step:</span>
+                        <span>${replica.current_step || 0}</span>
+                    </div>
+                    <div class="metric">
+                        <span>Progress:</span>
+                        <span>${replica.step_progress ? replica.step_progress.toFixed(1) : 0}%</span>
+                    </div>
+                `;
+                
+                container.appendChild(card);
+            });
+        }
+        
+        function sendCommand(commandType, targetId) {
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                addMessage('Cannot send command - not connected');
+                return;
+            }
+            
+            const command = {
+                type: 'ui_command',
+                command_type: commandType,
+                target_id: targetId,
+                params: {}
+            };
+            
+            socket.send(JSON.stringify(command));
+            addMessage(`Sent command: ${commandType} -> ${targetId}`);
+        }
+        
+        function addMessage(message) {
+            const messagesEl = document.getElementById('messages');
+            const timestamp = new Date().toLocaleTimeString();
+            messagesEl.innerHTML += `[${timestamp}] ${message}\n`;
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+        
+        // Connect when page loads
+        connect();
+    </script>
+</body>
+</html> 

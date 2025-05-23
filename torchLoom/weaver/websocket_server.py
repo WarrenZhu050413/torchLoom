@@ -159,7 +159,7 @@ class WebSocketServer:
         
         for gpu_id, gpu in self.status_tracker.gpus.items():
             replica_id = gpu.replica_id
-            server_id = gpu.server_id
+            server_id = gpu.server_id  # This field should match StatusTracker's GPUState
             
             # Extract group ID from replica_id
             group_id = replica_id.split('_')[0] if '_' in replica_id else replica_id
@@ -174,16 +174,19 @@ class WebSocketServer:
                     "lastActiveStep": None
                 }
             
-            # Add GPU data
+            # Add GPU data with comprehensive info
             replica_groups[group_id]["gpus"][gpu_id] = {
                 "id": gpu_id,
                 "server": server_id,
                 "status": gpu.status,
-                "utilization": gpu.utilization,
-                "temperature": gpu.temperature,
+                "utilization": round(gpu.utilization, 1),
+                "temperature": round(gpu.temperature, 1),
+                "memory_used": round(gpu.memory_used, 2) if hasattr(gpu, 'memory_used') else 0.0,
+                "memory_total": round(gpu.memory_total, 2) if hasattr(gpu, 'memory_total') else 8.0,
                 "batch": gpu.config.get("batch_size", "32"),
                 "lr": gpu.config.get("learning_rate", "0.001"),
-                "opt": gpu.config.get("optimizer_type", "Adam")
+                "opt": gpu.config.get("optimizer_type", "Adam"),
+                "last_updated": gpu.last_updated if hasattr(gpu, 'last_updated') else time.time()
             }
         
         # Update replica group status from replica tracker
@@ -192,15 +195,19 @@ class WebSocketServer:
             
             if group_id in replica_groups:
                 replica_groups[group_id]["status"] = replica.status
-                replica_groups[group_id]["stepProgress"] = replica.step_progress
+                replica_groups[group_id]["stepProgress"] = round(replica.step_progress, 1)
                 replica_groups[group_id]["lastActiveStep"] = replica.last_active_step
                 if replica.fixed_step is not None:
                     replica_groups[group_id]["fixedStep"] = replica.fixed_step
+        
+        # Include system summary information
+        system_summary = self.status_tracker.get_system_summary()
         
         return {
             "step": self.status_tracker.global_step,
             "replicaGroups": replica_groups,
             "communicationStatus": self.status_tracker.communication_status,
+            "systemSummary": system_summary,
             "timestamp": time.time()
         }
     

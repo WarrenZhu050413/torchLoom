@@ -17,12 +17,23 @@ class torchLoomSubjects:
     DR_SUBJECT: str = "torchLoom.DRentry"
     REPLICA_FAIL: str = "torchLoom.replica.fail"
     CONFIG_INFO: str = "torchLoom.config.info"
-    # UI-related subjects
+
+    # Heartbeat subject
+    HEARTBEAT: str = "torchLoom.heartbeat"
+
+    # Training Process -> Weaver subjects
+    TRAINING_STATUS: str = "torchLoom.training.status"
     GPU_STATUS: str = "torchLoom.gpu.status"
-    TRAINING_PROGRESS: str = "torchLoom.training.progress"
-    SYSTEM_TOPOLOGY: str = "torchLoom.system.topology"
-    UI_COMMAND: str = "torchLoom.ui.command"
-    UI_STATUS_UPDATE: str = "torchLoom.ui.status.update"
+    
+    # External Monitoring -> Weaver subjects  
+    NETWORK_STATUS: str = "torchLoom.network.status"
+    
+    # UI <-> Weaver subjects
+    UI_COMMANDS: str = "torchLoom.ui.commands"
+    UI_UPDATE: str = "torchLoom.ui.update"
+    
+    # Weaver -> Training Process subjects
+    WEAVER_COMMANDS: str = "torchLoom.weaver.commands"
 
 
 class WeaverSubjects:
@@ -54,11 +65,8 @@ class MonitorStream(StreamSpec):
 
 # UI-specific stream for WebSocket updates
 class UISubjects:
-    GPU_STATUS: str = torchLoomSubjects.GPU_STATUS
-    TRAINING_PROGRESS: str = torchLoomSubjects.TRAINING_PROGRESS
-    SYSTEM_TOPOLOGY: str = torchLoomSubjects.SYSTEM_TOPOLOGY
-    UI_COMMAND: str = torchLoomSubjects.UI_COMMAND
-    UI_STATUS_UPDATE: str = torchLoomSubjects.UI_STATUS_UPDATE
+    UI_COMMANDS: str = torchLoomSubjects.UI_COMMANDS
+    UI_UPDATE: str = torchLoomSubjects.UI_UPDATE
 
 
 class UIStream(StreamSpec):
@@ -92,6 +100,9 @@ class torchLoomConstantsClass:
         )
         logger.debug(
             f"Subject paths: DR_SUBJECT={self.subjects.DR_SUBJECT}, MONITOR={self.subjects.MONITOR}"
+        )
+        logger.debug(
+            f"UI subjects: UI_COMMANDS={self.subjects.UI_COMMANDS}, UI_UPDATE={self.subjects.UI_UPDATE}"
         )
 
 
