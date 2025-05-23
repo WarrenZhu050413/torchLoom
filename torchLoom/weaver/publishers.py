@@ -12,7 +12,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, Set
 
-from torchLoom.constants import torchLoomConstants
+from torchLoom.common.constants import torchLoomConstants
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
@@ -50,7 +50,6 @@ class UIUpdatePublisher(Publisher):
             # Create consolidated UIStatusUpdate
             envelope = EventEnvelope()
             ui_update = envelope.ui_status_update
-            ui_update.global_step = self.status_tracker.global_step
             ui_update.communication_status = self.status_tracker.communication_status
             ui_update.timestamp = int(time.time())
 
@@ -80,16 +79,6 @@ class UIUpdatePublisher(Publisher):
                 training_status.status = replica_info.status
                 training_status.batch_idx = replica_info.last_active_step
 
-            # Add network statuses
-            for network_info in self.status_tracker.networks.values():
-                network_status = ui_update.network_status.add()
-                network_status.server_id = network_info.server_id
-                network_status.bandwidth_usage = network_info.bandwidth_usage
-                network_status.latency = network_info.latency
-                network_status.connection_status = network_info.connection_status
-                for peer in network_info.connected_peers:
-                    network_status.connected_peers.append(peer)
-
             # Add topology information
             for server_info in self.status_tracker.servers.values():
                 topology = ui_update.topology.add()
@@ -104,7 +93,7 @@ class UIUpdatePublisher(Publisher):
             )
 
             logger.debug(
-                f"[WEAVER->UI] Published UI update: global_step={ui_update.global_step}"
+                "[WEAVER->UI] Published UI update to clients"
             )
 
         except Exception as e:
@@ -345,5 +334,5 @@ class DemoDataSimulator:
         """Simulate one training step across all demo components."""
         self.status_tracker.simulate_training_progress()
         logger.debug(
-            f"[DEMO] Simulated training step: {self.status_tracker.global_step}"
+            "[DEMO] Simulated training step"
         )

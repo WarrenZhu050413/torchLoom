@@ -1,5 +1,5 @@
 class Config:
-    DEFAULT_ADDR: str = "nats://0.0.0.0:4222"
+    DEFAULT_ADDR: str = "nats://localhost:4222"
     MANAGER_torchLoom_LOG_FILE: str = "./torchLoom/log/torchLoom.log"
     MANAGER_RUNTIME_LOG_FILE: str = "./torchLoom/log/manager.log"
     torchLoom_CONSTANTS_LOG_FILE: str = "./torchLoom/log/torchLoom_constants.log"

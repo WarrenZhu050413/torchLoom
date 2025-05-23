@@ -26,15 +26,19 @@
 * After you implement any change, always run the tests to ensure that you didn't break anything.
 * If the feature you implement is not covered by the tests, add tests to cover it.
 
-## Continuous Learning
+## General Coding Approach
 
-* Continuously add to AGENTS.md as you learn more about the codebase and its best practices.
 * Look at onboarding.md for more information about the codebase. Add and edit and clean up onboarding.md after you have completed a task.
+* When you finished implementing the feature according to my request, continue to [TODO.md](TODO.md) to see if there are any other tasks that you can do until you reach the task limit
 
 <Environment Specific Instructions>
+
+## Testing
 - Run tests through pytest
 - You should run not only tests, but the code that you have changed.
   - The tests should be in the ./tests folder
+
+## Linters
 - Run linters after changes, by doing 
 ```sh
 lintrunner init
@@ -51,6 +55,7 @@ You may get the following error:
 
 but ignore this.
 
+## Protobuf
 Recompile the protobuf using:
 
 ```sh
@@ -60,23 +65,13 @@ python -m grpc_tools.protoc \
   $(pwd)/torchLoom/proto/torchLoom.proto
 ```
 
+## Linter Errors
+You will see linter errors for things releated to Protobuf. Don't panick. It is not an issue. 
+
+## UI
 - To run the UI:
 ```sh
 cd torchLoom-ui
 npm install
 npm run dev -y
 ```
-
-No need to redownload Protobuf as it is alreadyd downloaded.
-
-After you finish a task, check TODO.md to see if there are any other tasks that you can do.
-
-Whenever you change an API, no need to keep the previous API for legacy compatibility reasons. But you need to make sure that all the references in the codebase are updated to the new API. You can potentially do this through a search and replace across the codebase.
-
-<Design Philosophy>
-
-# torchLoom Weavelet Design Philosophy
-
-## Vision
-
-The **Weavelet** is designed as a **plug-and-play component** that can be seamlessly integrated into any PyTorch training code to enable **dynamic reconfiguration** during training. The goal is to transform static training processes into adaptive, controllable systems that can respond to real-time configuration changes from a central weaver service.

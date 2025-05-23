@@ -8,7 +8,7 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
 import asyncio
 import nats
-from torchLoom.constants import torchLoomConstants
+from torchLoom.common.constants import torchLoomConstants
 import time
 import threading
 from nats.js.api import StreamConfig

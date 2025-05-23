@@ -3,11 +3,11 @@ Async weavelet listener implementation.
 """
 
 import asyncio
-import multiprocessing
 import json
-import time
+import multiprocessing
 import os
-from typing import Any, Awaitable, Callable, Dict, Optional, TYPE_CHECKING
+import time
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional
 
 if TYPE_CHECKING:
     from multiprocessing.connection import Connection
@@ -19,13 +19,15 @@ from nats.js.api import RetentionPolicy, StorageType, StreamConfig
 from nats.js.client import JetStreamContext
 
 import nats
-from torchLoom.config import Config
-from torchLoom.constants import torchLoomConstants
+from torchLoom.common import TrainingStatus, GPUStatus
+from torchLoom.common.config import Config
+from torchLoom.common.constants import torchLoomConstants
+from torchLoom.common.utils import cancel_subscriptions, get_device_uuid
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope, RegisterDevice
-from torchLoom.utils import cancel_subscriptions, get_device_uuid
 
 logger = setup_logger(name="weavelet_listener")
+
 
 class WeaveletListener:
     """Async implementation of weavelet listener that runs inside the subprocess."""
@@ -58,7 +60,9 @@ class WeaveletListener:
 
         # Inter-process communication using pipes
         self._config_sender = config_sender  # Send config updates to main process
-        self._status_receiver = status_receiver  # Receive status updates from main process
+        self._status_receiver = (
+            status_receiver  # Receive status updates from main process
+        )
         self._stop_event = stop_event
 
         # Configuration
@@ -122,7 +126,7 @@ class WeaveletListener:
         try:
             if not self._js:
                 raise RuntimeError("JetStream not initialized")
-                
+
             # Subscribe to config updates
             await self._js.add_stream(
                 StreamConfig(
@@ -164,7 +168,7 @@ class WeaveletListener:
                 raise RuntimeError("JetStream not initialized")
             if not EventEnvelope:
                 raise RuntimeError("EventEnvelope not available")
-                
+
             self._device_uuid = get_device_uuid()
 
             envelope = EventEnvelope()
@@ -189,7 +193,7 @@ class WeaveletListener:
             if not EventEnvelope:
                 self._logger.error("EventEnvelope not available, cannot parse message")
                 return
-                
+
             envelope = EventEnvelope()
             envelope.ParseFromString(msg.data)
 
@@ -201,7 +205,9 @@ class WeaveletListener:
                 try:
                     if self._config_sender and not self._config_sender.closed:
                         self._config_sender.send(params)
-                        self._logger.info(f"Sent config update to main process: {params}")
+                        self._logger.info(
+                            f"Sent config update to main process: {params}"
+                        )
                 except (BrokenPipeError, OSError):
                     self._logger.warning("Config pipe is broken, dropping update")
                 except Exception as e:
@@ -217,7 +223,7 @@ class WeaveletListener:
             if not EventEnvelope:
                 self._logger.error("EventEnvelope not available, cannot parse message")
                 return
-                
+
             envelope = EventEnvelope()
             envelope.ParseFromString(msg.data)
 
@@ -239,7 +245,7 @@ class WeaveletListener:
             if not EventEnvelope:
                 self._logger.error("EventEnvelope not available, cannot parse message")
                 return
-                
+
             envelope = EventEnvelope()
             envelope.ParseFromString(msg.data)
 
@@ -248,28 +254,38 @@ class WeaveletListener:
                 command_type = weaver_command.command_type
                 target_replica_id = weaver_command.target_replica_id
                 params = dict(weaver_command.params) if weaver_command.params else {}
-                
+
                 # Only handle commands targeting this replica
                 if target_replica_id == self._replica_id:
-                    self._logger.info(f"Received weaver command: {command_type} with params: {params}")
-                    
+                    self._logger.info(
+                        f"Received weaver command: {command_type} with params: {params}"
+                    )
+
                     # Send command to main process via config pipe
                     command_data = {
-                        'command_type': command_type,
-                        'params': params,
-                        '_is_weaver_command': True  # Flag to distinguish from config updates
+                        "command_type": command_type,
+                        "params": params,
+                        "_is_weaver_command": True,  # Flag to distinguish from config updates
                     }
-                    
+
                     try:
                         if self._config_sender and not self._config_sender.closed:
                             self._config_sender.send(command_data)
-                            self._logger.info(f"Sent weaver command to main process: {command_type}")
+                            self._logger.info(
+                                f"Sent weaver command to main process: {command_type}"
+                            )
                     except (BrokenPipeError, OSError):
-                        self._logger.warning("Config pipe is broken, dropping weaver command")
+                        self._logger.warning(
+                            "Config pipe is broken, dropping weaver command"
+                        )
                     except Exception as e:
-                        self._logger.warning(f"Error sending weaver command via pipe: {e}")
+                        self._logger.warning(
+                            f"Error sending weaver command via pipe: {e}"
+                        )
                 else:
-                    self._logger.debug(f"Ignoring command for different replica: {target_replica_id}")
+                    self._logger.debug(
+                        f"Ignoring command for different replica: {target_replica_id}"
+                    )
 
             await msg.ack()
         except Exception as e:
@@ -296,7 +312,7 @@ class WeaveletListener:
                     storage=StorageType.FILE,  # Use file storage for persistence
                     num_replicas=1,  # Single replica for simplicity
                 )
-                
+
                 # Create or update the stream
                 try:
                     if not self._js:
@@ -305,12 +321,14 @@ class WeaveletListener:
                     self._logger.info(f"Created/updated JetStream {stream}")
                 except Exception as e:
                     # Stream might already exist with different config
-                    self._logger.info(f"Stream {stream} already exists or update failed: {e}")
-                    
+                    self._logger.info(
+                        f"Stream {stream} already exists or update failed: {e}"
+                    )
+
             except Exception as e:
                 self._logger.warning(f"Could not configure stream {stream}: {e}")
                 # Continue with subscription attempt even if stream config failed
-            
+
             # Subscribe to the stream
             if not self._js:
                 raise RuntimeError("JetStream not initialized")
@@ -386,7 +404,9 @@ class WeaveletListener:
                     break
                 except (BrokenPipeError, OSError):
                     # Pipe is broken
-                    self._logger.warning("Status pipe broken, stopping status publisher")
+                    self._logger.warning(
+                        "Status pipe broken, stopping status publisher"
+                    )
                     break
                 except Exception as e:
                     self._logger.warning(f"Error receiving status from pipe: {e}")
@@ -398,7 +418,7 @@ class WeaveletListener:
                 await asyncio.sleep(self._exception_sleep)
 
     async def _publish_status(self, status: Dict[str, Any]) -> None:
-        """Publish training status to NATS using separate TrainingStatus and GPUStatus protobuf messages."""
+        """Publish status to NATS using protobuf messages based on status type."""
         try:
             if not self._nc:
                 self._logger.warning("Cannot publish status - not connected to NATS")
@@ -406,97 +426,112 @@ class WeaveletListener:
 
             # Import protobuf message types
             if not EventEnvelope:
-                self._logger.warning("EventEnvelope not available, skipping status publish")
+                self._logger.warning(
+                    "EventEnvelope not available, skipping status publish"
+                )
                 return
 
-            # Extract basic information
-            replica_id = status.get('replica_id', self._replica_id)
-            device_id = status.get('device_id', f"device_{replica_id}")
-            status_type = status.get('type', 'training_metrics')
-            
-            # Publish TrainingStatus message
-            training_envelope = EventEnvelope()
-            training_status = training_envelope.training_status
-            training_status.replica_id = replica_id
-            training_status.status_type = status_type
-            training_status.current_step = status.get('step', status.get('batch_idx', 0))
-            training_status.epoch = status.get('epoch', 0)
-            training_status.step_progress = status.get('step_progress', 0.0)
-            training_status.epoch_progress = status.get('progress', 0.0)
-            training_status.training_time = status.get('training_time', 0.0)
-            training_status.batch_idx = status.get('batch_idx', 0)
-            
-            # Set training status based on type
-            if status_type == 'training_complete':
-                training_status.status = "completed"
-            elif status_type == 'training_start':
-                training_status.status = "starting" 
-            elif status_type in ['epoch_start', 'batch_update', 'epoch_complete']:
-                training_status.status = "training"
+            # Determine status type and route accordingly
+            status_type = status.get("type", status.get("status_type", "unknown"))
+
+            if status_type == "training_status" or status_type in [
+                "training_start",
+                "epoch_start",
+                "batch_update",
+                "epoch_complete",
+                "training_complete",
+                "test_complete",
+                "training_interrupted",
+                "training_failed",
+            ]:
+                await self._publish_training_status(status)
+            elif status_type == "gpu_status":
+                await self._publish_gpu_status(status)
             else:
-                training_status.status = status.get('status', 'training')
-            
+                # Fallback to training status for backward compatibility
+                await self._publish_training_status(status)
+
+        except Exception as e:
+            self._logger.exception(f"Failed to publish status: {e}")
+
+    async def _publish_training_status(self, status: Dict[str, Any]) -> None:
+        """Publish TrainingStatus message to NATS."""
+        try:
+            # Create TrainingStatus from dictionary
+            if "replica_id" not in status:
+                status["replica_id"] = self._replica_id
+
+            training_status_obj = TrainingStatus.from_dict(status)
+
+            # Create protobuf message
+            envelope = EventEnvelope()
+            training_status = envelope.training_status
+            training_status.replica_id = training_status_obj.replica_id
+            training_status.status_type = training_status_obj.status_type
+            training_status.current_step = training_status_obj.current_step
+            training_status.epoch = training_status_obj.epoch
+            training_status.step_progress = training_status_obj.step_progress
+            training_status.epoch_progress = training_status_obj.epoch_progress
+            training_status.status = training_status_obj.status
+            training_status.training_time = training_status_obj.training_time
+            training_status.batch_idx = training_status_obj.batch_idx
+
             # Add metrics
-            for metric in ['loss', 'accuracy', 'best_accuracy', 'learning_rate']:
-                if metric in status:
-                    training_status.metrics[metric] = str(status[metric])
-            
-            # Add all final metrics if available
-            if 'final_metrics' in status:
-                for key, value in status['final_metrics'].items():
-                    training_status.metrics[key] = str(value)
-            
-            # Publish TrainingStatus
+            for key, value in training_status_obj.metrics.items():
+                training_status.metrics[key] = str(value)
+
+            # Publish to NATS
             await self._nc.publish(
                 torchLoomConstants.subjects.TRAINING_STATUS,
-                training_envelope.SerializeToString()
+                envelope.SerializeToString(),
             )
-            
-            # Publish GPUStatus message if system metrics are available
-            if 'system' in status or status_type in ['training_start', 'batch_update']:
-                gpu_envelope = EventEnvelope()
-                gpu_status = gpu_envelope.gpu_status
-                gpu_status.gpu_id = device_id
-                gpu_status.replica_id = replica_id
-                gpu_status.server_id = status.get('server_id', 'local_server')
-                gpu_status.status = "active"
-                
-                # Add system metrics if available
-                if 'system' in status:
-                    system_metrics = status['system']
-                    gpu_status.utilization = system_metrics.get('gpu_utilization', 0.0)
-                    gpu_status.temperature = system_metrics.get('gpu_temperature', 40.0)
-                    gpu_status.memory_used = system_metrics.get('gpu_memory_used', 0.0)
-                    gpu_status.memory_total = system_metrics.get('gpu_memory_total', 0.0)
-                else:
-                    gpu_status.utilization = 50.0  # Default values
-                    gpu_status.temperature = 40.0
-                    gpu_status.memory_used = 1.0
-                    gpu_status.memory_total = 8.0
-                
-                # Add configuration parameters
-                if 'config' in status:
-                    config_data = status['config']
-                    if isinstance(config_data, dict):
-                        for key, value in config_data.items():
-                            gpu_status.config[key] = str(value)
-                
-                # Publish GPUStatus
-                await self._nc.publish(
-                    torchLoomConstants.subjects.GPU_STATUS,
-                    gpu_envelope.SerializeToString()
-                )
-            
-            self._logger.debug(f"Published TrainingStatus and GPUStatus: {status_type} for {replica_id}")
-            
+
+            self._logger.debug(
+                f"Published TrainingStatus: {training_status_obj.status_type} for {training_status_obj.replica_id}"
+            )
+
         except Exception as e:
             self._logger.exception(f"Failed to publish training status: {e}")
+
+    async def _publish_gpu_status(self, status: Dict[str, Any]) -> None:
+        """Publish GPUStatus message to NATS."""
+        try:
+            # Create GPUStatus from dictionary
+            gpu_status_obj = GPUStatus.from_dict(status)
+
+            # Create protobuf message
+            envelope = EventEnvelope()
+            gpu_status = envelope.gpu_status
+            gpu_status.gpu_id = gpu_status_obj.gpu_id
+            gpu_status.replica_id = gpu_status_obj.replica_id
+            gpu_status.server_id = gpu_status_obj.server_id
+            gpu_status.status = gpu_status_obj.status
+            gpu_status.utilization = gpu_status_obj.utilization
+            gpu_status.temperature = gpu_status_obj.temperature
+            gpu_status.memory_used = gpu_status_obj.memory_used
+            gpu_status.memory_total = gpu_status_obj.memory_total
+
+            # Add configuration parameters
+            for key, value in gpu_status_obj.config.items():
+                gpu_status.config[key] = str(value)
+
+            # Publish to NATS
+            await self._nc.publish(
+                torchLoomConstants.subjects.GPU_STATUS, envelope.SerializeToString()
+            )
+
+            self._logger.debug(
+                f"Published GPUStatus: {gpu_status_obj.gpu_id} status={gpu_status_obj.status}"
+            )
+
+        except Exception as e:
+            self._logger.exception(f"Failed to publish GPU status: {e}")
 
     async def _heartbeat_loop(self) -> None:
         """Background task to send periodic heartbeat messages to the weaver."""
         self._logger.info("Started heartbeat loop")
         heartbeat_interval = 30.0  # Send heartbeat every 30 seconds
-        
+
         while not self._stop_event.is_set():
             try:
                 await self._send_heartbeat()
@@ -524,19 +559,20 @@ class WeaveletListener:
             heartbeat.device_uuid = self._device_uuid or f"device_{self._replica_id}"
             heartbeat.timestamp = int(time.time())
             heartbeat.status = "active"
-            
+
             # Add some metadata (this could be extended to include training metrics)
-            heartbeat.metadata["process_id"] = str(os.getpid()) if hasattr(os, 'getpid') else "unknown"
+            heartbeat.metadata["process_id"] = (
+                str(os.getpid()) if hasattr(os, "getpid") else "unknown"
+            )
             heartbeat.metadata["nats_addr"] = self._torchLoom_addr
-            
+
             # Publish heartbeat
             await self._nc.publish(
-                torchLoomConstants.subjects.HEARTBEAT,
-                envelope.SerializeToString()
+                torchLoomConstants.subjects.HEARTBEAT, envelope.SerializeToString()
             )
-            
+
             self._logger.debug(f"Sent heartbeat for replica {self._replica_id}")
-            
+
         except Exception as e:
             self._logger.exception(f"Failed to send heartbeat: {e}")
 
@@ -550,12 +586,12 @@ class WeaveletListener:
         """Clean up resources."""
         try:
             self._logger.info("Starting WeaveletListener cleanup...")
-            
+
             # Cancel all subscriptions and wait for them to complete
             for subject, (sub, task) in self._subscriptions.items():
                 try:
                     self._logger.info(f"Cleaning up subscription for {subject}")
-                    
+
                     # Cancel the task first
                     if not task.cancelled():
                         task.cancel()
@@ -563,16 +599,18 @@ class WeaveletListener:
                             await task
                         except asyncio.CancelledError:
                             pass
-                    
+
                     # Unsubscribe and drain if it's a subscription object
-                    if hasattr(sub, 'unsubscribe'):
+                    if hasattr(sub, "unsubscribe"):
                         await sub.unsubscribe()
-                    elif hasattr(sub, 'drain'):
+                    elif hasattr(sub, "drain"):
                         await sub.drain()
-                        
+
                 except Exception as e:
-                    self._logger.warning(f"Error cleaning up subscription {subject}: {e}")
-            
+                    self._logger.warning(
+                        f"Error cleaning up subscription {subject}: {e}"
+                    )
+
             self._subscriptions.clear()
 
             # Close pipe connections
@@ -582,7 +620,7 @@ class WeaveletListener:
                     self._logger.info("Config sender pipe closed")
             except Exception as e:
                 self._logger.warning(f"Error closing config sender pipe: {e}")
-                
+
             try:
                 if self._status_receiver and not self._status_receiver.closed:
                     self._status_receiver.close()
@@ -598,7 +636,7 @@ class WeaveletListener:
                     await self._nc.drain()
                 except Exception as e:
                     self._logger.warning(f"Error draining NATS connection: {e}")
-                
+
                 try:
                     # Then close the connection
                     await self._nc.close()
@@ -607,4 +645,4 @@ class WeaveletListener:
 
             self._logger.info("WeaveletListener cleanup completed")
         except Exception as e:
-            self._logger.exception(f"Error during cleanup: {e}") 
+            self._logger.exception(f"Error during cleanup: {e}")

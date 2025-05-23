@@ -9,8 +9,8 @@ import time
 import uuid
 from typing import Any, Dict, Optional, Tuple, Type
 
-from torchLoom.config import Config
-from torchLoom.constants import torchLoomConstants
+from torchLoom.common.config import Config
+from torchLoom.common.constants import torchLoomConstants
 
 from .handlers import HandlerRegistry
 from .listener import WeaveletListener
@@ -360,8 +360,17 @@ class Weavelet:
         except Exception as e:
             print(f"Error stopping weavelet process: {e}")
 
-    def publish_training_status(self, status: Dict[str, Any]) -> None:
-        """Send training status to the weavelet process for publishing."""
+    def publish_status(self, status: Dict[str, Any]) -> None:
+        """
+        Publish status update.
+        
+        This method accepts any type of status (TrainingStatus, GPUStatus)
+        and sends it to the weaver via NATS messaging.
+        
+        Args:
+            status_dict: Status data as dictionary, should be a TrainingStatus.to_dict(),
+                        GPUStatus.to_dict(), or any compatible dictionary.
+        """
         try:
             if self._status_sender and not self._status_sender.closed:
                 self._status_sender.send(status)

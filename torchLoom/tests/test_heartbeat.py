@@ -23,7 +23,7 @@ import torch.nn as nn
 
 from torchLoom.lightning_wrapper import WeaveletWrapper, make_weavelet, weavelet_handler
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope, Heartbeat
-from torchLoom.weaver.message_handlers import HeartbeatHandler
+from torchLoom.weaver.handlers import HeartbeatHandler
 from torchLoom.weaver.status_tracker import StatusTracker
 
 # Mock NATS connection
@@ -119,8 +119,11 @@ async def simulate_weaver_heartbeat_monitor():
                 print(f"💀 DEAD REPLICAS DETECTED: {list(dead_replicas)}")
                 # In a real weaver, this would trigger recovery actions
 
-            live_replicas = heartbeat_handler.get_live_replicas()
-            total_dead = len(heartbeat_handler.get_dead_replicas())
+            # HeartbeatHandler doesn't have get_live_replicas method,
+            # so we'll track live replicas differently
+            all_replicas = set(heartbeat_handler._last_heartbeats.keys())
+            live_replicas = all_replicas - heartbeat_handler._dead_replicas
+            total_dead = len(heartbeat_handler._dead_replicas)
 
             if live_replicas or total_dead > 0:
                 print(f"📊 Status - Live: {len(live_replicas)}, Dead: {total_dead}")

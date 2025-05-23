@@ -93,83 +93,6 @@ Implemented as flexible many-to-many mappings:
 - `device_to_replicas`: Hardware device IDs → Training replica IDs
 - `replica_to_devices`: Training replica IDs → Hardware device IDs
 
-## 🚀 Getting Started
-
-### Prerequisites
-
-- **Operating System**: Linux (recommended) or macOS
-- **Python**: 3.11+
-- **Conda**: For environment management
-- **Node.js**: For UI development (optional)
-
-### Installation
-
-#### 1. Clone the Repository
-
-```bash
-git clone <repository-url>
-cd torchLoom
-```
-
-#### 2. Environment Setup
-
-**For Ubuntu/Linux:**
-```bash
-chmod +x setup.sh
-./setup.sh
-```
-
-**For macOS:**
-```bash
-# Install conda environment
-conda env create -f environment.yaml
-
-# Install NATS tools
-brew install nats-io/nats-tools/nats-tools
-
-# Install protobuf compiler
-brew install protobuf
-```
-
-#### 3. Activate Environment
-
-```bash
-conda init bash && source ~/.bashrc
-conda activate nats-torch27
-```
-
-### Quick Start Guide
-
-#### Step 1: Start NATS Server
-```bash
-./nats/nats-server -c ./nats/nats.conf
-```
-
-#### Step 2: Start the Weaver (Central Controller)
-```bash
-python -m torchLoom.weaver
-```
-
-#### Step 3: Start Monitor CLI (Optional)
-```bash
-python -m torchLoom.monitor_cli
-```
-
-#### Step 4: Run Training Example
-```bash
-python examples/pytorch/mnist.py
-```
-
-#### Step 5: Start Web UI (Optional)
-```bash
-# Using the integrated launcher
-python start_torchloom.py
-
-# Or start UI separately
-cd torchLoom-ui
-npm install
-npm run dev
-```
 
 ## 📁 Project Structure
 
@@ -362,4 +285,170 @@ Monitor resource usage and adjust training configuration based on real-time metr
 4. **Run Tests**: Execute the test suite to verify your setup
 5. **Join Development**: Check `TODO.md` for areas where you can contribute
 
-Welcome to the torchLoom community! 🧵✨ 
+## **Communication Architecture Overview**
+
+The communication flow follows this pattern:
+```
+Frontend (training.js) ↔ API Service ↔ WebSocket Server ↔ Weaver Core ↔ NATS
+```
+
+## **1. Frontend to Backend Communication Path**
+
+### **Step 1: Frontend Initiates Actions**
+```21:47:torchLoom-ui/src/stores/training.js
+async function initialize() {
+  try {
+    console.log('Initializing training store with real API...')
+    
+    // Connect to WebSocket
+    await apiService.connect()
+    isConnected.value = true
+    connectionError.value = null
+    
+    // Subscribe to WebSocket messages
+    apiService.subscribe(handleWebSocketMessage)
+    
+    // Get initial status via REST API
+    await loadInitialStatus()
+    
+    // Start periodic health checks
+    startHealthChecks()
+```
+
+### **Step 2: API Service Sends Commands**
+```104:139:torchLoom-ui/src/services/api.js
+async deactivateGPU(gpuId) {
+  try {
+    // Send via WebSocket for real-time response
+    this.send({
+      type: 'deactivate_gpu',
+      gpu_id: gpuId
+    })
+
+    // Also send via REST API for reliability
+    const response = await fetch(`${this.apiUrl}/commands/deactivate-gpu`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ gpu_id: gpuId })
+    })
+```
+
+### **Step 3: WebSocket Server Processes Commands**
+```214:270:torchLoom/weaver/websocket_server.py
+async def handle_websocket_message(self, message: str, websocket: WebSocket):
+    """Handle incoming WebSocket messages from UI."""
+    try:
+        data = json.loads(message)
+        command_type = data.get("type")
+        
+        if command_type == "deactivate_gpu":
+            await self.handle_deactivate_gpu(data.get("gpu_id"))
+        elif command_type == "reactivate_group":
+            await self.handle_reactivate_group(data.get("replica_id"))
+        elif command_type == "update_config":
+            await self.handle_config_update(data.get("replica_id"), data.get("config_params", {}))
+```
+
+### **Step 4: Commands Forwarded to NATS**
+```314:329:torchLoom/weaver/websocket_server.py
+async def send_ui_command(self, command_type: str, target_id: str, params: Optional[dict] = None):
+    """Send UI command via NATS."""
+    if not self.nats_client:
+        return
+    
+    try:
+        env = EventEnvelope()
+        env.ui_command.command_type = command_type
+        env.ui_command.target_id = target_id
+        
+        if params:
+            for key, value in params.items():
+                env.ui_command.params[key] = str(value)
+        
+        js = self.nats_client.jetstream()
+        await js.publish(torchLoomConstants.subjects.UI_COMMAND, env.SerializeToString())
+```
+
+## **2. Backend to Frontend Communication Path**
+
+### **Step 1: Weaver Publishes Status Updates**
+```240:265:torchLoom/weaver/core.py
+async def start_ui_update_publisher(self) -> None:
+    """Start the background task to publish UI updates periodically."""
+    logger.info("Starting UI update publisher")
+
+    while not self._stop_nats.is_set():
+        try:
+            # Publish UI update every 2 seconds
+            if self.ui_update_handler:
+                await self.ui_update_handler.publish_ui_update()
+
+            await asyncio.sleep(2.0)
+```
+
+### **Step 2: WebSocket Server Broadcasts Updates**
+```355:365:torchLoom/weaver/websocket_server.py
+async def broadcast_status_update(self):
+    """Broadcast status update to all connected WebSocket clients."""
+    if self.manager.active_connections:
+        status_data = self.get_ui_status_dict()
+        await self.manager.send_json_to_all({
+            "type": "status_update",
+            "data": status_data
+        })
+```
+
+### **Step 3: Frontend Receives Updates**
+```60:76:torchLoom-ui/src/stores/training.js
+function handleWebSocketMessage(message) {
+  try {
+    if (message.type === 'status_update' && message.data) {
+      updateFromBackendData(message.data)
+    } else if (message.type === 'pong') {
+      // Handle ping response
+      isConnected.value = true
+      connectionError.value = null
+    }
+  } catch (error) {
+    console.error('Error handling WebSocket message:', error)
+  }
+}
+```
+
+## **3. Key Communication Protocols**
+
+### **WebSocket Messages (Bidirectional)**
+- **UI → Backend**: Commands like `deactivate_gpu`, `reactivate_group`, `update_config`
+- **Backend → UI**: Status updates with type `status_update` containing full system state
+
+### **REST API (Frontend → Backend)**
+- `GET /api/status` - Initial system status
+- `POST /api/commands/deactivate-gpu` - GPU deactivation
+- `POST /api/commands/reactivate-group` - Replica reactivation
+- `GET /api/health` - Health check
+
+### **NATS Messaging (Internal Backend)**
+- **UI Commands**: Published to `torchLoomConstants.subjects.UI_COMMAND`
+- **Weaver Commands**: Published to `torchLoomConstants.subjects.WEAVER_COMMANDS`
+- **Configuration Changes**: Published to `torchLoomConstants.subjects.CONFIG_INFO`
+
+## **4. Data Flow Example: GPU Deactivation**
+
+1. **Frontend**: User clicks "Deactivate GPU" → `training.js` calls `store.deactivateGPU(gpuId)`
+2. **API Service**: Sends WebSocket message `{type: 'deactivate_gpu', gpu_id: gpuId}`
+3. **WebSocket Server**: Receives message → calls `handle_deactivate_gpu()`
+4. **Status Tracker**: Updates local state → GPU marked as "deactivating"
+5. **NATS**: Publishes UI command for downstream processing
+6. **Broadcast**: WebSocket server broadcasts updated status to all clients
+7. **Frontend**: Receives status update → UI reflects GPU as deactivated
+
+## **5. Communication Redundancy**
+
+The system uses **dual communication** for reliability:
+- **WebSocket**: For real-time bidirectional communication
+- **REST API**: For reliable command execution and initial data loading
+- **NATS**: For internal message routing between backend services
+
+This architecture ensures both **real-time responsiveness** and **reliability**, with automatic fallback to demo mode if the backend is unavailable.

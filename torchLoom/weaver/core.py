@@ -10,8 +10,8 @@ from typing import Dict, Optional, Set
 
 from nats.aio.msg import Msg
 
-from torchLoom.config import Config
-from torchLoom.constants import torchLoomConstants
+from torchLoom.common.config import Config
+from torchLoom.common.constants import torchLoomConstants
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
@@ -24,7 +24,6 @@ from .handlers import (
     GPUStatusHandler,
     HeartbeatHandler,
     MessageHandler,
-    NetworkStatusHandler,
     TrainingStatusHandler,
     UICommandHandler,
     WeaverCommandHandler,
@@ -145,6 +144,7 @@ class Weaver:
         if self.enable_ui:
             self.websocket_server = WebSocketServer(
                 status_tracker=self.status_tracker,
+                weaver=self,  # Pass weaver instance for direct command handling
                 nats_client=nc,
                 host=self.ui_host,
                 port=self.ui_port,
@@ -160,16 +160,11 @@ class Weaver:
             "weaver_command": WeaverCommandHandler(self.status_tracker, nc),
             "training_status": TrainingStatusHandler(self.status_tracker),
             "gpu_status": GPUStatusHandler(self.status_tracker),
-            "network_status": NetworkStatusHandler(self.status_tracker),
             "ui_commands": UICommandHandler(self.status_tracker, nc),
         }
 
         # Initialize UI update handler (for publishing consolidated updates)
         self.ui_update_handler = UIUpdatePublisher(self.status_tracker, nc)
-
-        # Initialize demo data simulator
-        self.demo_simulator = DemoDataSimulator(self.status_tracker)
-        self.demo_simulator.initialize_demo_data()
 
         logger.info("Weaver fully initialized with UI support")
 
@@ -213,10 +208,6 @@ class Weaver:
             if env.HasField("gpu_status"):
                 await self._handlers["gpu_status"].handle(env)
 
-            # External Monitoring -> Weaver message handling
-            if env.HasField("network_status"):
-                await self._handlers["network_status"].handle(env)
-
             # Note: ui_status_update is handled by the UIUpdatePublisher in the background task
             # No need to handle it here as it's an outbound message type
 
@@ -251,26 +242,6 @@ class Weaver:
 
             except Exception as e:
                 logger.exception(f"Error in UI update publisher: {e}")
-                await asyncio.sleep(2.0)
-
-    async def start_demo_simulation(self) -> None:
-        """Start demo training simulation."""
-        logger.info("Starting demo training simulation")
-
-        while not self._stop_nats.is_set():
-            try:
-                # Simulate training progress
-                if self.demo_simulator:
-                    self.demo_simulator.simulate_training_step()
-
-                # Cleanup stale entries periodically
-                if self.status_tracker.global_step % 100 == 0:
-                    self.status_tracker.cleanup_stale_entries()
-
-                await asyncio.sleep(1.5)  # Simulate training step every 1.5 seconds
-
-            except Exception as e:
-                logger.exception(f"Error in demo simulation: {e}")
                 await asyncio.sleep(2.0)
 
     async def stop(self) -> None:
@@ -386,7 +357,6 @@ class Weaver:
             "weaver_command": "Command acknowledgments from weavelets",
             "training_status": "Training progress updates",
             "gpu_status": "GPU status and utilization data",
-            "network_status": "Network connectivity and performance",
             "ui_command": "Commands from the UI",
             "ui_status_update": "UI status updates (outbound only)",
         }
@@ -403,17 +373,7 @@ async def main():
         # Start all services concurrently
         async with asyncio.TaskGroup() as tg:
 
-            # UI -> Weaver subscriptions
-            tg.create_task(
-                weaver.subscribe_js(
-                    torchLoomConstants.weaver_stream.STREAM,
-                    torchLoomConstants.weaver_stream.subjects.UI_COMMAND,
-                    torchLoomConstants.weaver_stream.CONSUMER,
-                    message_handler=weaver.message_handler,
-                )
-            )
-
-            # NATS subscriptions
+            # NATS subscriptions (distributed communication)
             tg.create_task(
                 weaver.subscribe_js(
                     torchLoomConstants.weaver_stream.STREAM,
@@ -449,20 +409,12 @@ async def main():
                 )
             )
 
-            # External Monitoring -> Weaver subscriptions
-            tg.create_task(
-                weaver.subscribe_nc(
-                    subject=torchLoomConstants.subjects.NETWORK_STATUS,
-                    message_handler=weaver.message_handler,
-                )
-            )
-
-            # UI services
+            # UI services (direct WebSocket communication - no NATS)
             if weaver.enable_ui:
                 tg.create_task(weaver.start_ui_server())
 
-            # Demo simulation
-            tg.create_task(weaver.start_demo_simulation())
+            # Demo simulation (DISABLED - no more simulated data)
+            # tg.create_task(weaver.start_demo_simulation())
 
             # UI update publisher
             tg.create_task(weaver.start_ui_update_publisher())

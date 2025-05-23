@@ -15,13 +15,14 @@ from .handlers import (  # Weavelet -> Weaver handlers; External -> Weaver handl
     ConfigurationHandler,
     DeviceRegistrationHandler,
     DeviceReplicaMapper,
+    DrainEventHandler,
     FailureHandler,
     GPUStatusHandler,
     HeartbeatHandler,
     MessageHandler,
-    NetworkStatusHandler,
     TrainingStatusHandler,
     UICommandHandler,
+    WeaverCommandHandler,
 )
 
 # Publishers (messages FROM the weaver)
@@ -46,7 +47,6 @@ __all__ = [
     "TrainingStatusHandler",
     "GPUStatusHandler",
     "FailureHandler",
-    "NetworkStatusHandler",
     "UICommandHandler",
     "ConfigurationHandler",
     "DeviceReplicaMapper",

@@ -12,7 +12,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, Set
 
-from torchLoom.constants import torchLoomConstants
+from torchLoom.common.constants import torchLoomConstants
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope, MonitoredFailEvent
 
@@ -160,11 +160,6 @@ class TrainingStatusHandler(MessageHandler):
             fixed_step=None,
         )
 
-        # Update global step
-        self.status_tracker.global_step = max(
-            self.status_tracker.global_step, training_status.current_step
-        )
-
         logger.debug(
             f"[WEAVELET->WEAVER] Training status: {training_status.replica_id} - {training_status.status_type}"
         )
@@ -249,36 +244,6 @@ class FailureHandler(MessageHandler):
             torchLoomConstants.subjects.REPLICA_FAIL, env.SerializeToString()
         )
         logger.info(f"[WEAVER->WEAVELET] Published replica fail event for {replica_id}")
-
-
-class NetworkStatusHandler(MessageHandler):
-    """Handler for network status messages from external monitoring systems."""
-
-    def __init__(self, status_tracker):
-        self.status_tracker = status_tracker
-
-    async def handle(self, env: EventEnvelope) -> None:
-        """Handle network status events from external monitoring systems."""
-        if not env.HasField("network_status"):
-            return
-
-        network_status = env.network_status
-
-        # Update network status in status tracker
-        self.status_tracker.update_network_status(
-            server_id=network_status.server_id,
-            bandwidth_usage=network_status.bandwidth_usage,
-            latency=network_status.latency,
-            connection_status=network_status.connection_status,
-            connected_peers=list(network_status.connected_peers),
-        )
-
-        logger.debug(
-            f"[EXTERNAL->WEAVER] Network status: server={network_status.server_id}, "
-            f"bandwidth={network_status.bandwidth_usage}Mbps, "
-            f"latency={network_status.latency}ms, "
-            f"status={network_status.connection_status}"
-        )
 
 
 # ===========================================

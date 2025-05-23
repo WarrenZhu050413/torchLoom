@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from torchLoom.config import Config
+from torchLoom.common.config import Config
 from torchLoom.log.logger import setup_logger
 
 logger = setup_logger(
@@ -10,6 +10,9 @@ logger = setup_logger(
 NC = "nc"
 JS = "js"
 NATS_SERVER_PATH = "./nats/nats-server"
+
+class TimeoutConstants:
+    STATUS_BROADCAST_IN: float = 1.0
 
 class torchLoomSubjects:
     MONITOR: str = "torchLoom.monitored.failure"
@@ -25,9 +28,6 @@ class torchLoomSubjects:
     TRAINING_STATUS: str = "torchLoom.training.status"
     GPU_STATUS: str = "torchLoom.gpu.status"
     
-    # External Monitoring -> Weaver subjects  
-    NETWORK_STATUS: str = "torchLoom.network.status"
-    
     # UI <-> Weaver subjects
     UI_COMMANDS: str = "torchLoom.ui.commands"
     UI_UPDATE: str = "torchLoom.ui.update"
@@ -35,9 +35,12 @@ class torchLoomSubjects:
     # Weaver -> Training Process subjects
     WEAVER_COMMANDS: str = "torchLoom.weaver.commands"
 
+    WEAVELET_STATUS: str = "torchLoom.weavelet.status"
+
 
 class WeaverSubjects:
     DR_SUBJECT: str = torchLoomSubjects.DR_SUBJECT
+    UI_COMMANDS: str = torchLoomSubjects.UI_COMMANDS
 
 
 class StreamSpec:

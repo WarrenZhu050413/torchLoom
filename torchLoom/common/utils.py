@@ -5,7 +5,7 @@ from typing import Any, Dict, Tuple
 import torch
 from pynvml import nvmlDeviceGetHandleByIndex, nvmlDeviceGetUUID, nvmlInit
 
-from torchLoom.config import Config
+from torchLoom.common.config import Config
 from torchLoom.log.log_utils import log_and_raise_exception
 from torchLoom.log.logger import setup_logger
 

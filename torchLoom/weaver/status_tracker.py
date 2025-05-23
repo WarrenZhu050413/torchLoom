@@ -42,22 +42,12 @@ class ReplicaState:
     last_updated: float = field(default_factory=time.time)
 
 
-@dataclass 
+@dataclass
 class ServerInfo:
     """Information about a server."""
     server_id: str
     replica_group_id: str
     gpu_ids: List[str] = field(default_factory=list)
-
-
-@dataclass
-class NetworkState:
-    """Network status information for a server."""
-    server_id: str
-    bandwidth_usage: float = 0.0  # Mbps
-    latency: float = 0.0  # ms
-    connection_status: str = "stable"  # "stable", "unstable", "disconnected"
-    connected_peers: List[str] = field(default_factory=list)
     last_updated: float = field(default_factory=time.time)
 
 
@@ -65,14 +55,12 @@ class StatusTracker:
     """Tracks the status of all weaver components."""
     
     def __init__(self):
-        self.global_step = 0
         self.communication_status = "stable"
         
         # Weaver state storage
         self.gpus: Dict[str, GPUState] = {}
         self.replicas: Dict[str, ReplicaState] = {}
         self.servers: Dict[str, ServerInfo] = {}
-        self.networks: Dict[str, NetworkState] = {}
         
         logger.info("StatusTracker initialized")
 
@@ -116,6 +104,9 @@ class StatusTracker:
         if gpu_id not in self.servers[server_id].gpu_ids:
             self.servers[server_id].gpu_ids.append(gpu_id)
         
+        # Update server timestamp
+        self.servers[server_id].last_updated = time.time()
+        
         logger.debug(f"Updated GPU {gpu_id}: status={status}, util={utilization}%, temp={temperature}°C")
 
     def update_training_progress(self, replica_id: str, current_step: Optional[int] = None,
@@ -141,31 +132,6 @@ class StatusTracker:
         
         logger.debug(f"Updated replica {replica_id}: step={current_step}, status={status}")
 
-    def update_network_status(self, server_id: str, bandwidth_usage: Optional[float] = None,
-                            latency: Optional[float] = None, connection_status: Optional[str] = None,
-                            connected_peers: Optional[List[str]] = None):
-        """Update network status for a server."""
-        if server_id not in self.networks:
-            self.networks[server_id] = NetworkState(server_id=server_id)
-        
-        network = self.networks[server_id]
-        if bandwidth_usage is not None:
-            network.bandwidth_usage = bandwidth_usage
-        if latency is not None:
-            network.latency = latency
-        if connection_status is not None:
-            network.connection_status = connection_status
-        if connected_peers is not None:
-            network.connected_peers = connected_peers.copy()
-        
-        network.last_updated = time.time()
-        
-        logger.debug(f"Updated network {server_id}: bandwidth={bandwidth_usage}Mbps, latency={latency}ms")
-
-    def set_global_step(self, step: int):
-        """Update the global training step."""
-        self.global_step = step
-
     def set_communication_status(self, status: str):
         """Update communication status."""
         self.communication_status = status
@@ -186,8 +152,7 @@ class StatusTracker:
             if not active_gpus:
                 self.update_training_progress(
                     replica_id, 
-                    status="offline",
-                    fixed_step=self.global_step
+                    status="offline"
                 )
             
             logger.info(f"Deactivated GPU {gpu_id}")
@@ -229,33 +194,30 @@ class StatusTracker:
         total_replicas = len(self.replicas)
         
         return {
-            "global_step": self.global_step,
             "communication_status": self.communication_status,
             "active_gpus": active_gpus,
             "total_gpus": total_gpus,
             "active_replicas": active_replicas,
             "total_replicas": total_replicas,
             "servers": len(self.servers),
-            "networks": len(self.networks)
         }
 
     def simulate_training_progress(self):
         """Simulate training progress for demo purposes."""
-        self.global_step += 1
         
-        # Update active replicas
+        # Update active replicas - each replica progresses independently
         for replica in self.replicas.values():
             if replica.status == "training":
-                replica.current_step = self.global_step
-                replica.step_progress = (self.global_step % 100)
-                replica.last_active_step = self.global_step
+                replica.current_step += 1
+                replica.step_progress = (replica.current_step % 100)
+                replica.last_active_step = replica.current_step
         
         # Update GPU utilization with some variance
         for gpu in self.gpus.values():
             if gpu.status == "active":
                 # Add some realistic variance
                 base_util = 70.0
-                variance = 10.0 * (0.5 - hash(gpu.gpu_id + str(self.global_step)) % 100 / 100.0)
+                variance = 10.0 * (0.5 - hash(gpu.gpu_id) % 100 / 100.0)
                 gpu.utilization = max(50.0, min(95.0, base_util + variance))
                 
                 # Temperature correlation with utilization
@@ -288,11 +250,11 @@ class StatusTracker:
             logger.info(f"Removing stale replica entry: {replica_id}")
             del self.replicas[replica_id]
         
-        stale_networks = [
-            server_id for server_id, network in self.networks.items()
-            if current_time - network.last_updated > max_age_seconds
+        stale_servers = [
+            server_id for server_id, server in self.servers.items()
+            if current_time - server.last_updated > max_age_seconds
         ]
         
-        for server_id in stale_networks:
-            logger.info(f"Removing stale network entry: {server_id}")
-            del self.networks[server_id] 
+        for server_id in stale_servers:
+            logger.info(f"Removing stale server entry: {server_id}")
+            del self.servers[server_id] 
