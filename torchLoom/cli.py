@@ -45,7 +45,7 @@ class TorchLoomClient:
         envelope.register_device.replica_id = replica_id
         
         await self._nc.publish(
-            torchLoomConstants.subjects.EXTERNAL, 
+            torchLoomConstants.subjects.MONITOR, 
             envelope.SerializeToString()
         )
         logger.info(f"Published device registration for device {device_uuid} with replica {replica_id}")
@@ -61,7 +61,7 @@ class TorchLoomClient:
         envelope.monitored_fail.device_uuid = device_uuid
         
         await self._nc.publish(
-            torchLoomConstants.subjects.EXTERNAL, 
+            torchLoomConstants.subjects.MONITOR, 
             envelope.SerializeToString()
         )
         logger.info(f"Published device failure event for device {device_uuid}")

@@ -109,13 +109,8 @@ class ConfigurationHandler(MessageHandler):
             
             js = self.nats_client.jetstream()
             
-            # Handle learning rate change specifically for backward compatibility
-            if "learning_rate" in config_params:
-                lr = config_params["learning_rate"]
-                await js.publish("torchLoom.training.reset_lr", str(lr).encode("utf-8"))
-                logger.info(f"Published new learning rate {lr} to torchLoom.training.reset_lr")
-            
             # Publish the entire config change to a general subject
+            logger.debug(f"Publishing config change to {torchLoomConstants.subjects.CONFIG_INFO}")
             await js.publish(
                 torchLoomConstants.subjects.CONFIG_INFO, 
                 env.SerializeToString()
@@ -123,6 +118,8 @@ class ConfigurationHandler(MessageHandler):
             logger.info(f"Published config changes to {torchLoomConstants.subjects.CONFIG_INFO}")
         except Exception as e:
             logger.exception(f"Failed to publish config changes: {e}")
+            # Re-raise to ensure the callback wrapper can handle it
+            raise
 
 
 class DeviceReplicaMapper:

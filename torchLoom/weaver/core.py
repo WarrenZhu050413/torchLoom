@@ -149,7 +149,7 @@ async def main():
                 weaver.message_handler
             ))
             tg.create_task(weaver.subscribe_nc(
-                subject=torchLoomConstants.subjects.EXTERNAL, 
+                subject=torchLoomConstants.subjects.MONITOR, 
                 message_handler=weaver.message_handler
             ))
             tg.create_task(weaver.subscribe_nc(

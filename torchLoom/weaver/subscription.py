@@ -123,11 +123,13 @@ class SubscriptionManager:
         async def callback_wrapper(msg: Msg) -> None:
             # Check if we should stop processing messages
             if self._stop_event.is_set():
+                logger.debug(f"Stop event set, skipping message on {subject}")
                 return
                 
             try:
-                logger.debug(f"Received message on {subject}")
+                logger.debug(f"Processing message on {subject}: {msg.data[:50]}...")
                 await message_handler(msg)
+                logger.debug(f"Successfully processed message on {subject}")
             except Exception as e:
                 logger.exception(f"Error processing message from {subject}: {e}")
                 # Sleep briefly to avoid tight error loops

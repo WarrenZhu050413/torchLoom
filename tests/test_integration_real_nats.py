@@ -48,7 +48,7 @@ async def test_weaver_real_nats_integration():
         
         # Set up Weaver subscriptions
         await weaver.subscribe_nc(
-            torchLoomConstants.subjects.EXTERNAL,
+            torchLoomConstants.subjects.MONITOR,
             weaver.message_handler
         )
         
@@ -67,11 +67,11 @@ async def test_weaver_real_nats_integration():
             
             # Publish registration events
             await test_nc.publish(
-                torchLoomConstants.subjects.EXTERNAL,
+                torchLoomConstants.subjects.MONITOR,
                 register_env1.SerializeToString()
             )
             await test_nc.publish(
-                torchLoomConstants.subjects.EXTERNAL,
+                torchLoomConstants.subjects.MONITOR,
                 register_env2.SerializeToString()
             )
             
@@ -92,7 +92,7 @@ async def test_weaver_real_nats_integration():
             
             # Publish failure event
             await test_nc.publish(
-                torchLoomConstants.subjects.EXTERNAL,
+                torchLoomConstants.subjects.MONITOR,
                 fail_env.SerializeToString()
             )
             
@@ -116,7 +116,7 @@ async def test_weaver_real_nats_integration():
             
             # Publish learning rate update
             await test_nc.publish(
-                torchLoomConstants.subjects.EXTERNAL,
+                torchLoomConstants.subjects.MONITOR,
                 lr_env.SerializeToString()
             )
             
@@ -257,7 +257,7 @@ async def test_weaver_subscription_management():
         try:
             # Start weaver subscriptions (this is normally done in main())
             await weaver.subscribe_nc(
-                torchLoomConstants.subjects.EXTERNAL,
+                torchLoomConstants.subjects.MONITOR,
                 weaver.message_handler
             )
             
@@ -269,9 +269,9 @@ async def test_weaver_subscription_management():
             test_env.register_device.device_uuid = "test_device"
             test_env.register_device.replica_id = "test_replica"
             
-            print(f"Publishing to subject: {torchLoomConstants.subjects.EXTERNAL}")
+            print(f"Publishing to subject: {torchLoomConstants.subjects.MONITOR}")
             await test_nc.publish(
-                torchLoomConstants.subjects.EXTERNAL,
+                torchLoomConstants.subjects.MONITOR,
                 test_env.SerializeToString()
             )
             

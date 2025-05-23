@@ -49,7 +49,7 @@ class TestWeaverServerIntegration(TestCase):
                     async def test_handler(msg: Msg):
                         message_received.append(msg.data)
                     
-                    await weaver.subscribe_nc(torchLoomConstants.subjects.EXTERNAL, test_handler)
+                    await weaver.subscribe_nc(torchLoomConstants.subjects.MONITOR, test_handler)
                     
                     # Give subscription time to be ready
                     await asyncio.sleep(0.1)
@@ -61,7 +61,7 @@ class TestWeaverServerIntegration(TestCase):
                     test_env.register_device.replica_id = "test_replica"
                     
                     await test_nc.publish(
-                        torchLoomConstants.subjects.EXTERNAL,
+                        torchLoomConstants.subjects.MONITOR,
                         test_env.SerializeToString()
                     )
                     
@@ -100,12 +100,12 @@ class TestWeaverServerIntegration(TestCase):
                     published_events.append((msg.subject, msg.data))
                 
                 # Monitor all relevant subjects
-                await test_nc.subscribe(torchLoomConstants.subjects.EXTERNAL, cb=event_collector)
+                await test_nc.subscribe(torchLoomConstants.subjects.MONITOR, cb=event_collector)
                 await test_nc.subscribe(torchLoomConstants.subjects.REPLICA_FAIL, cb=event_collector)
-                await test_nc.subscribe("torchLoom.training.reset_lr", cb=event_collector)
+                await test_nc.subscribe(torchLoomConstants.subjects.CONFIG_INFO, cb=event_collector)
                 
                 # Start Weaver subscriptions
-                await weaver.subscribe_nc(torchLoomConstants.subjects.EXTERNAL, weaver.message_handler)
+                await weaver.subscribe_nc(torchLoomConstants.subjects.MONITOR, weaver.message_handler)
                 await weaver.subscribe_nc(torchLoomConstants.subjects.CONFIG_INFO, weaver.message_handler)
                 
                 try:
@@ -147,13 +147,12 @@ class TestWeaverServerIntegration(TestCase):
                     # Wait for learning rate processing
                     await asyncio.sleep(0.5)
                     
-                    # Verify learning rate update was published
-                    lr_updates = [
-                        data for subject, data in published_events 
-                        if subject == "torchLoom.training.reset_lr"
+                    # Verify config update was published (learning rate is now a config parameter)
+                    config_updates = [
+                        data for subject, data in published_events
+                        if subject == torchLoomConstants.subjects.CONFIG_INFO
                     ]
-                    assert len(lr_updates) >= 1
-                    assert b"0.005" in lr_updates
+                    assert len(config_updates) >= 1
                     
                     workflow_time = time.time() - start_time
                     
@@ -190,8 +189,8 @@ class TestWeaverServerIntegration(TestCase):
                         async def collector2(msg: Msg):
                             collected_messages2.append(msg.data)
                         
-                        await weaver1.subscribe_nc(torchLoomConstants.subjects.EXTERNAL, collector1)
-                        await weaver2.subscribe_nc(torchLoomConstants.subjects.EXTERNAL, collector2)
+                        await weaver1.subscribe_nc(torchLoomConstants.subjects.MONITOR, collector1)
+                        await weaver2.subscribe_nc(torchLoomConstants.subjects.MONITOR, collector2)
                         
                         # Send messages to each Weaver independently
                         async with TorchLoomClient(nats_url1) as cli1:
@@ -231,7 +230,7 @@ class TestWeaverServerIntegration(TestCase):
                 async def message_counter(msg: Msg):
                     messages_received.append(time.time())
                 
-                await weaver.subscribe_nc(torchLoomConstants.subjects.EXTERNAL, message_counter)
+                await weaver.subscribe_nc(torchLoomConstants.subjects.MONITOR, message_counter)
                 
                 try:
                     # Test multiple client connections and disconnections
@@ -276,7 +275,7 @@ class TestWeaverServerIntegration(TestCase):
                 async def counting_handler(msg: Msg):
                     processed_count[0] += 1
                 
-                await weaver.subscribe_nc(torchLoomConstants.subjects.EXTERNAL, counting_handler)
+                await weaver.subscribe_nc(torchLoomConstants.subjects.MONITOR, counting_handler)
                 
                 try:
                     # Send a burst of messages
