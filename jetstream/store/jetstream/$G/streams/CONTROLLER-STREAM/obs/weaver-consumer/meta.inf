@@ -1,1 +1,0 @@
-{"Created":"2025-05-22T14:48:02.925413Z","Name":"weaver-consumer","durable_name":"weaver-consumer","name":"weaver-consumer","deliver_policy":"all","ack_policy":"explicit","ack_wait":30000000000,"max_deliver":-1,"filter_subject":"torchLoom.DRentry","replay_policy":"instant","max_waiting":512,"max_ack_pending":1000,"num_replicas":0,"metadata":{"_nats.req.level":"0"}}

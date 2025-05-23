@@ -25,9 +25,61 @@
 * After you implement any change, always run the tests to ensure that you didn't break anything.
 * If the feature you implement is not covered by the tests, add tests to cover it.
 
-## Continuous Learning
+## General Coding Approach
 
-* Continuously add to AGENTS.md as you learn more about the codebase and its best practices.
+* Look at onboarding.md for more information about the codebase. Add and edit and clean up onboarding.md after you have completed a task.
+* When you finished implementing the feature according to my request, continue to [TODO.md](TODO.md) to see if there are any other tasks that you can do until you reach the task limit
 
 <Environment Specific Instructions>
-- Run tests through pytest
+
+## Testing
+- Start the weaver: `python -m torchLoom.weaver.core`
+- Make sure that the nats server and the VITE server are running (they most likely are). If they are not, run the following: 
+```sh
+cd torchLoom-ui
+npm run dev -y
+```
+
+and 
+
+```sh
+./nats/nats-server -c nats/nats.conf -D               
+```
+
+## Linters
+- Run linters after changes, by doing 
+```sh
+lintrunner init
+lintrunner -a
+```
+
+You may get the following error:
+
+```sh
+  Advice (pyre) command-failed
+    Failed due to JSONDecodeError:
+    Expecting value: line 1 column 1 (char 0)
+```
+
+but ignore this.
+
+## Protobuf
+Recompile the protobuf using:
+
+```sh
+python -m grpc_tools.protoc \
+  --proto_path=$(pwd)/torchLoom/proto \
+  --python_out=$(pwd)/torchLoom/proto \
+  $(pwd)/torchLoom/proto/torchLoom.proto
+```
+
+## Linter Errors
+You will see linter errors for things releated to Protobuf. Don't panick. It is not an issue. 
+
+## UI
+- To run the UI:
+```sh
+cd torchLoom-ui
+npm install
+npm run dev -y
+```

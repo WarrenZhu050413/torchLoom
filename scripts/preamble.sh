@@ -1,5 +1,7 @@
-# conda activate torchtitan
-protoc --python_out=. ./torchLoom/torchLoom.proto
+python -m grpc_tools.protoc \
+  --proto_path=$(pwd)/torchLoom/proto \
+  --python_out=$(pwd)/torchLoom/proto \
+  $(pwd)/torchLoom/proto/torchLoom.proto
 
 kill_processes() {
     # Kill processes matching given pattern

@@ -1,0 +1,103 @@
+syntax = "proto3";
+
+message RegisterDevice       { string device_uuid = 1; string replica_id = 2; }
+message DrainEvent           { string device_uuid = 1; }
+message ReplicaFailEvent     { string  replica_id = 1; }
+message MonitoredFailEvent   { string  device_uuid = 1; }
+message ChangeConfigEvent    { map<string, string> config_params = 1; }
+
+// Heartbeat message for weavelet -> weaver
+message Heartbeat {
+  string replica_id = 1;
+  string device_uuid = 2;
+  int64 timestamp = 3;               // Unix timestamp when heartbeat was sent
+  string status = 4;                 // "active", "training", "idle"
+  map<string, string> metadata = 5;  // Optional metadata (step, epoch, etc.)
+}
+
+// Training Process -> Weaver messages
+message TrainingStatus {
+  string replica_id = 1;
+  string status_type = 2;         // "training_start", "epoch_start", "batch_update", "epoch_complete", "training_complete"
+  int64 current_step = 3;
+  int64 epoch = 4;
+  float step_progress = 5;        // 0-100% within current step
+  float epoch_progress = 6;       // 0-100% within current epoch
+  string status = 7;              // "starting", "training", "completed", "paused"
+  map<string, string> metrics = 8; // loss, accuracy, learning_rate, etc.
+  float training_time = 9;        // Total training time in seconds
+  int64 batch_idx = 10;
+}
+
+message deviceStatus {
+  string device_id = 1;
+  string replica_id = 2;
+  string server_id = 3;
+  string status = 4;              // "active", "offline", "failed"
+  float utilization = 5;          // 0-100%
+  float temperature = 6;          // Celsius
+  float memory_used = 7;          // GB
+  float memory_total = 8;         // GB
+  map<string, string> config = 9; // Training config (lr, batch_size, optimizer, etc.)
+}
+
+// UI -> Weaver messages
+message UICommand {
+  string command_type = 1;  // "deactivate_device", "reactivate_group", "update_config", "pause_training", "resume_training"
+  string target_id = 2;     // device_id or replica_group_id
+  map<string, string> params = 3;
+}
+
+// Weaver -> Training Process messages
+message WeaverCommand {
+  string command_type = 1;  // "update_config", "pause", "resume", "stop"
+  string target_replica_id = 2;
+  map<string, string> params = 3;
+}
+
+// System topology information
+message SystemTopology {
+  string server_id = 1;
+  repeated string device_ids = 2;
+  string replica_group_id = 3;
+}
+
+// Weaver -> UI messages
+message UIStatusUpdate {
+  repeated deviceStatus devices = 2;
+  repeated TrainingStatus training_status = 3;
+  repeated SystemTopology topology = 5;
+  string communication_status = 6; // "stable", "rebuilding"
+  int64 timestamp = 7;
+}
+
+message EventEnvelope {
+  uint64  seq      = 1;
+  uint64  ts_nanos = 2;
+  oneof body {
+    RegisterDevice       register_device   = 9;
+    DrainEvent           drain             = 10;
+    ReplicaFailEvent     replica_fail      = 11;
+    MonitoredFailEvent   monitored_fail    = 12;
+    ChangeConfigEvent    config_info       = 15;
+    
+    // Heartbeat
+    Heartbeat           heartbeat          = 16;
+    
+    // Training Process -> Weaver
+    TrainingStatus       training_status   = 17;
+    deviceStatus           device_status         = 18;
+    
+    // UI <-> Weaver
+    UICommand           ui_command         = 21;
+    UIStatusUpdate      ui_status_update   = 22;
+    
+    // Weaver -> Training Process
+    WeaverCommand       weaver_command     = 23;
+  }
+}
+
+message DeviceReplicaMapEntry {
+  string device_uuid = 1;
+  int32  replica_id   = 2;
+}

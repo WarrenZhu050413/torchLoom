@@ -8,7 +8,7 @@ It is inspired by [torchFT](https://github.com/pytorch/torchft), an experimental
 
 Unlike traditional orchestration frameworks that focus on deployment and scheduling, torchLoom provides run-time monitoring and control of the training process itself. It enables:
 
-- **Real-time failure detection** and recovery for GPUs and training replicas
+- **Real-time failure detection** and recovery for devices and training replicas
 - **Dynamic configuration adjustment** without stopping training
 - **Resource mapping** between hardware devices and training replicas
 
@@ -28,13 +28,18 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
-If you are in a Mac system, you can directly run the following command to set up the environment:
+If you are in a Mac system, see setup_mac for detailed setup instructions: 
 
 ```sh
-conda env create -f environment.yaml
+chmod +x setup_mac.sh
+./setup_mac.sh
+```
 
-brew install nats-io/nats-tools/nats-tools
-./setup.sh
+If you are in a linux based system, see setup_linux (this assumes that Go is already installed, as it is needed for NATS server):
+
+```sh
+chmod +x setup_linux.sh
+./setup_linux.sh
 ```
 
 ## Quick Start
@@ -53,7 +58,7 @@ conda activate nats-torch27
 
 2. Start the weaver
 ```sh
-python -m torchLoom.weaver
+python -m torchLoom.weaver.core
 ```
 
 3. Start the cli
@@ -65,25 +70,7 @@ python -m torchLoom.monitor_cli
 4. Start the training script
 
 ```sh
-python examples/pytorch/mnist.py
+python examples/pytorch/train_integrated.py --replica-id hi
 ```
 
 Then, you can go to [tutorial.md](tutorial.md) for detailed testing scenarios and instructions to see what torchLoom is capable of.
-
-## Documentation
-
-- [Design](design.md): System architecture and concepts
-- [Tutorial](tutorial.md): Testing procedures and example workflows
-- [Debugging](debugging.md): Troubleshooting guide for common issues
-- [TODO](todo.md): Upcoming features and development roadmap
-
-## Environment setup
-
-- Do `conda env create -n torchLoom -f environment.yaml`
-
-Also need to download protobuf compiler and library
-
-On Debian-based machines, run
-```bash
-sudo apt install protobuf-compiler libprotobuf-dev
-```
