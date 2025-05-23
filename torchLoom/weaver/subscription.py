@@ -33,18 +33,22 @@ class StreamManager:
 
     async def maybe_create_stream(self, stream: str, subjects: List[str]) -> None:
         """Create a stream if it doesn't exist."""
+        logger.info(f"maybe_create_stream called for stream '{stream}' with subjects: {subjects}")
+        
         # Skip if we already created this stream
         if stream in self._created_streams:
             logger.debug(f"Stream {stream} already created, skipping...")
             return
             
         try:
+            logger.info(f"Attempting to create stream '{stream}' with subjects: {subjects}")
             await self._js.add_stream(name=stream, subjects=subjects)
             logger.info(f"Created stream: {stream}")
             self._created_streams.add(stream)
         except Exception as e:
             # Handle various stream existence scenarios
             error_msg = str(e).lower()
+            logger.warning(f"Error creating stream {stream}: {e}")
             if ("already exists" in error_msg or 
                 "already in use" in error_msg or
                 "err_code=10058" in error_msg):
@@ -76,13 +80,13 @@ class SubscriptionManager:
         consumer: str,
         message_handler: Callable[[Msg], Awaitable[None]],
     ) -> None:
-        """Subscribe to a JetStream subject."""
+        """Subscribe to a JetStream subject (assumes stream already exists)."""
         self._validate_js_connection()
 
-        await self._stream_manager.maybe_create_stream(stream, [subject])
-
+        # Don't create streams here - the main weaver should handle stream creation
+        # with the proper subject configuration to avoid conflicts
         logger.info(
-            f"Subscribing to {subject} on stream {stream} with consumer {consumer}"
+            f"Subscribing to {subject} on existing stream {stream} with consumer {consumer}"
         )
 
         psub = await self._js.pull_subscribe(subject, durable=consumer, stream=stream)

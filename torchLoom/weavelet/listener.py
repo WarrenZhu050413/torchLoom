@@ -19,9 +19,9 @@ from nats.js.api import RetentionPolicy, StorageType, StreamConfig
 from nats.js.client import JetStreamContext
 
 import nats
-from torchLoom.common import TrainingStatus, GPUStatus
+from torchLoom.common import GPUStatus, TrainingStatus
 from torchLoom.common.config import Config
-from torchLoom.common.constants import torchLoomConstants
+from torchLoom.common.constants import WeaverStream, torchLoomConstants
 from torchLoom.common.utils import cancel_subscriptions, get_device_uuid
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope, RegisterDevice
@@ -127,22 +127,18 @@ class WeaveletListener:
             if not self._js:
                 raise RuntimeError("JetStream not initialized")
 
-            # Subscribe to config updates
-            await self._js.add_stream(
-                StreamConfig(
-                    name="WEAVELET_STREAM",
-                    subjects=[torchLoomConstants.subjects.CONFIG_INFO],
-                )
-            )
+            # The weaver should have already created the WEAVELET_STREAM with all necessary subjects
+            # Just subscribe to existing stream without trying to create or modify it
+            self._logger.info(f"Setting up subscriptions to existing stream {WeaverStream.STREAM}")
 
             await self._subscribe_js(
-                stream="WEAVELET_STREAM",
+                stream=WeaverStream.STREAM,
                 subject=torchLoomConstants.subjects.CONFIG_INFO,
                 consumer=f"weavelet-{self._replica_id}",
                 message_handler=self._handle_config_message,
             )
 
-            # Subscribe to replica fail events
+            # Subscribe to replica fail events (regular NATS, not JetStream)
             await self._subscribe_nc(
                 subject=torchLoomConstants.subjects.REPLICA_FAIL,
                 message_handler=self._handle_replica_fail_message,
@@ -150,7 +146,7 @@ class WeaveletListener:
 
             # Subscribe to WEAVER_COMMANDS
             await self._subscribe_js(
-                stream="WEAVELET_STREAM",
+                stream=WeaverStream.STREAM,
                 subject=torchLoomConstants.subjects.WEAVER_COMMANDS,
                 consumer=f"weavelet-{self._replica_id}",
                 message_handler=self._handle_weaver_command,
@@ -298,43 +294,16 @@ class WeaveletListener:
         consumer: str,
         message_handler: Callable[[Msg], Awaitable[None]],
     ) -> None:
-        """Subscribe to JetStream subject with proper stream configuration."""
+        """Subscribe to JetStream subject (assumes stream already exists)."""
         try:
-            # Ensure stream exists with proper configuration
-            try:
-                stream_config = StreamConfig(
-                    name=stream,
-                    subjects=[subject, f"{subject}.*"],  # Allow subject patterns
-                    retention=RetentionPolicy.LIMITS,  # Retain based on limits
-                    max_msgs=10000,  # Maximum number of messages to retain
-                    max_bytes=10 * 1024 * 1024,  # 10MB max stream size
-                    max_age=3600,  # 1 hour message retention
-                    storage=StorageType.FILE,  # Use file storage for persistence
-                    num_replicas=1,  # Single replica for simplicity
-                )
-
-                # Create or update the stream
-                try:
-                    if not self._js:
-                        raise RuntimeError("JetStream not initialized")
-                    await self._js.add_stream(stream_config)
-                    self._logger.info(f"Created/updated JetStream {stream}")
-                except Exception as e:
-                    # Stream might already exist with different config
-                    self._logger.info(
-                        f"Stream {stream} already exists or update failed: {e}"
-                    )
-
-            except Exception as e:
-                self._logger.warning(f"Could not configure stream {stream}: {e}")
-                # Continue with subscription attempt even if stream config failed
-
-            # Subscribe to the stream
+            # Subscribe to the existing stream (weaver should have created it)
             if not self._js:
                 raise RuntimeError("JetStream not initialized")
+            
             psub = await self._js.pull_subscribe(
                 subject, durable=consumer, stream=stream
             )
+            self._logger.info(f"Subscribed to {subject} on existing stream {stream} with consumer {consumer}")
 
             async def listen_to_js_subscription():
                 self._logger.info(f"Started listening on JetStream {subject}")

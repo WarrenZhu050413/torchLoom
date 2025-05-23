@@ -76,7 +76,7 @@ class IntegratedTrainer:
         self.learning_rate = args.lr
         self.batch_size = args.batch_size
         self.training_enabled = True
-        self.verbose = False
+        self.verbose = getattr(args, 'verbose', False)  # Initialize from args
 
         # Training tracking
         self.start_time = time.time()
@@ -118,10 +118,8 @@ class IntegratedTrainer:
                 device = torch.device("mps")
             else:
                 device = torch.device("cpu")
-            print(f"Using accelerator: {device}")
         else:
             device = torch.device("cpu")
-            print("Using CPU")
 
         return device
 
@@ -165,11 +163,8 @@ class IntegratedTrainer:
         self.model.train()
 
         # Handle dataset length safely
-        if hasattr(self.train_loader.dataset, "__len__"):
-            total_samples = self.train_loader.dataset.__len__()
-        else:
-            total_samples = self.args.train_samples  # Use argument as fallback
-
+        # Use the known size from the dataset since RandomDataset implements __len__
+        total_samples = self.args.train_samples
         # Publish epoch start status
         epoch_start_status = create_epoch_start_status(
             replica_id=self.replica_id,
@@ -177,17 +172,15 @@ class IntegratedTrainer:
             total_batches=len(self.train_loader),
         )
         self.publish_status(epoch_start_status)
-
         for batch_idx, (data, target) in enumerate(self.train_loader):
+            time.sleep(0.01)
             # Check for configuration updates
             self.weavelet.check_and_apply_updates()
-
             # Skip training if disabled
             if not self.training_enabled:
                 print("⏸️ Training paused - skipping batch")
                 time.sleep(0.1)
                 continue
-
             data, target = data.to(self.device), target.to(self.device)
             self.optimizer.zero_grad()
             output = self.model(data)
@@ -222,7 +215,6 @@ class IntegratedTrainer:
                     learning_rate=self.optimizer.param_groups[0]["lr"],
                     step_progress=progress_percent,
                 )
-
                 # Add comprehensive training metrics
                 training_status.training_time = time.time() - self.start_time
                 training_status.epoch_progress = progress_percent
@@ -265,35 +257,40 @@ class IntegratedTrainer:
                     }
                 )
                 self.publish_status(training_status)
+                print(f"F6: batchidx {batch_idx}")
 
-                # Enhanced GPU status with more realistic simulation
-                gpu_status = simulate_gpu_status(
-                    replica_id=self.replica_id, batch_idx=batch_idx
-                )
-                # Add comprehensive training configuration to GPU status
-                gpu_status.config.update(
-                    {
-                        "batch_size": str(self.batch_size),
-                        "learning_rate": str(self.learning_rate),
-                        "optimizer_type": "Adadelta",
-                        "epoch": str(epoch),
-                        "current_step": str(self.global_step),
-                        "training_enabled": str(self.training_enabled),
-                        "device_type": str(self.device),
-                        "model_name": "CNN",
-                        "dataset_name": "RandomDataset",
-                    }
-                )
-                self.publish_status(gpu_status)
+                # Only publish GPU status every 5th batch to reduce message frequency
+                if batch_idx % 5 == 0:
+                    # Enhanced GPU status with more realistic simulation
+                    gpu_status = simulate_gpu_status(
+                        replica_id=self.replica_id, batch_idx=batch_idx
+                    )
+                    # Add comprehensive training configuration to GPU status
+                    gpu_status.config.update(
+                        {
+                            "batch_size": str(self.batch_size),
+                            "learning_rate": str(self.learning_rate),
+                            "optimizer_type": "Adadelta",
+                            "epoch": str(epoch),
+                            "current_step": str(self.global_step),
+                            "training_enabled": str(self.training_enabled),
+                            "device_type": str(self.device),
+                            "model_name": "CNN",
+                            "dataset_name": "RandomDataset",
+                        }
+                    )
+                    self.publish_status(gpu_status)
 
                 if self.args.dry_run:
                     break
 
+        print("F7")
         # Publish epoch completion status
         epoch_complete_status = create_epoch_complete_status(
             replica_id=self.replica_id, epoch=epoch
         )
         self.publish_status(epoch_complete_status)
+        print("F8")
 
     def test_model(self):
         """Test the model and publish results."""
@@ -301,8 +298,9 @@ class IntegratedTrainer:
         test_loss = 0
         correct = 0
 
-        # Handle dataset length safely - fix linter error
-        total_samples = self.args.test_samples  # Use argument as reliable fallback
+        # Handle dataset length safely
+        # Use the known size from the dataset since RandomDataset implements __len__
+        total_samples = self.args.test_samples
 
         with torch.no_grad():
             for data, target in self.test_loader:
@@ -350,8 +348,21 @@ class IntegratedTrainer:
             else:
                 status_dict = status
 
-            # Use the renamed method
-            self.weavelet.publish_status(status_dict)
+            # # Check if weavelet is available and not stopping
+            if hasattr(self.weavelet, '_status_sender') and self.weavelet._status_sender:
+                # Use non-blocking send to prevent hanging
+                if hasattr(self.weavelet._status_sender, 'poll'):
+                    # Check if pipe is ready for writing (not full)
+                    if self.weavelet._status_sender.poll(0):
+                        # Pipe might be ready for reading, but we want to write
+                        # Fall back to normal send with error handling
+                        pass
+                    
+                # Try to publish with error handling
+                self.weavelet.publish_status(status_dict)
+            else:
+                if self.verbose:
+                    print("Warning: Weavelet not available for status publishing")
 
         except Exception as e:
             print(f"Warning: Failed to publish status: {e}")

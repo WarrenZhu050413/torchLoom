@@ -374,6 +374,18 @@ async def main():
         async with asyncio.TaskGroup() as tg:
 
             # NATS subscriptions (distributed communication)
+            # First, create the WEAVELET_STREAM with ALL subjects that will be used
+            # by both the weaver and weavelet listeners to avoid stream conflicts
+            if weaver._subscription_manager:
+                await weaver._subscription_manager._stream_manager.maybe_create_stream(
+                    torchLoomConstants.weaver_stream.STREAM,
+                    [
+                        torchLoomConstants.weaver_stream.subjects.DR_SUBJECT,        # Device registration (weaver)
+                        torchLoomConstants.subjects.CONFIG_INFO,                     # Config updates (weavelet)
+                        torchLoomConstants.subjects.WEAVER_COMMANDS,                 # Weaver commands (weavelet)
+                    ]
+                )
+            
             tg.create_task(
                 weaver.subscribe_js(
                     torchLoomConstants.weaver_stream.STREAM,

@@ -41,6 +41,8 @@ class torchLoomSubjects:
 class WeaverSubjects:
     DR_SUBJECT: str = torchLoomSubjects.DR_SUBJECT
     UI_COMMANDS: str = torchLoomSubjects.UI_COMMANDS
+    CONFIG_INFO: str = torchLoomSubjects.CONFIG_INFO
+    WEAVER_COMMANDS: str = torchLoomSubjects.WEAVER_COMMANDS
 
 
 class StreamSpec:
@@ -50,7 +52,7 @@ class StreamSpec:
 
 
 class WeaverStream(StreamSpec):
-    STREAM: str = "CONTROLLER-STREAM"
+    STREAM: str = "WEAVELET_STREAM"
     CONSUMER: str = "weaver-consumer"
     subjects = WeaverSubjects()
 
@@ -61,7 +63,7 @@ class MonitorSubjects:
 
 
 class MonitorStream(StreamSpec):
-    STREAM: str = "MONITOR-STREAM"
+    STREAM: str = "CONTROLLER_STREAM"
     CONSUMER: str = "monitor-consumer"
     subjects = MonitorSubjects()
 
@@ -73,7 +75,7 @@ class UISubjects:
 
 
 class UIStream(StreamSpec):
-    STREAM: str = "UI-STREAM"
+    STREAM: str = "UI_STREAM"
     CONSUMER: str = "ui-consumer"
     subjects = UISubjects()
 

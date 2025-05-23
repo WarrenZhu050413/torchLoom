@@ -308,7 +308,8 @@ class UICommandHandler(MessageHandler):
                 for key, value in params.items():
                     weaver_command.params[key] = str(value)
 
-            await self.nats_client.publish(
+            js = self.nats_client.jetstream()
+            await js.publish(
                 torchLoomConstants.subjects.WEAVER_COMMANDS,
                 envelope.SerializeToString(),
             )
