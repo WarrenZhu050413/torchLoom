@@ -6,6 +6,46 @@ message ReplicaFailEvent     { string  replica_id = 1; }
 message MonitoredFailEvent   { string  device_uuid = 1; }
 message ChangeConfigEvent    { map<string, string> config_params = 1; }
 
+// New messages for UI integration
+message GPUStatus {
+  string gpu_id = 1;
+  string replica_id = 2;
+  string server_id = 3;
+  string status = 4;              // "active", "offline", "failed"
+  float utilization = 5;          // 0-100%
+  float temperature = 6;          // Celsius
+  map<string, string> config = 7; // Training config (lr, batch_size, optimizer, etc.)
+}
+
+message TrainingProgress {
+  string replica_id = 1;
+  int64 current_step = 2;
+  float step_progress = 3;  // 0-100% within current step
+  string status = 4;        // "training", "paused", "offline", "deactivating", "activating"
+  int64 last_active_step = 5;
+  int64 fixed_step = 6;     // For offline replicas
+}
+
+message SystemTopology {
+  string server_id = 1;
+  repeated string gpu_ids = 2;
+  string replica_group_id = 3;
+}
+
+message UICommand {
+  string command_type = 1;  // "deactivate_gpu", "reactivate_group", "update_config"
+  string target_id = 2;     // gpu_id or replica_group_id
+  map<string, string> params = 3;
+}
+
+message UIStatusUpdate {
+  int64 global_step = 1;
+  repeated GPUStatus gpus = 2;
+  repeated TrainingProgress training_progress = 3;
+  repeated SystemTopology topology = 4;
+  string communication_status = 5; // "stable", "rebuilding"
+}
+
 message EventEnvelope {
   uint64  seq      = 1;
   uint64  ts_nanos = 2;
@@ -15,6 +55,11 @@ message EventEnvelope {
     ReplicaFailEvent     replica_fail      = 11;
     MonitoredFailEvent   monitored_fail    = 12;
     ChangeConfigEvent    config_info       = 15;
+    GPUStatus           gpu_status         = 16;
+    TrainingProgress    training_progress  = 17;
+    SystemTopology      system_topology    = 18;
+    UICommand           ui_command         = 19;
+    UIStatusUpdate      ui_status_update   = 20;
   }
 }
 

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>torchLoom UI Connection Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .info { background-color: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+        pre { background-color: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>torchLoom UI Connection Test</h1>
+    
+    <div id="connection-status" class="status info">Testing connection...</div>
+    
+    <h3>Connection Details:</h3>
+    <ul>
+        <li>WebSocket URL: ws://localhost:8080/ws</li>
+        <li>API URL: http://localhost:8080/api</li>
+        <li>Expected Message Format: {"type": "status_update", "data": {...}}</li>
+    </ul>
+    
+    <h3>Live Messages:</h3>
+    <div id="messages"></div>
+    
+    <h3>Current Status:</h3>
+    <pre id="current-status">Waiting for data...</pre>
+    
+    <script>
+        const statusDiv = document.getElementById('connection-status');
+        const messagesDiv = document.getElementById('messages');
+        const currentStatusDiv = document.getElementById('current-status');
+        let messageCount = 0;
+        
+        function logMessage(message, type = 'info') {
+            messageCount++;
+            const timestamp = new Date().toLocaleTimeString();
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `status ${type}`;
+            messageDiv.innerHTML = `${timestamp}: ${message}`;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        // Test REST API first
+        fetch('http://localhost:8080/api/health')
+            .then(response => response.json())
+            .then(data => {
+                logMessage(`REST API working: ${data.status}, ${data.gpus} GPUs, ${data.replicas} replicas`, 'success');
+            })
+            .catch(error => {
+                logMessage(`REST API failed: ${error.message}`, 'error');
+            });
+        
+        // Test WebSocket connection
+        const ws = new WebSocket('ws://localhost:8080/ws');
+        
+        ws.onopen = function() {
+            statusDiv.className = 'status success';
+            statusDiv.textContent = 'WebSocket connected successfully!';
+            logMessage('WebSocket connection established', 'success');
+        };
+        
+        ws.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                logMessage(`Received message: ${data.type || 'unknown type'}`, 'success');
+                
+                if (data.type === 'status_update' && data.data) {
+                    currentStatusDiv.textContent = JSON.stringify(data.data, null, 2);
+                    logMessage(`Status update: step ${data.data.step}, ${Object.keys(data.data.replicaGroups || {}).length} replica groups`, 'info');
+                } else {
+                    currentStatusDiv.textContent = JSON.stringify(data, null, 2);
+                }
+            } catch (error) {
+                logMessage(`Error parsing message: ${error.message}`, 'error');
+            }
+        };
+        
+        ws.onerror = function(error) {
+            statusDiv.className = 'status error';
+            statusDiv.textContent = 'WebSocket connection failed';
+            logMessage(`WebSocket error: ${error}`, 'error');
+        };
+        
+        ws.onclose = function() {
+            statusDiv.className = 'status error';
+            statusDiv.textContent = 'WebSocket connection closed';
+            logMessage('WebSocket connection closed', 'error');
+        };
+        
+        // Send ping every 10 seconds
+        setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({type: 'ping'}));
+                logMessage('Sent ping to server', 'info');
+            }
+        }, 10000);
+    </script>
+</body>
+</html> 

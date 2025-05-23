@@ -28,6 +28,7 @@ class RandomTextDataset(Dataset):
     def __getitem__(self, idx):
         return self.inputs[idx], self.targets[idx]
 
+
 class LightningTransformer(L.LightningModule):
     """Original Lightning implementation with enhanced decorator-based handlers."""
 

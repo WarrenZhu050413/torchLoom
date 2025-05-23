@@ -4,3 +4,7 @@ pip install -r codex.txt
 go install github.com/nats-io/natscli/nats@latest
 curl -sf https://binaries.nats.dev/nats-io/nats-server/v2@v2.10.20 | sh
 mv nats-server ./nats/
+
+cd torchLoom-ui
+npm install
+npm run dev

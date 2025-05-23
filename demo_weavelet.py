@@ -83,10 +83,16 @@ class DemoTrainer(EnhancedWeaveletLightningModule):
         self.learning_rate = new_lr
 
         # Update optimizer learning rate
-        if hasattr(self, "optimizers") and self.optimizers:
-            for optimizer in self.optimizers():
-                for param_group in optimizer.param_groups:
-                    param_group["lr"] = new_lr
+        if hasattr(self, "trainer") and self.trainer is not None:
+            optimizers = self.trainer.optimizers
+            if optimizers:
+                # Handle both single optimizer and list of optimizers
+                if not isinstance(optimizers, list):
+                    optimizers = [optimizers]
+
+                for optimizer in optimizers:
+                    for param_group in optimizer.param_groups:
+                        param_group["lr"] = new_lr
 
     @weavelet_handler("batch_size")
     def update_batch_size(self, new_size: int):

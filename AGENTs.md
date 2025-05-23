@@ -58,6 +58,13 @@ python -m grpc_tools.protoc \
   $(pwd)/torchLoom/proto/torchLoom.proto
 ```
 
+- To run the UI:
+```sh
+cd torchLoom-ui
+npm install
+npm run dev -y
+```
+
 <Design Philosophy>
 
 # torchLoom Weavelet Design Philosophy

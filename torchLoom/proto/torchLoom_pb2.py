@@ -4,49 +4,65 @@
 # source: torchLoom.proto
 # Protobuf Python Version: 5.29.0
 """Generated protocol buffer code."""
-from google.protobuf import descriptor as _descriptor
-from google.protobuf import descriptor_pool as _descriptor_pool
-from google.protobuf import runtime_version as _runtime_version
-from google.protobuf import symbol_database as _symbol_database
+from google.protobuf import (
+    descriptor as _descriptor,
+    descriptor_pool as _descriptor_pool,
+    runtime_version as _runtime_version,
+    symbol_database as _symbol_database,
+)
 from google.protobuf.internal import builder as _builder
+
 _runtime_version.ValidateProtobufRuntimeVersion(
-    _runtime_version.Domain.PUBLIC,
-    5,
-    29,
-    0,
-    '',
-    'torchLoom.proto'
+    _runtime_version.Domain.PUBLIC, 5, 29, 0, "", "torchLoom.proto"
 )
 # @@protoc_insertion_point(imports)
 
 _sym_db = _symbol_database.Default()
 
 
-
-
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0ftorchLoom.proto\"9\n\x0eRegisterDevice\x12\x13\n\x0b\x64\x65vice_uuid\x18\x01 \x01(\t\x12\x12\n\nreplica_id\x18\x02 \x01(\t\"!\n\nDrainEvent\x12\x13\n\x0b\x64\x65vice_uuid\x18\x01 \x01(\t\"&\n\x10ReplicaFailEvent\x12\x12\n\nreplica_id\x18\x01 \x01(\t\")\n\x12MonitoredFailEvent\x12\x13\n\x0b\x64\x65vice_uuid\x18\x01 \x01(\t\"\x85\x01\n\x11\x43hangeConfigEvent\x12;\n\rconfig_params\x18\x01 \x03(\x0b\x32$.ChangeConfigEvent.ConfigParamsEntry\x1a\x33\n\x11\x43onfigParamsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x85\x02\n\rEventEnvelope\x12\x0b\n\x03seq\x18\x01 \x01(\x04\x12\x10\n\x08ts_nanos\x18\x02 \x01(\x04\x12*\n\x0fregister_device\x18\t \x01(\x0b\x32\x0f.RegisterDeviceH\x00\x12\x1c\n\x05\x64rain\x18\n \x01(\x0b\x32\x0b.DrainEventH\x00\x12)\n\x0creplica_fail\x18\x0b \x01(\x0b\x32\x11.ReplicaFailEventH\x00\x12-\n\x0emonitored_fail\x18\x0c \x01(\x0b\x32\x13.MonitoredFailEventH\x00\x12)\n\x0b\x63onfig_info\x18\x0f \x01(\x0b\x32\x12.ChangeConfigEventH\x00\x42\x06\n\x04\x62ody\"@\n\x15\x44\x65viceReplicaMapEntry\x12\x13\n\x0b\x64\x65vice_uuid\x18\x01 \x01(\t\x12\x12\n\nreplica_id\x18\x02 \x01(\x05\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
+    b'\n\x0ftorchLoom.proto"9\n\x0eRegisterDevice\x12\x13\n\x0b\x64\x65vice_uuid\x18\x01 \x01(\t\x12\x12\n\nreplica_id\x18\x02 \x01(\t"!\n\nDrainEvent\x12\x13\n\x0b\x64\x65vice_uuid\x18\x01 \x01(\t"&\n\x10ReplicaFailEvent\x12\x12\n\nreplica_id\x18\x01 \x01(\t")\n\x12MonitoredFailEvent\x12\x13\n\x0b\x64\x65vice_uuid\x18\x01 \x01(\t"\x85\x01\n\x11\x43hangeConfigEvent\x12;\n\rconfig_params\x18\x01 \x03(\x0b\x32$.ChangeConfigEvent.ConfigParamsEntry\x1a\x33\n\x11\x43onfigParamsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01"\xd3\x01\n\tGPUStatus\x12\x0e\n\x06gpu_id\x18\x01 \x01(\t\x12\x12\n\nreplica_id\x18\x02 \x01(\t\x12\x11\n\tserver_id\x18\x03 \x01(\t\x12\x0e\n\x06status\x18\x04 \x01(\t\x12\x13\n\x0butilization\x18\x05 \x01(\x02\x12\x13\n\x0btemperature\x18\x06 \x01(\x02\x12&\n\x06\x63onfig\x18\x07 \x03(\x0b\x32\x16.GPUStatus.ConfigEntry\x1a-\n\x0b\x43onfigEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01"\x91\x01\n\x10TrainingProgress\x12\x12\n\nreplica_id\x18\x01 \x01(\t\x12\x14\n\x0c\x63urrent_step\x18\x02 \x01(\x03\x12\x15\n\rstep_progress\x18\x03 \x01(\x02\x12\x0e\n\x06status\x18\x04 \x01(\t\x12\x18\n\x10last_active_step\x18\x05 \x01(\x03\x12\x12\n\nfixed_step\x18\x06 \x01(\x03"N\n\x0eSystemTopology\x12\x11\n\tserver_id\x18\x01 \x01(\t\x12\x0f\n\x07gpu_ids\x18\x02 \x03(\t\x12\x18\n\x10replica_group_id\x18\x03 \x01(\t"\x8b\x01\n\tUICommand\x12\x14\n\x0c\x63ommand_type\x18\x01 \x01(\t\x12\x11\n\ttarget_id\x18\x02 \x01(\t\x12&\n\x06params\x18\x03 \x03(\x0b\x32\x16.UICommand.ParamsEntry\x1a-\n\x0bParamsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01"\xae\x01\n\x0eUIStatusUpdate\x12\x13\n\x0bglobal_step\x18\x01 \x01(\x03\x12\x18\n\x04gpus\x18\x02 \x03(\x0b\x32\n.GPUStatus\x12,\n\x11training_progress\x18\x03 \x03(\x0b\x32\x11.TrainingProgress\x12!\n\x08topology\x18\x04 \x03(\x0b\x32\x0f.SystemTopology\x12\x1c\n\x14\x63ommunication_status\x18\x05 \x01(\t"\xd2\x03\n\rEventEnvelope\x12\x0b\n\x03seq\x18\x01 \x01(\x04\x12\x10\n\x08ts_nanos\x18\x02 \x01(\x04\x12*\n\x0fregister_device\x18\t \x01(\x0b\x32\x0f.RegisterDeviceH\x00\x12\x1c\n\x05\x64rain\x18\n \x01(\x0b\x32\x0b.DrainEventH\x00\x12)\n\x0creplica_fail\x18\x0b \x01(\x0b\x32\x11.ReplicaFailEventH\x00\x12-\n\x0emonitored_fail\x18\x0c \x01(\x0b\x32\x13.MonitoredFailEventH\x00\x12)\n\x0b\x63onfig_info\x18\x0f \x01(\x0b\x32\x12.ChangeConfigEventH\x00\x12 \n\ngpu_status\x18\x10 \x01(\x0b\x32\n.GPUStatusH\x00\x12.\n\x11training_progress\x18\x11 \x01(\x0b\x32\x11.TrainingProgressH\x00\x12*\n\x0fsystem_topology\x18\x12 \x01(\x0b\x32\x0f.SystemTopologyH\x00\x12 \n\nui_command\x18\x13 \x01(\x0b\x32\n.UICommandH\x00\x12+\n\x10ui_status_update\x18\x14 \x01(\x0b\x32\x0f.UIStatusUpdateH\x00\x42\x06\n\x04\x62ody"@\n\x15\x44\x65viceReplicaMapEntry\x12\x13\n\x0b\x64\x65vice_uuid\x18\x01 \x01(\t\x12\x12\n\nreplica_id\x18\x02 \x01(\x05\x62\x06proto3'
+)
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'torchLoom_pb2', _globals)
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, "torchLoom_pb2", _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
-  DESCRIPTOR._loaded_options = None
-  _globals['_CHANGECONFIGEVENT_CONFIGPARAMSENTRY']._loaded_options = None
-  _globals['_CHANGECONFIGEVENT_CONFIGPARAMSENTRY']._serialized_options = b'8\001'
-  _globals['_REGISTERDEVICE']._serialized_start=19
-  _globals['_REGISTERDEVICE']._serialized_end=76
-  _globals['_DRAINEVENT']._serialized_start=78
-  _globals['_DRAINEVENT']._serialized_end=111
-  _globals['_REPLICAFAILEVENT']._serialized_start=113
-  _globals['_REPLICAFAILEVENT']._serialized_end=151
-  _globals['_MONITOREDFAILEVENT']._serialized_start=153
-  _globals['_MONITOREDFAILEVENT']._serialized_end=194
-  _globals['_CHANGECONFIGEVENT']._serialized_start=197
-  _globals['_CHANGECONFIGEVENT']._serialized_end=330
-  _globals['_CHANGECONFIGEVENT_CONFIGPARAMSENTRY']._serialized_start=279
-  _globals['_CHANGECONFIGEVENT_CONFIGPARAMSENTRY']._serialized_end=330
-  _globals['_EVENTENVELOPE']._serialized_start=333
-  _globals['_EVENTENVELOPE']._serialized_end=594
-  _globals['_DEVICEREPLICAMAPENTRY']._serialized_start=596
-  _globals['_DEVICEREPLICAMAPENTRY']._serialized_end=660
+    DESCRIPTOR._loaded_options = None
+    _globals["_CHANGECONFIGEVENT_CONFIGPARAMSENTRY"]._loaded_options = None
+    _globals["_CHANGECONFIGEVENT_CONFIGPARAMSENTRY"]._serialized_options = b"8\001"
+    _globals["_GPUSTATUS_CONFIGENTRY"]._loaded_options = None
+    _globals["_GPUSTATUS_CONFIGENTRY"]._serialized_options = b"8\001"
+    _globals["_UICOMMAND_PARAMSENTRY"]._loaded_options = None
+    _globals["_UICOMMAND_PARAMSENTRY"]._serialized_options = b"8\001"
+    _globals["_REGISTERDEVICE"]._serialized_start = 19
+    _globals["_REGISTERDEVICE"]._serialized_end = 76
+    _globals["_DRAINEVENT"]._serialized_start = 78
+    _globals["_DRAINEVENT"]._serialized_end = 111
+    _globals["_REPLICAFAILEVENT"]._serialized_start = 113
+    _globals["_REPLICAFAILEVENT"]._serialized_end = 151
+    _globals["_MONITOREDFAILEVENT"]._serialized_start = 153
+    _globals["_MONITOREDFAILEVENT"]._serialized_end = 194
+    _globals["_CHANGECONFIGEVENT"]._serialized_start = 197
+    _globals["_CHANGECONFIGEVENT"]._serialized_end = 330
+    _globals["_CHANGECONFIGEVENT_CONFIGPARAMSENTRY"]._serialized_start = 279
+    _globals["_CHANGECONFIGEVENT_CONFIGPARAMSENTRY"]._serialized_end = 330
+    _globals["_GPUSTATUS"]._serialized_start = 333
+    _globals["_GPUSTATUS"]._serialized_end = 544
+    _globals["_GPUSTATUS_CONFIGENTRY"]._serialized_start = 499
+    _globals["_GPUSTATUS_CONFIGENTRY"]._serialized_end = 544
+    _globals["_TRAININGPROGRESS"]._serialized_start = 547
+    _globals["_TRAININGPROGRESS"]._serialized_end = 692
+    _globals["_SYSTEMTOPOLOGY"]._serialized_start = 694
+    _globals["_SYSTEMTOPOLOGY"]._serialized_end = 772
+    _globals["_UICOMMAND"]._serialized_start = 775
+    _globals["_UICOMMAND"]._serialized_end = 914
+    _globals["_UICOMMAND_PARAMSENTRY"]._serialized_start = 869
+    _globals["_UICOMMAND_PARAMSENTRY"]._serialized_end = 914
+    _globals["_UISTATUSUPDATE"]._serialized_start = 917
+    _globals["_UISTATUSUPDATE"]._serialized_end = 1091
+    _globals["_EVENTENVELOPE"]._serialized_start = 1094
+    _globals["_EVENTENVELOPE"]._serialized_end = 1560
+    _globals["_DEVICEREPLICAMAPENTRY"]._serialized_start = 1562
+    _globals["_DEVICEREPLICAMAPENTRY"]._serialized_end = 1626
 # @@protoc_insertion_point(module_scope)
