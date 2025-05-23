@@ -1,8 +1,9 @@
 import asyncio
+import inspect
 import multiprocessing
 import time
 import uuid
-from typing import Any, Awaitable, Callable, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional, Type, Union
 
 from nats.aio.client import Client
 from nats.aio.msg import Msg
@@ -18,12 +19,13 @@ from torchLoom.torchLoom_pb2 import EventEnvelope
 from torchLoom.utils import cancel_subscriptions, get_device_uuid
 
 
-class WeaveletProcess:
+class Weavelet:
     """Process-based Weavelet for torchLoom training processes.
 
     This class manages all communication between training processes and the weaver,
     including receiving configuration updates and sending training status updates.
-    It runs in a separate process using multiprocessing.Process.
+    It runs in a separate process using multiprocessing.Process and supports
+    decorator-based handler registration for automatic configuration management.
     """
 
     def __init__(
@@ -55,11 +57,148 @@ class WeaveletProcess:
         self._nc_timeout = Config.NC_TIMEOUT or 1
         self._exception_sleep = Config.EXCEPTION_RETRY_TIME or 1
 
+        # Enhanced handler system
+        self._handlers: Dict[str, Callable] = {}
+        self._handler_types: Dict[str, Type] = {}
+        self._auto_dispatch = True
+
+    def register_handler(
+        self, config_key: str, handler: Callable, expected_type: Optional[Type] = None
+    ) -> None:
+        """Register a handler for a specific configuration parameter.
+
+        Args:
+            config_key: The configuration parameter name (e.g., 'optimizer_type')
+            handler: Function to call when this parameter changes
+            expected_type: Expected type for the parameter value (inferred if not provided)
+        """
+        # Infer type from handler signature if not provided
+        if expected_type is None:
+            sig = inspect.signature(handler)
+            params = list(sig.parameters.values())
+            if len(params) >= 1:
+                param = params[0]  # First parameter (after self if it's a method)
+                if param.annotation != inspect.Parameter.empty:
+                    expected_type = param.annotation
+                else:
+                    expected_type = str  # Default to string
+
+        self._handlers[config_key] = handler
+        self._handler_types[config_key] = expected_type or str
+        print(f"Registered handler for '{config_key}' with type {expected_type}")
+
+    def handler(self, config_key: str, expected_type: Optional[Type] = None):
+        """Decorator for registering configuration handlers.
+
+        Args:
+            config_key: The configuration parameter name
+            expected_type: Expected type for the parameter value
+
+        Usage:
+            @weavelet.handler("optimizer_type")
+            def update_optimizer(self, new_type: str):
+                # Implementation here
+                pass
+        """
+
+        def decorator(func: Callable) -> Callable:
+            self.register_handler(config_key, func, expected_type)
+            return func
+
+        return decorator
+
+    def _validate_and_convert_value(self, config_key: str, value: Any) -> Any:
+        """Validate and convert a configuration value to the expected type."""
+        if config_key not in self._handler_types:
+            return value
+
+        expected_type = self._handler_types[config_key]
+
+        # If value is already the correct type, return as-is
+        if isinstance(value, expected_type):
+            return value
+
+        # Try to convert the value
+        try:
+            if expected_type == bool:
+                # Handle boolean conversion from strings
+                if isinstance(value, str):
+                    return value.lower() in ("true", "1", "yes", "on")
+                return bool(value)
+            elif expected_type == int:
+                return int(float(value))  # Handle "1.0" -> 1
+            elif expected_type == float:
+                return float(value)
+            elif expected_type == str:
+                return str(value)
+            else:
+                # For other types, try direct conversion
+                return expected_type(value)
+        except (ValueError, TypeError) as e:
+            raise TypeError(
+                f"Cannot convert value '{value}' to expected type {expected_type.__name__} "
+                f"for config parameter '{config_key}': {e}"
+            )
+
+    def _dispatch_handlers(self, config_updates: Dict[str, Any]) -> None:
+        """Automatically dispatch handlers for configuration updates."""
+        for config_key, value in config_updates.items():
+            if config_key in self._handlers:
+                try:
+                    # Validate and convert the value
+                    converted_value = self._validate_and_convert_value(
+                        config_key, value
+                    )
+
+                    # Call the handler
+                    handler = self._handlers[config_key]
+                    print(
+                        f"Calling handler for '{config_key}' with value: {converted_value}"
+                    )
+                    handler(converted_value)
+
+                except Exception as e:
+                    print(f"Error in handler for '{config_key}': {e}")
+            else:
+                print(f"No handler registered for config key: {config_key}")
+
+    def get_config_update(self, timeout: float = 0.1) -> Optional[Dict[str, str]]:
+        """Get configuration update from the weavelet process if available.
+
+        If auto_dispatch is enabled (default), this will automatically call
+        registered handlers. Otherwise, it returns the config update dict.
+        """
+        try:
+            config_update = self._config_queue.get_nowait()
+
+            if config_update and self._auto_dispatch:
+                # Automatically dispatch to registered handlers
+                self._dispatch_handlers(config_update)
+                return None  # No need to return since handlers were called
+
+            return config_update
+        except:
+            return None
+
+    def check_and_apply_updates(self) -> bool:
+        """Check for configuration updates and apply them automatically.
+
+        Returns:
+            True if updates were found and applied, False otherwise
+        """
+        config_update = (
+            self._config_queue.get_nowait() if not self._config_queue.empty() else None
+        )
+        if config_update:
+            self._dispatch_handlers(config_update)
+            return True
+        return False
+
     def start(self) -> None:
         """Start the weavelet in a separate process."""
         try:
             self._process = multiprocessing.Process(
-                target=self._run_weavelet_process,
+                target=self._run_weavelet_listener_process,
                 args=(
                     self._replica_id,
                     self._torchLoom_addr,
@@ -70,10 +209,10 @@ class WeaveletProcess:
                 name=f"weavelet-{self._replica_id}",
             )
             self._process.start()
-            
+
             # Give the process a moment to start
             time.sleep(0.1)
-            
+
             print(f"Weavelet process started with PID: {self._process.pid}")
         except Exception as e:
             print(f"Failed to start weavelet process: {e}")
@@ -85,31 +224,24 @@ class WeaveletProcess:
             if self._process and self._process.is_alive():
                 print("Stopping weavelet process")
                 self._stop_event.set()
-                
+
                 # Wait for the process to finish gracefully
                 self._process.join(timeout=5)
-                
+
                 # If still alive, terminate forcefully
                 if self._process.is_alive():
                     print("Force terminating weavelet process")
                     self._process.terminate()
                     self._process.join(timeout=2)
-                    
+
                     # Last resort - kill
                     if self._process.is_alive():
                         self._process.kill()
                         self._process.join()
-                
+
                 print("Weavelet process stopped successfully")
         except Exception as e:
             print(f"Error stopping weavelet process: {e}")
-
-    def get_config_update(self, timeout: float = 0.1) -> Optional[Dict[str, str]]:
-        """Get configuration update from the weavelet process if available."""
-        try:
-            return self._config_queue.get_nowait()
-        except:
-            return None
 
     def publish_training_status(self, status: Dict[str, Any]) -> None:
         """Send training status to the weavelet process for publishing."""
@@ -120,32 +252,32 @@ class WeaveletProcess:
             pass
 
     @staticmethod
-    def _run_weavelet_process(
+    def _run_weavelet_listener_process(
         replica_id: str,
         torchLoom_addr: str,
         config_queue: multiprocessing.Queue,
         status_queue: multiprocessing.Queue,
         stop_event: multiprocessing.Event,
     ) -> None:
-        """Main function that runs in the separate weavelet process."""
+        """Main function that runs in the separate weavelet listener process."""
         try:
             # Create event loop for this process
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            
-            # Create the async weavelet instance
-            weavelet = AsyncWeavelet(
+
+            # Create the async weavelet listener instance
+            weavelet_listener = WeaveletListener(
                 replica_id=replica_id,
                 torchLoom_addr=torchLoom_addr,
                 config_queue=config_queue,
                 status_queue=status_queue,
                 stop_event=stop_event,
             )
-            
+
             # Run the async main loop
-            loop.run_until_complete(weavelet.run())
+            loop.run_until_complete(weavelet_listener.run())
         except Exception as e:
-            print(f"Error in weavelet process: {e}")
+            print(f"Error in weavelet listener process: {e}")
         finally:
             # Clean up
             try:
@@ -154,8 +286,8 @@ class WeaveletProcess:
                 pass
 
 
-class AsyncWeavelet:
-    """Async implementation of weavelet that runs inside the process."""
+class WeaveletListener:
+    """Async implementation of weavelet listener that runs inside the subprocess."""
 
     def __init__(
         self,
@@ -192,26 +324,32 @@ class AsyncWeavelet:
         self._nc_timeout = Config.NC_TIMEOUT or 1
         self._exception_sleep = Config.EXCEPTION_RETRY_TIME or 1
 
-        self._logger.info(f"AsyncWeavelet initialized with replica_id: {self._replica_id}")
+        self._logger.info(
+            f"WeaveletListener initialized with replica_id: {self._replica_id}"
+        )
 
     async def run(self) -> None:
-        """Main run loop for the async weavelet."""
+        """Main run loop for the async weavelet listener."""
         try:
             await self._connect()
             await self._setup_subscriptions()
             await self._register_device()
-            
+
             # Start background tasks
             tasks = [
                 asyncio.create_task(self._status_publisher_loop()),
                 asyncio.create_task(self._monitor_stop_event()),
             ]
-            
-            self._logger.info("Weavelet async initialization completed, starting main loop")
-            
+
+            self._logger.info(
+                "WeaveletListener async initialization completed, starting main loop"
+            )
+
             # Wait for stop signal or task completion
-            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-            
+            done, pending = await asyncio.wait(
+                tasks, return_when=asyncio.FIRST_COMPLETED
+            )
+
             # Cancel remaining tasks
             for task in pending:
                 task.cancel()
@@ -219,11 +357,11 @@ class AsyncWeavelet:
                     await task
                 except asyncio.CancelledError:
                     pass
-                    
-            self._logger.info("Weavelet main loop completed")
-            
+
+            self._logger.info("WeaveletListener main loop completed")
+
         except Exception as e:
-            self._logger.exception(f"Error in weavelet run loop: {e}")
+            self._logger.exception(f"Error in weavelet listener run loop: {e}")
         finally:
             await self._cleanup()
 
@@ -261,7 +399,7 @@ class AsyncWeavelet:
                 message_handler=self._handle_replica_fail_message,
             )
 
-            self._logger.info("Weavelet subscriptions set up successfully")
+            self._logger.info("WeaveletListener subscriptions set up successfully")
         except Exception as e:
             self._logger.exception(f"Failed to set up subscriptions: {e}")
             raise
@@ -401,7 +539,7 @@ class AsyncWeavelet:
                 except:
                     # No status update available, continue
                     pass
-                
+
                 # Sleep briefly to avoid busy waiting
                 await asyncio.sleep(0.1)
             except Exception as e:
@@ -438,31 +576,11 @@ class AsyncWeavelet:
             # Cancel all subscriptions
             await cancel_subscriptions(self._subscriptions)
             self._subscriptions.clear()
-            
+
             # Close NATS connection
             if self._nc and not self._nc.is_closed:
                 await self._nc.close()
-                
-            self._logger.info("Weavelet cleanup completed")
+
+            self._logger.info("WeaveletListener cleanup completed")
         except Exception as e:
             self._logger.exception(f"Error during cleanup: {e}")
-
-
-Weavelet = WeaveletProcess
-
-
-# Backward compatibility function
-def weavelet_process(queue, addr: str = torchLoomConstants.DEFAULT_ADDR) -> None:
-    """Backward compatibility function that creates a process-based weavelet."""
-    weavelet = WeaveletProcess(torchLoom_addr=addr, config_queue=queue)
-    weavelet.start()
-    
-    try:
-        # Keep the main thread running and monitor for config updates
-        while True:
-            config_update = weavelet.get_config_update()
-            if config_update and "optimizer_type" in config_update:
-                queue.put(config_update["optimizer_type"])
-            time.sleep(0.1)
-    except KeyboardInterrupt:
-        weavelet.stop()
