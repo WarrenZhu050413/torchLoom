@@ -224,10 +224,10 @@ Handle messages **TO** the Weaver:
 Handle messages **FROM** the Weaver:
 
 **UI Handlers** (Weaver → UI):
-- `UIUpdateHandler`: Consolidated status updates to web interface
+- `UIUpdatePublisher`: Consolidated status updates to web interface
 
 **Weavelet Handlers** (Weaver → Training Processes):
-- `WeaveletCommandHandler`: Commands and notifications to training processes
+- `WeaveletCommandPublisher`: Commands and notifications to training processes
 - `HeartbeatMonitor`: Dead replica detection and failure event publishing
 
 ## 🧪 Testing the System

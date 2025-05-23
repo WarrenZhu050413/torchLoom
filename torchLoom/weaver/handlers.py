@@ -1,5 +1,5 @@
 """
-Inbound message handlers for the torchLoom Weaver.
+Message handlers for the torchLoom Weaver.
 
 This module contains handlers for processing messages sent TO the weaver from different sources:
 - Weavelet handlers: Process updates from weavelets/training processes
@@ -8,7 +8,7 @@ This module contains handlers for processing messages sent TO the weaver from di
 """
 
 import logging
-from typing import Dict, Set
+from typing import Dict, Set, Optional
 import time
 from abc import ABC, abstractmethod
 
@@ -16,7 +16,7 @@ from torchLoom.proto.torchLoom_pb2 import EventEnvelope, MonitoredFailEvent
 from torchLoom.constants import torchLoomConstants
 from torchLoom.log.logger import setup_logger
 
-logger = setup_logger(name="inbound_handlers")
+logger = setup_logger(name="handlers")
 
 
 class MessageHandler(ABC):
@@ -89,6 +89,26 @@ class HeartbeatHandler(MessageHandler):
                 self.status_tracker.update_replica_status(replica_id, "active")
         
         logger.debug(f"[WEAVELET->WEAVER] Heartbeat from {replica_id}, status: {heartbeat.status}")
+
+    def check_dead_replicas(self) -> Set[str]:
+        """Check for newly dead replicas based on heartbeat timeout."""
+        current_time = time.time()
+        newly_dead = set()
+        
+        for replica_id, last_heartbeat in self._last_heartbeats.items():
+            time_since_heartbeat = current_time - last_heartbeat
+            
+            # If replica hasn't sent heartbeat within timeout and wasn't already considered dead
+            if time_since_heartbeat > self.heartbeat_timeout and replica_id not in self._dead_replicas:
+                newly_dead.add(replica_id)
+                self._dead_replicas.add(replica_id)
+                logger.warning(f"[WEAVER] Replica {replica_id} is considered dead (no heartbeat for {time_since_heartbeat:.1f}s)")
+                
+                # Update status tracker to reflect replica is dead
+                if hasattr(self.status_tracker, 'update_replica_status'):
+                    self.status_tracker.update_replica_status(replica_id, "dead")
+        
+        return newly_dead
 
 
 class TrainingStatusHandler(MessageHandler):
@@ -260,7 +280,7 @@ class UICommandHandler(MessageHandler):
         except Exception as e:
             logger.exception(f"Error processing UI command {command_type}: {e}")
     
-    async def _publish_weaver_command(self, command_type: str, target_replica_id: str, params: Dict[str, str] = None):
+    async def _publish_weaver_command(self, command_type: str, target_replica_id: str, params: Optional[Dict[str, str]] = None):
         """Publish a weaver command to training processes."""
         try:
             if not self.nats_client:
@@ -421,4 +441,12 @@ class DeviceReplicaMapper:
     
     def get_devices_for_replica(self, replica_id: str) -> Set[str]:
         """Get all devices associated with a replica."""
-        return self.replica_to_devices.get(replica_id, set()) 
+        return self.replica_to_devices.get(replica_id, set())
+
+
+# ===========================================
+# LEGACY COMPATIBILITY (Backward compatibility for existing imports)
+# ===========================================
+
+# All original class names remain the same for maximum compatibility
+# No aliases needed since we're keeping the same class names 

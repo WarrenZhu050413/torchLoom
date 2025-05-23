@@ -1,26 +1,26 @@
 """
-Outbound message handlers for the torchLoom Weaver.
+Publishers for the torchLoom Weaver.
 
-This module contains handlers for publishing messages FROM the weaver to other components:
-- UI handlers: Publish updates and responses to the UI
-- Weavelet handlers: Publish commands and notifications to weavelets
+This module contains publishers for sending messages FROM the weaver to other components:
+- UI publishers: Publish updates and responses to the UI
+- Weavelet publishers: Publish commands and notifications to weavelets
 - Demo utilities: Simulate data for demonstration purposes
 """
 
 import logging
 import time
-from typing import Set
+from typing import Set, Dict, Optional
 from abc import ABC, abstractmethod
 
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 from torchLoom.constants import torchLoomConstants
 from torchLoom.log.logger import setup_logger
 
-logger = setup_logger(name="outbound_handlers")
+logger = setup_logger(name="publishers")
 
 
-class OutboundHandler(ABC):
-    """Abstract base class for outbound message handlers."""
+class Publisher(ABC):
+    """Abstract base class for message publishers."""
     
     @abstractmethod
     async def publish(self, *args, **kwargs) -> None:
@@ -29,11 +29,11 @@ class OutboundHandler(ABC):
 
 
 # ===========================================
-# UI HANDLERS (Weaver -> UI)
+# UI PUBLISHERS (Weaver -> UI)
 # ===========================================
 
-class UIUpdateHandler(OutboundHandler):
-    """Handler for publishing consolidated UI updates FROM the weaver TO the UI."""
+class UIUpdatePublisher(Publisher):
+    """Publisher for sending consolidated UI updates FROM the weaver TO the UI."""
     
     def __init__(self, status_tracker, nats_client=None):
         self.status_tracker = status_tracker
@@ -114,11 +114,11 @@ class UIUpdateHandler(OutboundHandler):
 
 
 # ===========================================
-# WEAVELET HANDLERS (Weaver -> Training Processes)
+# WEAVELET PUBLISHERS (Weaver -> Training Processes)
 # ===========================================
 
-class WeaveletCommandHandler(OutboundHandler):
-    """Handler for publishing commands FROM the weaver TO weavelets/training processes."""
+class WeaveletCommandPublisher(Publisher):
+    """Publisher for sending commands FROM the weaver TO weavelets/training processes."""
     
     def __init__(self, nats_client=None):
         self.nats_client = nats_client
@@ -143,7 +143,7 @@ class WeaveletCommandHandler(OutboundHandler):
         except Exception as e:
             logger.exception(f"[WEAVER->WEAVELET] Failed to publish replica fail event: {e}")
     
-    async def publish_weaver_command(self, command_type: str, target_replica_id: str, params: dict = None) -> None:
+    async def publish_weaver_command(self, command_type: str, target_replica_id: str, params: Optional[Dict[str, str]] = None) -> None:
         """Publish a weaver command to training processes."""
         try:
             if not self.nats_client:
@@ -169,7 +169,7 @@ class WeaveletCommandHandler(OutboundHandler):
         except Exception as e:
             logger.exception(f"[WEAVER->WEAVELET] Failed to publish weaver command: {e}")
     
-    async def publish_config_update(self, config_params: dict) -> None:
+    async def publish_config_update(self, config_params: Dict[str, str]) -> None:
         """Publish configuration updates to all training processes."""
         try:
             if not self.nats_client:
@@ -196,29 +196,39 @@ class WeaveletCommandHandler(OutboundHandler):
     async def publish(self, message_type: str, **kwargs) -> None:
         """Generic publish method for different message types."""
         if message_type == "replica_fail":
-            await self.publish_replica_fail_event(kwargs.get("replica_id"))
+            replica_id = kwargs.get("replica_id")
+            if replica_id is not None:
+                await self.publish_replica_fail_event(replica_id)
+            else:
+                logger.warning("[WEAVER->WEAVELET] Missing replica_id for replica_fail message")
         elif message_type == "weaver_command":
-            await self.publish_weaver_command(
-                kwargs.get("command_type"), 
-                kwargs.get("target_replica_id"), 
-                kwargs.get("params")
-            )
+            command_type = kwargs.get("command_type")
+            target_replica_id = kwargs.get("target_replica_id")
+            params = kwargs.get("params")
+            if command_type is not None and target_replica_id is not None:
+                await self.publish_weaver_command(command_type, target_replica_id, params)
+            else:
+                logger.warning("[WEAVER->WEAVELET] Missing required parameters for weaver_command message")
         elif message_type == "config_update":
-            await self.publish_config_update(kwargs.get("config_params"))
+            config_params = kwargs.get("config_params")
+            if config_params is not None:
+                await self.publish_config_update(config_params)
+            else:
+                logger.warning("[WEAVER->WEAVELET] Missing config_params for config_update message")
         else:
             logger.warning(f"[WEAVER->WEAVELET] Unknown message type: {message_type}")
 
 
 # ===========================================
-# HEARTBEAT MONITORING (Special Outbound Handler)
+# HEARTBEAT MONITORING (Special Publisher)
 # ===========================================
 
-class HeartbeatMonitor(OutboundHandler):
+class HeartbeatMonitor(Publisher):
     """Monitor for dead replicas based on heartbeat timeouts and publish failure events."""
     
-    def __init__(self, heartbeat_handler, weavelet_command_handler):
+    def __init__(self, heartbeat_handler, weavelet_command_publisher):
         self.heartbeat_handler = heartbeat_handler  # Reference to the inbound heartbeat handler
-        self.weavelet_command_handler = weavelet_command_handler
+        self.weavelet_command_publisher = weavelet_command_publisher
     
     async def check_and_publish_dead_replicas(self) -> Set[str]:
         """Check for dead replicas and publish failure events for them."""
@@ -228,7 +238,7 @@ class HeartbeatMonitor(OutboundHandler):
             
             # Publish replica fail events for newly dead replicas
             for replica_id in newly_dead_replicas:
-                await self.weavelet_command_handler.publish_replica_fail_event(replica_id)
+                await self.weavelet_command_publisher.publish_replica_fail_event(replica_id)
             
             return newly_dead_replicas
             
@@ -307,4 +317,4 @@ class DemoDataSimulator:
     def simulate_training_step(self):
         """Simulate one training step across all demo components."""
         self.status_tracker.simulate_training_progress()
-        logger.debug(f"[DEMO] Simulated training step: {self.status_tracker.global_step}") 
+        logger.debug(f"[DEMO] Simulated training step: {self.status_tracker.global_step}")

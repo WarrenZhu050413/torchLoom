@@ -10,6 +10,8 @@ import os
 import signal
 import sys
 from typing import Set
+import pytest
+from unittest.mock import MagicMock, patch
 
 # Add parent directory to Python path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -18,8 +20,16 @@ import torch
 import torch.nn as nn
 import lightning as L
 from torchLoom.lightning import WeaveletWrapper, make_weavelet, weavelet_handler
-from torchLoom.weaver.inbound_handlers import HeartbeatHandler
+from torchLoom.proto.torchLoom_pb2 import EventEnvelope, Heartbeat
+from torchLoom.weaver.message_handlers import HeartbeatHandler
 from torchLoom.weaver.status_tracker import StatusTracker
+
+# Mock NATS connection
+with patch("nats.connect") as mock_connect:
+    mock_nc = MagicMock()
+    mock_js = MagicMock()
+    mock_nc.jetstream.return_value = mock_js
+    mock_connect.return_value = mock_nc
 
 
 class TestModel(nn.Module):

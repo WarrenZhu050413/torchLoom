@@ -2,14 +2,14 @@
 torchLoom Weaver package.
 
 This package contains the refactored Weaver implementation with separated concerns:
-- inbound_handlers: Message handling for incoming messages to the weaver
-- outbound_handlers: Message publishing from the weaver to other components  
+- handlers: Message handling for incoming messages to the weaver
+- publishers: Message publishing from the weaver to other components  
 - subscription: NATS subscription management
 - core: Main Weaver class
 """
 
-# Inbound handlers (messages TO the weaver)
-from .inbound_handlers import (
+# Message handlers (messages TO the weaver)
+from .handlers import (
     MessageHandler,
     # Weavelet -> Weaver handlers
     DeviceRegistrationHandler,
@@ -26,16 +26,19 @@ from .inbound_handlers import (
     DeviceReplicaMapper,
 )
 
-# Outbound handlers (messages FROM the weaver)
-from .outbound_handlers import (
-    OutboundHandler,
-    # Weaver -> UI handlers
-    UIUpdateHandler,
-    # Weaver -> Weavelet handlers
-    WeaveletCommandHandler,
+# Publishers (messages FROM the weaver)
+from .publishers import (
+    Publisher,
+    # Weaver -> UI publishers
+    UIUpdatePublisher,
+    # Weaver -> Weavelet publishers
+    WeaveletCommandPublisher,
     HeartbeatMonitor,
     # Demo utilities
     DemoDataSimulator,
+    # Legacy compatibility aliases
+    UIUpdateHandler,
+    WeaveletCommandHandler,
 )
 
 # Core infrastructure
@@ -50,7 +53,7 @@ __all__ = [
     # Core
     "Weaver",
     
-    # Inbound handlers (TO weaver)
+    # Message handlers (TO weaver)
     "MessageHandler",
     "DeviceRegistrationHandler",
     "HeartbeatHandler", 
@@ -62,12 +65,15 @@ __all__ = [
     "ConfigurationHandler",
     "DeviceReplicaMapper",
     
-    # Outbound handlers (FROM weaver)
-    "OutboundHandler",
-    "UIUpdateHandler",
-    "WeaveletCommandHandler",
+    # Publishers (FROM weaver)
+    "Publisher",
+    "UIUpdatePublisher",
+    "WeaveletCommandPublisher",
     "HeartbeatMonitor",
     "DemoDataSimulator",
+    # Legacy compatibility
+    "UIUpdateHandler",
+    "WeaveletCommandHandler",
     
     # Infrastructure
     "StreamManager",

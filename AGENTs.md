@@ -71,6 +71,8 @@ No need to redownload Protobuf as it is alreadyd downloaded.
 
 After you finish a task, check TODO.md to see if there are any other tasks that you can do.
 
+Whenever you change an API, no need to keep the previous API for legacy compatibility reasons. But you need to make sure that all the references in the codebase are updated to the new API. You can potentially do this through a search and replace across the codebase.
+
 <Design Philosophy>
 
 # torchLoom Weavelet Design Philosophy

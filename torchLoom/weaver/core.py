@@ -15,7 +15,7 @@ from torchLoom.constants import torchLoomConstants
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
-from .inbound_handlers import (
+from .handlers import (
     ConfigurationHandler,
     DeviceRegistrationHandler,
     DeviceReplicaMapper,
@@ -26,8 +26,8 @@ from .inbound_handlers import (
     NetworkStatusHandler,
     UICommandHandler,
 )
-from .outbound_handlers import (
-    UIUpdateHandler,
+from .publishers import (
+    UIUpdatePublisher,
     DemoDataSimulator,
 )
 from .status_tracker import StatusTracker
@@ -109,7 +109,7 @@ class Weaver:
         }
 
         # Initialize UI update handler (for publishing consolidated updates)
-        self.ui_update_handler = UIUpdateHandler(self.status_tracker, nc)
+        self.ui_update_handler = UIUpdatePublisher(self.status_tracker, nc)
 
         # Initialize demo data simulator
         self.demo_simulator = DemoDataSimulator(self.status_tracker)
