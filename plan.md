@@ -34,3 +34,16 @@ opt_type: str = self.queue.get_nowait()
 - Code imports and runs without runtime errors
 
 This fix ensures that Pyre understands the expected type while maintaining all existing functionality.
+
+## Repo Documentation Task
+
+### Goal
+Add repository-specific guidance to AGENTs.md for easier onboarding and investigation.
+
+### Steps
+- Review repo layout including packages, docs, and tests.
+- Summarize environment setup from environment.yaml.
+- Document how to start the NATS server, run the weaver, the CLI and the example training script.
+- Note where tests live and how to run them with pytest.
+- Add this summary to a new "Repository Information" section in AGENTs.md.
+

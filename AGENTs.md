@@ -37,3 +37,18 @@
 lintrunner init
 lintrunner -a
 ```
+
+## Repository Information
+* The main package lives in `torchLoom/` and includes modules like `weaver.py`,
+  `monitor_cli.py`, and `weavelet.py`.
+* The example training script is `examples/pytorch/mnist.py`.
+* Start the NATS server with `./nats/nats-server -c ./nats/nats.conf` and run
+  the weaver using `python -m torchLoom.weaver`.
+* The interactive CLI can be launched with `python -m torchLoom.monitor_cli`.
+* To test training end to end, run the training script after the server and
+  weaver are running.
+* Create the Python environment with `conda env create -f environment.yaml` and
+  activate it before running any commands.
+* All tests are under the `tests/` directory and should be run with `pytest`.
+* Additional documentation is in the `docs/` folder with design notes in
+  `docs/design`.
