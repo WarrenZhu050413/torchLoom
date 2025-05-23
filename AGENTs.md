@@ -37,3 +37,13 @@
 lintrunner init
 lintrunner -a
 ```
+
+You may get the following error:
+
+```sh
+  Advice (pyre) command-failed
+    Failed due to JSONDecodeError:
+    Expecting value: line 1 column 1 (char 0)
+```
+
+but ignore this.

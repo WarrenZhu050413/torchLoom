@@ -1,5 +1,6 @@
 import multiprocessing as mp
 import time
+from typing import Optional
 
 import lightning as L
 import torch
@@ -7,7 +8,7 @@ from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.demos import Transformer
 from torch.utils.data import DataLoader, Dataset
 
-from torchLoom.weavelet import weavelet_process
+from torchLoom.weavelet import Weavelet
 
 
 class RandomTextDataset(Dataset):
@@ -24,12 +25,19 @@ class RandomTextDataset(Dataset):
 
 
 class LightningTransformer(L.LightningModule):
-    def __init__(self, vocab_size):
+    def __init__(self, vocab_size, replica_id: Optional[str] = None):
         super().__init__()
         self.model = Transformer(vocab_size=vocab_size)
         self.optimizer_type = "SGD"
         self.lr = 0.1
         self.optimizer = None
+
+        # Initialize weavelet for weaver communication
+        self.weavelet = Weavelet(replica_id=replica_id)
+        self.weavelet.register_config_handler("optimizer_type", self.update_optimizer)
+
+        # Start weavelet in background
+        self.weavelet.start()
 
     def forward(self, inputs, target):
         return self.model(inputs, target)
@@ -39,6 +47,16 @@ class LightningTransformer(L.LightningModule):
         output = self(inputs, target)
         loss = torch.nn.functional.nll_loss(output, target.view(-1))
         time.sleep(1)
+
+        # Publish training status to weaver
+        self.weavelet.publish_training_status(
+            {
+                "batch_idx": batch_idx,
+                "loss": float(loss),
+                "optimizer_type": self.optimizer_type,
+            }
+        )
+
         return loss
 
     def _create_optimizer(self):
@@ -51,13 +69,22 @@ class LightningTransformer(L.LightningModule):
         return self.optimizer
 
     def update_optimizer(self, optimizer_type: str) -> None:
+        """Update optimizer type - called by weavelet when config changes."""
         if optimizer_type == self.optimizer_type:
             return
+
+        print(f"Updating optimizer from {self.optimizer_type} to {optimizer_type}")
         self.optimizer_type = optimizer_type
         new_opt = self._create_optimizer()
+
         if self.trainer is not None:
             self.trainer.optimizers = [new_opt]
         self.optimizer = new_opt
+
+    def on_train_end(self):
+        """Clean up weavelet when training ends."""
+        if hasattr(self, "weavelet"):
+            self.weavelet.stop()
 
 
 dataset = RandomTextDataset(vocab_size=1000)
@@ -65,31 +92,25 @@ dataloader = DataLoader(dataset, batch_size=32)
 
 
 class WeaveletCallback(Callback):
-    def __init__(self, queue: mp.Queue, process: mp.Process):
-        self.queue = queue
-        self.process = process
+    """Simplified callback that just ensures weavelet is running."""
 
-    def on_train_epoch_start(self, trainer, pl_module):
-        while True:
-            try:
-                opt_type: str = self.queue.get_nowait()
-            except Exception:
-                break
-            pl_module.update_optimizer(opt_type)
-        if not self.process.is_alive():
-            raise RuntimeError("Weavelet process terminated")
+    def on_train_start(self, trainer, pl_module):
+        if hasattr(pl_module, "weavelet"):
+            print(
+                f"Training started with weavelet for replica: {pl_module.weavelet._replica_id}"
+            )
+
+    def on_train_end(self, trainer, pl_module):
+        if hasattr(pl_module, "weavelet"):
+            print("Training ended, stopping weavelet")
+            pl_module.weavelet.stop()
 
 
-model = LightningTransformer(vocab_size=dataset.vocab_size)
+model = LightningTransformer(
+    vocab_size=dataset.vocab_size, replica_id="lightning_trainer_1"
+)
 
 if __name__ == "__main__":
-    q = mp.Queue()
-    proc = mp.Process(target=weavelet_process, args=(q,))
-    proc.start()
-
-    callback = WeaveletCallback(q, proc)
+    callback = WeaveletCallback()
     trainer = L.Trainer(fast_dev_run=100, callbacks=[callback])
     trainer.fit(model=model, train_dataloaders=dataloader)
-
-    proc.terminate()
-    proc.join()

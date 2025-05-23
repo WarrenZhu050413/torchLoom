@@ -1,26 +1,65 @@
 import queue
+from unittest.mock import Mock, patch
+
 import torch
+
 from train import LightningTransformer, WeaveletCallback
 
-class DummyProcess:
-    def __init__(self):
-        self.alive = True
-    def is_alive(self):
-        return self.alive
+
+class DummyTrainer:
+    def __init__(self, opt):
+        self.optimizers = [opt]
+
 
 def test_callback_updates_optimizer():
-    q = queue.Queue()
-    proc = DummyProcess()
-    model = LightningTransformer(vocab_size=10)
-    # Simulate trainer with an optimizer list
-    class DummyTrainer:
-        def __init__(self, opt):
-            self.optimizers = [opt]
-    trainer = DummyTrainer(model.configure_optimizers())
-    model.trainer = trainer
+    """Test that the new WeaveletCallback works with the integrated approach."""
+    # Create a model with weavelet
+    with patch("torchLoom.utils.get_device_uuid", return_value="test-device-uuid"):
+        with patch(
+            "nats.connect"
+        ):  # Mock NATS connection to avoid actual network calls
+            model = LightningTransformer(vocab_size=10, replica_id="test_replica")
 
-    cb = WeaveletCallback(q, proc)
-    q.put("Adam")
-    cb.on_train_epoch_start(trainer, model)
-    assert isinstance(trainer.optimizers[0], torch.optim.Adam)
+            # Set up a dummy trainer
+            trainer = DummyTrainer(model.configure_optimizers())
+            model.trainer = trainer
 
+            # Test the callback
+            cb = WeaveletCallback()
+
+            # Test start callback
+            cb.on_train_start(trainer, model)
+            assert hasattr(model, "weavelet")
+            assert model.weavelet._replica_id == "test_replica"
+
+            # Test optimizer update directly
+            initial_optimizer_type = model.optimizer_type
+            assert initial_optimizer_type == "SGD"
+
+            # Simulate an optimizer change
+            model.update_optimizer("Adam")
+            assert model.optimizer_type == "Adam"
+            assert isinstance(trainer.optimizers[0], torch.optim.Adam)
+
+            # Test end callback
+            cb.on_train_end(trainer, model)
+
+
+def test_weavelet_config_handler():
+    """Test that weavelet config handlers work properly."""
+    with patch("torchLoom.utils.get_device_uuid", return_value="test-device-uuid"):
+        with patch("nats.connect"):  # Mock NATS connection
+            model = LightningTransformer(vocab_size=10, replica_id="test_replica")
+
+            # Set up a dummy trainer
+            trainer = DummyTrainer(model.configure_optimizers())
+            model.trainer = trainer
+
+            # Verify the handler is registered
+            assert "optimizer_type" in model.weavelet._message_handlers
+
+            # Test the handler directly
+            assert model.optimizer_type == "SGD"
+            model.weavelet._message_handlers["optimizer_type"]("Adam")
+            assert model.optimizer_type == "Adam"
+            assert isinstance(trainer.optimizers[0], torch.optim.Adam)

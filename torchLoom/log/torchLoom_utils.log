@@ -1,0 +1,60 @@
+Failed to get device UUID: NVML Shared Library Not Found
+Traceback (most recent call last):
+  File "/Users/wz/anaconda3/envs/nats-torch27/lib/python3.11/site-packages/pynvml.py", line 2727, in _LoadNvmlLibrary
+    nvmlLib = CDLL("libnvidia-ml.so.1")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wz/anaconda3/envs/nats-torch27/lib/python3.11/ctypes/__init__.py", line 376, in __init__
+    self._handle = _dlopen(self._name, mode)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: dlopen(libnvidia-ml.so.1, 0x0006): tried: 'libnvidia-ml.so.1' (no such file), '/System/Volumes/Preboot/Cryptexes/OSlibnvidia-ml.so.1' (no such file), '/Users/wz/anaconda3/envs/nats-torch27/lib/python3.11/lib-dynload/../../libnvidia-ml.so.1' (no such file), '/Users/wz/anaconda3/envs/nats-torch27/bin/../lib/libnvidia-ml.so.1' (no such file), '/usr/lib/libnvidia-ml.so.1' (no such file, not in dyld cache), 'libnvidia-ml.so.1' (no such file), '/usr/local/lib/libnvidia-ml.so.1' (no such file), '/usr/lib/libnvidia-ml.so.1' (no such file, not in dyld cache)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/wz/Desktop/zPersonalProjects/torchLoom/torchLoom/utils.py", line 13, in get_device_uuid
+    nvmlInit()
+  File "/Users/wz/anaconda3/envs/nats-torch27/lib/python3.11/site-packages/pynvml.py", line 2699, in nvmlInit
+    nvmlInitWithFlags(0)
+  File "/Users/wz/anaconda3/envs/nats-torch27/lib/python3.11/site-packages/pynvml.py", line 2682, in nvmlInitWithFlags
+    _LoadNvmlLibrary()
+  File "/Users/wz/anaconda3/envs/nats-torch27/lib/python3.11/site-packages/pynvml.py", line 2729, in _LoadNvmlLibrary
+    _nvmlCheckReturn(NVML_ERROR_LIBRARY_NOT_FOUND)
+  File "/Users/wz/anaconda3/envs/nats-torch27/lib/python3.11/site-packages/pynvml.py", line 1059, in _nvmlCheckReturn
+    raise NVMLError(ret)
+pynvml.NVMLError_LibraryNotFound: NVML Shared Library Not Found
+Failed to get device UUID: NVML Shared Library Not Found
+Traceback (most recent call last):
+  File "/Users/wz/anaconda3/envs/nats-torch27/lib/python3.11/site-packages/pynvml.py", line 2727, in _LoadNvmlLibrary
+    nvmlLib = CDLL("libnvidia-ml.so.1")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wz/anaconda3/envs/nats-torch27/lib/python3.11/ctypes/__init__.py", line 376, in __init__
+    self._handle = _dlopen(self._name, mode)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: dlopen(libnvidia-ml.so.1, 0x0006): tried: 'libnvidia-ml.so.1' (no such file), '/System/Volumes/Preboot/Cryptexes/OSlibnvidia-ml.so.1' (no such file), '/Users/wz/anaconda3/envs/nats-torch27/lib/python3.11/lib-dynload/../../libnvidia-ml.so.1' (no such file), '/Users/wz/anaconda3/envs/nats-torch27/bin/../lib/libnvidia-ml.so.1' (no such file), '/usr/lib/libnvidia-ml.so.1' (no such file, not in dyld cache), 'libnvidia-ml.so.1' (no such file), '/usr/local/lib/libnvidia-ml.so.1' (no such file), '/usr/lib/libnvidia-ml.so.1' (no such file, not in dyld cache)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/wz/Desktop/zPersonalProjects/torchLoom/torchLoom/utils.py", line 13, in get_device_uuid
+    nvmlInit()
+  File "/Users/wz/anaconda3/envs/nats-torch27/lib/python3.11/site-packages/pynvml.py", line 2699, in nvmlInit
+    nvmlInitWithFlags(0)
+  File "/Users/wz/anaconda3/envs/nats-torch27/lib/python3.11/site-packages/pynvml.py", line 2682, in nvmlInitWithFlags
+    _LoadNvmlLibrary()
+  File "/Users/wz/anaconda3/envs/nats-torch27/lib/python3.11/site-packages/pynvml.py", line 2729, in _LoadNvmlLibrary
+    _nvmlCheckReturn(NVML_ERROR_LIBRARY_NOT_FOUND)
+  File "/Users/wz/anaconda3/envs/nats-torch27/lib/python3.11/site-packages/pynvml.py", line 1059, in _nvmlCheckReturn
+    raise NVMLError(ret)
+pynvml.NVMLError_LibraryNotFound: NVML Shared Library Not Found
+Failed to get GPU UUID, using fallback: CPU-MacBook-Air-619.local-468b3df7-261b-42cf-816f-1108f323a550. Error: NVML Shared Library Not Found
+Failed to get GPU UUID, using fallback: CPU-MacBook-Air-619.local-a1924b18-3a98-4636-894e-476edd381124. Error: NVML Shared Library Not Found
+Failed to get GPU UUID, on MacBook-Air-619.local, Error: NVML Shared Library Not Found
+Failed to get GPU UUID, on MacBook-Air-619.local, Error: NVML Shared Library Not Found
+Failed to get GPU UUID, on MacBook-Air-619.local, Error: NVML Shared Library Not Found
+Failed to get GPU UUID, on MacBook-Air-619.local, Error: NVML Shared Library Not Found
+Failed to get GPU UUID, on MacBook-Air-619.local, Error: NVML Shared Library Not Found
+Failed to get GPU UUID, on MacBook-Air-619.local, Error: NVML Shared Library Not Found
+Failed to get GPU UUID, on MacBook-Air-619.local, Error: NVML Shared Library Not Found
+Failed to get GPU UUID, on MacBook-Air-619.local, Error: NVML Shared Library Not Found
+Failed to get GPU UUID, on MacBook-Air-619.local, Error: NVML Shared Library Not Found
+Failed to get GPU UUID, on MacBook-Air-619.local, Error: NVML Shared Library Not Found
