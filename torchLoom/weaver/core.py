@@ -402,6 +402,17 @@ async def main():
 
         # Start all services concurrently
         async with asyncio.TaskGroup() as tg:
+
+            # UI -> Weaver subscriptions
+            tg.create_task(
+                weaver.subscribe_js(
+                    torchLoomConstants.weaver_stream.STREAM,
+                    torchLoomConstants.weaver_stream.subjects.UI_COMMAND,
+                    torchLoomConstants.weaver_stream.CONSUMER,
+                    message_handler=weaver.message_handler,
+                )
+            )
+
             # NATS subscriptions
             tg.create_task(
                 weaver.subscribe_js(
@@ -442,14 +453,6 @@ async def main():
             tg.create_task(
                 weaver.subscribe_nc(
                     subject=torchLoomConstants.subjects.NETWORK_STATUS,
-                    message_handler=weaver.message_handler,
-                )
-            )
-
-            # UI -> Weaver subscriptions
-            tg.create_task(
-                weaver.subscribe_nc(
-                    subject=torchLoomConstants.subjects.UI_COMMANDS,
                     message_handler=weaver.message_handler,
                 )
             )
