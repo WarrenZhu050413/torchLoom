@@ -1,24 +1,27 @@
+import multiprocessing as mp
+import time
+
 import lightning as L
 import torch
-import time
-import multiprocessing as mp
-from lightning.pytorch.demos import Transformer
 from lightning.pytorch.callbacks import Callback
+from lightning.pytorch.demos import Transformer
 from torch.utils.data import DataLoader, Dataset
 
 from torchLoom.weavelet import weavelet_process
+
 
 class RandomTextDataset(Dataset):
     def __init__(self, num_samples=1000, seq_len=32, vocab_size=1000):
         self.inputs = torch.randint(0, vocab_size, (num_samples, seq_len))
         self.targets = torch.randint(0, vocab_size, (num_samples, seq_len))
         self.vocab_size = vocab_size
-    
+
     def __len__(self):
         return len(self.inputs)
-    
+
     def __getitem__(self, idx):
         return self.inputs[idx], self.targets[idx]
+
 
 class LightningTransformer(L.LightningModule):
     def __init__(self, vocab_size):
@@ -55,9 +58,12 @@ class LightningTransformer(L.LightningModule):
         if self.trainer is not None:
             self.trainer.optimizers = [new_opt]
         self.optimizer = new_opt
-    
+
+
 dataset = RandomTextDataset(vocab_size=1000)
 dataloader = DataLoader(dataset, batch_size=32)
+
+
 class WeaveletCallback(Callback):
     def __init__(self, queue: mp.Queue, process: mp.Process):
         self.queue = queue
@@ -66,7 +72,7 @@ class WeaveletCallback(Callback):
     def on_train_epoch_start(self, trainer, pl_module):
         while True:
             try:
-                opt_type = self.queue.get_nowait()
+                opt_type: str = self.queue.get_nowait()
             except Exception:
                 break
             pl_module.update_optimizer(opt_type)

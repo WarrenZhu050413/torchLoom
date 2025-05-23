@@ -31,3 +31,9 @@
 
 <Environment Specific Instructions>
 - Run tests through pytest
+- You should run not only tests, but the code that you have changed.
+- Run linters after changes, by doing 
+```sh
+lintrunner init
+lintrunner -a
+```

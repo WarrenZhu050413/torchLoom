@@ -9,3 +9,5 @@ protobuf
 pynvml
 lightning
 requests
+lintrunner
+lintrunner_adapters
