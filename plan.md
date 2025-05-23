@@ -10,3 +10,7 @@ Enhance TODO.md with more detailed tasks for runtime configuration features beyo
 - Keep the style of bullet points (no numbering) per AGENTs instructions.
 - Commit the plan and the updated TODO.md.
 
+
+## New Goal
+Add more motivation details to docs/design/design.md and fix README link to this file. Create a new documentation file with proposed future uses of torchLoom. Update plan accordingly before committing.
+

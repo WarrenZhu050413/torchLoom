@@ -72,7 +72,7 @@ Then, you can go to [tutorial.md](tutorial.md) for detailed testing scenarios an
 
 ## Documentation
 
-- [Design](design.md): System architecture and concepts
+- [Design](docs/design/design.md): System architecture and concepts
 - [Tutorial](tutorial.md): Testing procedures and example workflows
 - [Debugging](debugging.md): Troubleshooting guide for common issues
 - [TODO](todo.md): Upcoming features and development roadmap

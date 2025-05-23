@@ -12,6 +12,8 @@ AI model training differs fundamentally from traditional scientific computing. R
 
 Current orchestration frameworks focus primarily on deployment and scheduling but lack runtime monitoring and control capabilities needed for efficient AI training operations.
 
+torchLoom acts as a lightweight layer between the training code and monitoring services. It keeps the mapping of devices to replicas in a central place so that GPU failures or configuration updates can be handled without pausing the workload. By publishing events over NATS, torchLoom enables experimentation with recovery policies and parameter tuning while jobs continue running.
+
 ## Architecture
 
 torchLoom serves as a central weaver for the entire training environment, connecting monitoring systems with training processes through a lightweight messaging system.
