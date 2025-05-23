@@ -1,5 +1,7 @@
 *.log
 
+jetstream
+
 # Python
 __pycache__
 *.pyc

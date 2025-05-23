@@ -5,6 +5,7 @@ Core Weavelet class for process-based configuration management.
 import asyncio
 import logging
 import multiprocessing
+from multiprocessing.connection import Connection
 import time
 import uuid
 from typing import Any, Dict, Optional, Tuple, Type
@@ -31,14 +32,14 @@ class Weavelet:
         torchLoom_addr: str = torchLoomConstants.DEFAULT_ADDR,
         config_pipe: Optional[
             Tuple[
-                "multiprocessing.connection.Connection",
-                "multiprocessing.connection.Connection",
+                Connection,
+                Connection,
             ]
         ] = None,
         status_pipe: Optional[
             Tuple[
-                "multiprocessing.connection.Connection",
-                "multiprocessing.connection.Connection",
+                Connection,
+                Connection,
             ]
         ] = None,
     ):
@@ -384,9 +385,9 @@ class Weavelet:
     def _run_weavelet_listener_process(
         replica_id: str,
         torchLoom_addr: str,
-        config_sender: "multiprocessing.connection.Connection",
-        status_receiver: "multiprocessing.connection.Connection",
-        stop_event: "multiprocessing.Event",
+        config_sender: Connection,
+        status_receiver: Connection,
+        stop_event: multiprocessing.Event,
     ) -> None:
         """Main function that runs in the separate weavelet listener process."""
         try:

@@ -36,8 +36,9 @@ class MessageHandler(ABC):
 class DeviceRegistrationHandler(MessageHandler):
     """Handler for device registration messages from weavelets."""
 
-    def __init__(self, device_mapper: "DeviceReplicaMapper"):
+    def __init__(self, device_mapper: "DeviceReplicaMapper", status_tracker=None):
         self.device_mapper = device_mapper
+        self.status_tracker = status_tracker
 
     async def handle(self, env: EventEnvelope) -> None:
         """Handle device registration events from weavelets."""
@@ -66,6 +67,33 @@ class DeviceRegistrationHandler(MessageHandler):
             logger.info(
                 f"New replica mapping: {replica_id} -> {self.device_mapper.get_devices_for_replica(replica_id)}"
             )
+
+        # Update status tracker to make the device/replica visible in the UI
+        if self.status_tracker:
+            # Add the replica to status tracker if it's new
+            if replica_added:
+                self.status_tracker.update_training_progress(
+                    replica_id=replica_id,
+                    current_step=0,
+                    step_progress=0.0,
+                    status="registered"
+                )
+                logger.info(f"Added replica {replica_id} to status tracker with status 'registered'")
+
+            # Create a default GPU entry for this device if it doesn't exist
+            # We'll use the device_uuid as a default GPU ID until we get real GPU status updates
+            default_gpu_id = f"gpu_{device_uuid}"
+            self.status_tracker.update_gpu_status(
+                gpu_id=default_gpu_id,
+                replica_id=replica_id,
+                server_id=device_uuid,  # Use device_uuid as server_id for now
+                status="active",
+                utilization=0.0,
+                temperature=40.0,
+                memory_used=0.0,
+                memory_total=8.0  # Default 8GB
+            )
+            logger.info(f"Added default GPU {default_gpu_id} for device {device_uuid} to status tracker")
 
 
 class HeartbeatHandler(MessageHandler):

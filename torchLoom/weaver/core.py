@@ -140,6 +140,9 @@ class Weaver:
         # Initialize subscription manager
         self._subscription_manager = SubscriptionManager(nc, js, self._stop_nats)
 
+        # Centralized stream setup - create ALL streams here with complete subject lists
+        await self._setup_all_streams()
+
         # Initialize WebSocket server if UI is enabled
         if self.enable_ui:
             self.websocket_server = WebSocketServer(
@@ -152,7 +155,7 @@ class Weaver:
 
         # Initialize message handlers
         self._handlers = {
-            "register_device": DeviceRegistrationHandler(self._device_mapper),
+            "register_device": DeviceRegistrationHandler(self._device_mapper, self.status_tracker),
             "failure": FailureHandler(self._device_mapper, nc),
             "configuration": ConfigurationHandler(nc),
             "heartbeat": HeartbeatHandler(self.status_tracker, nc),
@@ -167,6 +170,30 @@ class Weaver:
         self.ui_update_handler = UIUpdatePublisher(self.status_tracker, nc)
 
         logger.info("Weaver fully initialized with UI support")
+
+    async def _setup_all_streams(self) -> None:
+        """Centralized setup of all JetStream streams with complete subject configurations."""
+        logger.info("Setting up all JetStream streams...")
+        print("DEBUG: _setup_all_streams called")
+        
+        if not self._subscription_manager:
+            raise RuntimeError("Subscription manager not initialized")
+        
+        print(f"DEBUG: About to create WEAVELET_STREAM with subjects: {[torchLoomConstants.weaver_stream.subjects.DR_SUBJECT, torchLoomConstants.subjects.CONFIG_INFO, torchLoomConstants.subjects.WEAVER_COMMANDS]}")
+        
+        # WEAVELET_STREAM: Used for weaver-weavelet communication
+        await self._subscription_manager._stream_manager.maybe_create_stream(
+            torchLoomConstants.weaver_stream.STREAM,
+            [
+                torchLoomConstants.weaver_stream.subjects.DR_SUBJECT,    # Device registration 
+                torchLoomConstants.subjects.CONFIG_INFO,                 # Config updates
+                torchLoomConstants.subjects.WEAVER_COMMANDS,             # Weaver commands
+            ]
+        )
+        
+        print("DEBUG: maybe_create_stream call completed")
+        
+        logger.info("All JetStream streams setup completed")
 
     async def message_handler(self, msg: Msg) -> None:
         """Main message handler that dispatches to specific handlers."""
@@ -374,18 +401,7 @@ async def main():
         async with asyncio.TaskGroup() as tg:
 
             # NATS subscriptions (distributed communication)
-            # First, create the WEAVELET_STREAM with ALL subjects that will be used
-            # by both the weaver and weavelet listeners to avoid stream conflicts
-            if weaver._subscription_manager:
-                await weaver._subscription_manager._stream_manager.maybe_create_stream(
-                    torchLoomConstants.weaver_stream.STREAM,
-                    [
-                        torchLoomConstants.weaver_stream.subjects.DR_SUBJECT,        # Device registration (weaver)
-                        torchLoomConstants.subjects.CONFIG_INFO,                     # Config updates (weavelet)
-                        torchLoomConstants.subjects.WEAVER_COMMANDS,                 # Weaver commands (weavelet)
-                    ]
-                )
-            
+            # Streams are already created in weaver.initialize() -> _setup_all_streams()
             tg.create_task(
                 weaver.subscribe_js(
                     torchLoomConstants.weaver_stream.STREAM,
