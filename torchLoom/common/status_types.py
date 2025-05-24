@@ -105,6 +105,43 @@ class deviceStatus:
             config=data.get("config", {}),
         )
 
+@dataclass
+class ModelUpdateStatus:
+    """Lightweight status for model updates intended for federated aggregation."""
+    
+    replica_id: str
+    epoch: int
+    step: int
+    update_type: str = "full"  # or "gradient", "delta", etc.
+    timestamp: float = field(default_factory=time.time)
+    model_path: str = ""  # points to saved .pt file on shared FS or object store
+    meta: Dict[str, Any] = field(default_factory=dict)  # optional: loss, sample count, etc.
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "replica_id": self.replica_id,
+            "epoch": self.epoch,
+            "step": self.step,
+            "update_type": self.update_type,
+            "timestamp": self.timestamp,
+            "model_path": self.model_path,
+            "meta": self.meta,
+            "type": "model_update"
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ModelUpdateStatus":
+        return cls(
+            replica_id=data["replica_id"],
+            epoch=data.get("epoch", 0),
+            step=data.get("step", 0),
+            update_type=data.get("update_type", "full"),
+            timestamp=data.get("timestamp", time.time()),
+            model_path=data.get("model_path", ""),
+            meta=data.get("meta", {}),
+        )
+
+
 
 # Union type for status updates
 StatusUpdate = TrainingStatus | deviceStatus
