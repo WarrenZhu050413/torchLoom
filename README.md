@@ -58,7 +58,7 @@ conda activate nats-torch27
 
 2. Start the weaver
 ```sh
-python -m torchLoom.weaver
+python -m torchLoom.weaver.core
 ```
 
 3. Start the cli
