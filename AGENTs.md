@@ -15,7 +15,6 @@
 ## Style Guide
  * No Numbered Comments: Do not use numbered lists (e.g., 1., 2., 3...) in comments.
 
-
 ## Details
  * NVIDIA Environment: When setting up NVIDIA environments, verify compatibility using nvidia-smi and checking the installed version.
  * Conda Usage: Always initialize (conda init) and activate the correct conda environment before running commands.
