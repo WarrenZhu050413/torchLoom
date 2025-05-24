@@ -11,8 +11,9 @@ NC = "nc"
 JS = "js"
 NATS_SERVER_PATH = "./nats/nats-server"
 
-class TimeoutConstants:
+class TimeConstants:
     STATUS_BROADCAST_IN: float = 1.0
+    HEARTBEAT_MONITOR_INTERVAL: float = 30.0
 
 class torchLoomSubjects:
     MONITOR: str = "torchLoom.monitored.failure"
@@ -26,7 +27,7 @@ class torchLoomSubjects:
 
     # Training Process -> Weaver subjects
     TRAINING_STATUS: str = "torchLoom.training.status"
-    GPU_STATUS: str = "torchLoom.gpu.status"
+    device_STATUS: str = "torchLoom.device.status"
     
     # UI <-> Weaver subjects
     UI_COMMANDS: str = "torchLoom.ui.commands"

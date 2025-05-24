@@ -8,7 +8,7 @@ It is inspired by [torchFT](https://github.com/pytorch/torchft), an experimental
 
 Unlike traditional orchestration frameworks that focus on deployment and scheduling, torchLoom provides run-time monitoring and control of the training process itself. It enables:
 
-- **Real-time failure detection** and recovery for GPUs and training replicas
+- **Real-time failure detection** and recovery for devices and training replicas
 - **Dynamic configuration adjustment** without stopping training
 - **Resource mapping** between hardware devices and training replicas
 

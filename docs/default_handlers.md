@@ -32,7 +32,7 @@ The following handlers are automatically configured:
 | `DeviceRegistrationHandler` | `register_device` | Handles device registration from weavelets |
 | `HeartbeatHandler` | `heartbeat` | Monitors weavelet liveness via heartbeat messages |
 | `TrainingStatusHandler` | `training_status` | Processes training progress updates from weavelets |
-| `GPUStatusHandler` | `gpu_status` | Handles GPU status and utilization updates |
+| `deviceStatusHandler` | `device_status` | Handles device status and utilization updates |
 | `NetworkStatusHandler` | `network_status` | Processes network connectivity and performance data |
 | `FailureHandler` | `monitored_fail` | Manages device and replica failure scenarios |
 | `DrainEventHandler` | `drain` | Handles graceful device drain requests |

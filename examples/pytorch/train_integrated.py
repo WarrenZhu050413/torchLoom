@@ -9,19 +9,41 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 
 from torchLoom.common import (
-    GPUStatus,
+    deviceStatus,
     TrainingStatus,
     create_batch_update_status,
     create_epoch_complete_status,
     create_epoch_start_status,
     create_training_complete_status,
     create_training_start_status,
-    simulate_gpu_status,
 )
 
 # torchLoom imports
 from torchLoom.weavelet import Weavelet, weavelet_handler
 
+
+def simulate_device_status(
+    replica_id: str, 
+    batch_idx: int, 
+    base_utilization: float = 60.0,
+    base_temperature: float = 50.0
+) -> deviceStatus:
+    """Simulate realistic device status based on training progress."""
+    # Simulate varying device metrics
+    utilization = base_utilization + (batch_idx % 30)  # 60-90%
+    temperature = base_temperature + (batch_idx % 25)   # 50-75°C
+    memory_used = 2.0 + (batch_idx % 6) * 0.5  # 2-5 GB
+    
+    return deviceStatus(
+        device_id=f"device_{replica_id}",
+        replica_id=replica_id,
+        server_id="local_server",
+        status="active",
+        utilization=utilization,
+        temperature=temperature,
+        memory_used=memory_used,
+        memory_total=8.0
+    ) 
 
 # Simple random dataset for testing
 class RandomDataset(Dataset):
@@ -259,14 +281,14 @@ class IntegratedTrainer:
                 self.publish_status(training_status)
                 print(f"F6: batchidx {batch_idx}")
 
-                # Only publish GPU status every 5th batch to reduce message frequency
+                # Only publish device status every 5th batch to reduce message frequency
                 if batch_idx % 5 == 0:
-                    # Enhanced GPU status with more realistic simulation
-                    gpu_status = simulate_gpu_status(
+                    # Enhanced device status with more realistic simulation
+                    device_status = simulate_device_status(
                         replica_id=self.replica_id, batch_idx=batch_idx
                     )
-                    # Add comprehensive training configuration to GPU status
-                    gpu_status.config.update(
+                    # Add comprehensive training configuration to device status
+                    device_status.config.update(
                         {
                             "batch_size": str(self.batch_size),
                             "learning_rate": str(self.learning_rate),
@@ -279,7 +301,7 @@ class IntegratedTrainer:
                             "dataset_name": "RandomDataset",
                         }
                     )
-                    self.publish_status(gpu_status)
+                    self.publish_status(device_status)
 
                 if self.args.dry_run:
                     break
@@ -340,7 +362,7 @@ class IntegratedTrainer:
         self.publish_status(test_status)
 
     def publish_status(self, status):
-        """Publish any type of status (TrainingStatus, GPUStatus)."""
+        """Publish any type of status (TrainingStatus, deviceStatus)."""
         try:
             # Convert status to dictionary if needed
             if hasattr(status, "to_dict"):
@@ -378,16 +400,16 @@ class IntegratedTrainer:
             )
             self.publish_status(training_start_status)
 
-            # Initial GPU status
-            initial_gpu_status = simulate_gpu_status(self.replica_id, 0)
-            initial_gpu_status.config.update(
+            # Initial device status
+            initial_device_status = simulate_device_status(self.replica_id, 0)
+            initial_device_status.config.update(
                 {
                     "batch_size": str(self.batch_size),
                     "learning_rate": str(self.learning_rate),
                     "optimizer_type": "Adadelta",
                 }
             )
-            self.publish_status(initial_gpu_status)
+            self.publish_status(initial_device_status)
 
             for epoch in range(1, self.args.epochs + 1):
                 self.train_epoch(epoch)
@@ -406,10 +428,10 @@ class IntegratedTrainer:
             )
             self.publish_status(training_complete_status)
 
-            # Final GPU status
-            final_gpu_status = simulate_gpu_status(self.replica_id, self.global_step)
-            final_gpu_status.status = "completed"
-            self.publish_status(final_gpu_status)
+            # Final device status
+            final_device_status = simulate_device_status(self.replica_id, self.global_step)
+            final_device_status.status = "completed"
+            self.publish_status(final_device_status)
 
             if self.args.save_model:
                 torch.save(self.model.state_dict(), "random_cnn_integrated.pt")

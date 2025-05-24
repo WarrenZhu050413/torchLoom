@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from torchLoom.common.constants import torchLoomConstants, TimeoutConstants
+from torchLoom.common.constants import torchLoomConstants, TimeConstants
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope, UICommand
 
@@ -118,17 +118,17 @@ class WebSocketServer:
             """Get current system status."""
             return JSONResponse(self.get_ui_status_dict())
 
-        @self.app.post("/api/commands/deactivate-gpu")
-        async def deactivate_gpu(request: dict):
-            """Deactivate a specific GPU."""
-            gpu_id = request.get("gpu_id")
-            if not gpu_id:
-                raise HTTPException(status_code=400, detail="gpu_id required")
+        @self.app.post("/api/commands/deactivate-device")
+        async def deactivate_device(request: dict):
+            """Deactivate a specific device."""
+            device_id = request.get("device_id")
+            if not device_id:
+                raise HTTPException(status_code=400, detail="device_id required")
 
-            await self.handle_deactivate_gpu(gpu_id)
+            await self.handle_deactivate_device(device_id)
             return {
                 "status": "success",
-                "message": f"GPU {gpu_id} deactivation initiated",
+                "message": f"device {device_id} deactivation initiated",
             }
 
         @self.app.post("/api/commands/reactivate-group")
@@ -166,20 +166,20 @@ class WebSocketServer:
                 "status": "healthy",
                 "timestamp": time.time(),
                 "connections": len(self.manager.active_connections),
-                "gpus": len(self.status_tracker.gpus),
+                "devices": len(self.status_tracker.devices),
                 "replicas": len(self.status_tracker.replicas),
             }
 
     def get_ui_status_dict(self) -> dict:
         """Convert status tracker data to UI-friendly format."""
-        # Organize GPUs by replica groups and servers
+        # Organize devices by replica groups and servers
         replica_groups = {}
 
-        for gpu_id, gpu in self.status_tracker.gpus.items():
-            replica_id = gpu.replica_id
+        for device_id, device in self.status_tracker.devices.items():
+            replica_id = device.replica_id
             server_id = (
-                gpu.server_id
-            )  # This field should match StatusTracker's GPUState
+                device.server_id
+            )  # This field should match StatusTracker's deviceState
 
             # Extract group ID from replica_id
             group_id = replica_id.split("_")[0] if "_" in replica_id else replica_id
@@ -187,31 +187,31 @@ class WebSocketServer:
             if group_id not in replica_groups:
                 replica_groups[group_id] = {
                     "id": group_id,
-                    "gpus": {},
+                    "devices": {},
                     "status": "training",
                     "stepProgress": 0,
                     "fixedStep": None,
                     "lastActiveStep": None,
                 }
 
-            # Add GPU data with comprehensive info
-            replica_groups[group_id]["gpus"][gpu_id] = {
-                "id": gpu_id,
+            # Add device data with comprehensive info
+            replica_groups[group_id]["devices"][device_id] = {
+                "id": device_id,
                 "server": server_id,
-                "status": gpu.status,
-                "utilization": round(gpu.utilization, 1),
-                "temperature": round(gpu.temperature, 1),
+                "status": device.status,
+                "utilization": round(device.utilization, 1),
+                "temperature": round(device.temperature, 1),
                 "memory_used": (
-                    round(gpu.memory_used, 2) if hasattr(gpu, "memory_used") else 0.0
+                    round(device.memory_used, 2) if hasattr(device, "memory_used") else 0.0
                 ),
                 "memory_total": (
-                    round(gpu.memory_total, 2) if hasattr(gpu, "memory_total") else 8.0
+                    round(device.memory_total, 2) if hasattr(device, "memory_total") else 8.0
                 ),
-                "batch": gpu.config.get("batch_size", "32"),
-                "lr": gpu.config.get("learning_rate", "0.001"),
-                "opt": gpu.config.get("optimizer_type", "Adam"),
+                "batch": device.config.get("batch_size", "32"),
+                "lr": device.config.get("learning_rate", "0.001"),
+                "opt": device.config.get("optimizer_type", "Adam"),
                 "last_updated": (
-                    gpu.last_updated if hasattr(gpu, "last_updated") else time.time()
+                    device.last_updated if hasattr(device, "last_updated") else time.time()
                 ),
             }
 
@@ -244,8 +244,8 @@ class WebSocketServer:
             data = json.loads(message)
             command_type = data.get("type")
 
-            if command_type == "deactivate_gpu":
-                await self.handle_deactivate_gpu(data.get("gpu_id"))
+            if command_type == "deactivate_device":
+                await self.handle_deactivate_device(data.get("device_id"))
             elif command_type == "reactivate_group":
                 await self.handle_reactivate_group(data.get("replica_id"))
             elif command_type == "update_config":
@@ -264,20 +264,20 @@ class WebSocketServer:
         except Exception as e:
             logger.exception(f"Error handling WebSocket message: {e}")
 
-    async def handle_deactivate_gpu(self, gpu_id: str):
-        """Handle GPU deactivation command."""
-        if gpu_id not in self.status_tracker.gpus:
-            logger.warning(f"GPU {gpu_id} not found")
+    async def handle_deactivate_device(self, device_id: str):
+        """Handle device deactivation command."""
+        if device_id not in self.status_tracker.devices:
+            logger.warning(f"device {device_id} not found")
             return
 
         # Update local status
-        replica_id = self.status_tracker.gpus[gpu_id].replica_id
+        replica_id = self.status_tracker.devices[device_id].replica_id
         self.status_tracker.set_communication_status("rebuilding")
         self.status_tracker.update_training_progress(replica_id, status="deactivating")
 
         # Simulate delay and then deactivate
         await asyncio.sleep(0.8)
-        self.status_tracker.deactivate_gpu(gpu_id)
+        self.status_tracker.deactivate_device(device_id)
 
         # Call weaver handler directly (much more efficient than NATS)
         if self.weaver and hasattr(self.weaver, '_handlers'):
@@ -287,21 +287,21 @@ class WebSocketServer:
                     # Create a mock envelope for the direct call
                     from torchLoom.proto.torchLoom_pb2 import EventEnvelope
                     env = EventEnvelope()
-                    env.ui_command.command_type = "deactivate_gpu"
-                    env.ui_command.target_id = gpu_id
+                    env.ui_command.command_type = "deactivate_device"
+                    env.ui_command.target_id = device_id
                     await ui_handler.handle(env)
-                    logger.debug(f"Sent UI command directly to weaver: deactivate_gpu for {gpu_id}")
+                    logger.debug(f"Sent UI command directly to weaver: deactivate_device for {device_id}")
             except Exception as e:
                 logger.exception(f"Failed to send direct UI command: {e}")
                 # Fallback to NATS if available
                 if self.nats_client:
-                    await self.send_ui_command("deactivate_gpu", gpu_id)
+                    await self.send_ui_command("deactivate_device", device_id)
 
         # Reset communication status
         await asyncio.sleep(1.2)
         self.status_tracker.set_communication_status("stable")
 
-        logger.info(f"Processed GPU deactivation: {gpu_id}")
+        logger.info(f"Processed device deactivation: {device_id}")
 
     async def handle_reactivate_group(self, replica_id: str):
         """Handle replica group reactivation command."""
@@ -339,12 +339,12 @@ class WebSocketServer:
 
     async def handle_config_update(self, replica_id: str, config_params: dict):
         """Handle configuration update command."""
-        # Update local GPU configs
-        replica_gpus = [
-            g for g in self.status_tracker.gpus.values() if g.replica_id == replica_id
+        # Update local device configs
+        replica_devices = [
+            g for g in self.status_tracker.devices.values() if g.replica_id == replica_id
         ]
-        for gpu in replica_gpus:
-            gpu.config.update(config_params)
+        for device in replica_devices:
+            device.config.update(config_params)
 
         # Call weaver handler directly (much more efficient than NATS)
         if self.weaver and hasattr(self.weaver, '_handlers'):
@@ -452,24 +452,24 @@ class WebSocketServer:
                     "data": training_status_data
                 })
             
-            # Broadcast GPU status updates
-            for gpu_id, gpu in self.status_tracker.gpus.items():
-                gpu_status_data = {
-                    "gpu_id": gpu.gpu_id,
-                    "replica_id": gpu.replica_id,
-                    "server_id": gpu.server_id,
-                    "status": gpu.status,
-                    "utilization": gpu.utilization,
-                    "temperature": gpu.temperature,
-                    "memory_used": gpu.memory_used,
-                    "memory_total": gpu.memory_total,
-                    "config": dict(gpu.config),
+            # Broadcast device status updates
+            for device_id, device in self.status_tracker.devices.items():
+                device_status_data = {
+                    "device_id": device.device_id,
+                    "replica_id": device.replica_id,
+                    "server_id": device.server_id,
+                    "status": device.status,
+                    "utilization": device.utilization,
+                    "temperature": device.temperature,
+                    "memory_used": device.memory_used,
+                    "memory_total": device.memory_total,
+                    "config": dict(device.config),
                     "timestamp": int(time.time())
                 }
                 
                 await self.manager.send_json_to_all({
-                    "type": "gpu_status", 
-                    "data": gpu_status_data
+                    "type": "device_status", 
+                    "data": device_status_data
                 })
                 
         except Exception as e:
@@ -483,7 +483,7 @@ class WebSocketServer:
             try:
                 if self.manager.active_connections:
                     await self.broadcast_status_update()
-                await asyncio.sleep(TimeoutConstants.STATUS_BROADCAST_IN)  # Broadcast every second
+                await asyncio.sleep(TimeConstants.STATUS_BROADCAST_IN)  # Broadcast every second
 
             except Exception as e:
                 logger.exception(f"Error in status broadcaster: {e}")

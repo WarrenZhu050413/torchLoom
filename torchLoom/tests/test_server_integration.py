@@ -132,10 +132,10 @@ class TestWeaverServerIntegration(TestCase):
 
                     # Step 1: Register devices using CLI client
                     async with TorchLoomClient(nats_url) as cli_client:
-                        await cli_client.register_device("gpu1", "replica1")
-                        await cli_client.register_device("gpu2", "replica2")
+                        await cli_client.register_device("device1", "replica1")
+                        await cli_client.register_device("device2", "replica2")
                         await cli_client.register_device(
-                            "gpu1", "replica3"
+                            "device1", "replica3"
                         )  # Multi-replica assignment
 
                     # Wait for registration processing
@@ -143,15 +143,15 @@ class TestWeaverServerIntegration(TestCase):
 
                     # Verify device mappings
                     assert len(weaver.device_to_replicas) == 2
-                    assert weaver.get_replicas_for_device("gpu1") == {
+                    assert weaver.get_replicas_for_device("device1") == {
                         "replica1",
                         "replica3",
                     }
-                    assert weaver.get_replicas_for_device("gpu2") == {"replica2"}
+                    assert weaver.get_replicas_for_device("device2") == {"replica2"}
 
-                    # Step 2: Simulate GPU failure
+                    # Step 2: Simulate device failure
                     async with TorchLoomClient(nats_url) as cli_client:
-                        await cli_client.fail_device("gpu1")
+                        await cli_client.fail_device("device1")
 
                     # Wait for failure processing
                     await asyncio.sleep(0.5)
@@ -162,7 +162,7 @@ class TestWeaverServerIntegration(TestCase):
                         for subject, data in published_events
                         if subject == torchLoomConstants.subjects.REPLICA_FAIL
                     ]
-                    assert len(replica_fails) == 2  # Should fail both replicas on gpu1
+                    assert len(replica_fails) == 2  # Should fail both replicas on device1
 
                     # Step 3: Adjust learning rate for recovery
                     async with TorchLoomClient(nats_url) as cli_client:

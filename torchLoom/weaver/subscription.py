@@ -33,15 +33,19 @@ class StreamManager:
 
     async def maybe_create_stream(self, stream: str, subjects: List[str]) -> None:
         """Create a stream if it doesn't exist, or update it if it has different subjects."""
-        logger.info(f"maybe_create_stream called for stream '{stream}' with subjects: {subjects}")
-        
+        logger.info(
+            f"maybe_create_stream called for stream '{stream}' with subjects: {subjects}"
+        )
+
         # Skip if we already created this stream
         if stream in self._created_streams:
             logger.debug(f"Stream {stream} already created, skipping...")
             return
-            
+
         try:
-            logger.info(f"Attempting to create stream '{stream}' with subjects: {subjects}")
+            logger.info(
+                f"Attempting to create stream '{stream}' with subjects: {subjects}"
+            )
             await self._js.add_stream(name=stream, subjects=subjects)
             logger.info(f"Created stream: {stream}")
             self._created_streams.add(stream)
@@ -49,35 +53,45 @@ class StreamManager:
             # Handle various stream existence scenarios
             error_msg = str(e).lower()
             logger.warning(f"Error creating stream {stream}: {e}")
-            
-            if ("already exists" in error_msg or 
-                "already in use" in error_msg or
-                "err_code=10058" in error_msg):
-                logger.info(f"Stream {stream} already exists, attempting to update subjects...")
-                
+
+            if (
+                "already exists" in error_msg
+                or "already in use" in error_msg
+                or "err_code=10058" in error_msg
+            ):
+                logger.info(
+                    f"Stream {stream} already exists, attempting to update subjects..."
+                )
+
                 try:
                     # Try to get the current stream info to see if it needs updating
                     stream_info = await self._js.stream_info(stream)
                     current_subjects = stream_info.config.subjects
                     logger.info(f"Current stream subjects: {current_subjects}")
                     logger.info(f"Desired stream subjects: {subjects}")
-                    
+
                     # Check if subjects match (handle None case)
                     if current_subjects is None:
                         current_subjects = []
-                    
+
                     if set(current_subjects) != set(subjects):
-                        logger.info(f"Updating stream {stream} with new subjects: {subjects}")
+                        logger.info(
+                            f"Updating stream {stream} with new subjects: {subjects}"
+                        )
                         # Update the stream with new subjects
                         await self._js.update_stream(name=stream, subjects=subjects)
-                        logger.info(f"Successfully updated stream {stream} with subjects: {subjects}")
+                        logger.info(
+                            f"Successfully updated stream {stream} with subjects: {subjects}"
+                        )
                     else:
                         logger.info(f"Stream {stream} already has correct subjects")
-                    
+
                     self._created_streams.add(stream)
-                    
+
                 except Exception as update_error:
-                    logger.exception(f"Failed to update stream {stream}: {update_error}")
+                    logger.exception(
+                        f"Failed to update stream {stream}: {update_error}"
+                    )
                     # Even if update fails, mark as created to avoid loops
                     self._created_streams.add(stream)
             else:

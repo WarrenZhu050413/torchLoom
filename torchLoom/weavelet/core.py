@@ -5,9 +5,9 @@ Core Weavelet class for process-based configuration management.
 import asyncio
 import logging
 import multiprocessing
-from multiprocessing.connection import Connection
 import time
 import uuid
+from multiprocessing.connection import Connection
 from typing import Any, Dict, Optional, Tuple, Type
 
 from torchLoom.common.config import Config
@@ -364,13 +364,13 @@ class Weavelet:
     def publish_status(self, status: Dict[str, Any]) -> None:
         """
         Publish status update.
-        
-        This method accepts any type of status (TrainingStatus, GPUStatus)
+
+        This method accepts any type of status (TrainingStatus, deviceStatus)
         and sends it to the weaver via NATS messaging.
-        
+
         Args:
             status_dict: Status data as dictionary, should be a TrainingStatus.to_dict(),
-                        GPUStatus.to_dict(), or any compatible dictionary.
+                        deviceStatus.to_dict(), or any compatible dictionary.
         """
         try:
             if self._status_sender and not self._status_sender.closed:

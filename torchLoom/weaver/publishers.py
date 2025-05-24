@@ -53,21 +53,21 @@ class UIUpdatePublisher(Publisher):
             ui_update.communication_status = self.status_tracker.communication_status
             ui_update.timestamp = int(time.time())
 
-            # Add all GPU statuses
-            for gpu_info in self.status_tracker.gpus.values():
-                gpu_status = ui_update.gpus.add()
-                gpu_status.gpu_id = gpu_info.gpu_id
-                gpu_status.replica_id = gpu_info.replica_id
-                gpu_status.server_id = gpu_info.server_id
-                gpu_status.status = gpu_info.status
-                gpu_status.utilization = gpu_info.utilization
-                gpu_status.temperature = gpu_info.temperature
-                gpu_status.memory_used = gpu_info.memory_used
-                gpu_status.memory_total = gpu_info.memory_total
+            # Add all device statuses
+            for device_info in self.status_tracker.devices.values():
+                device_status = ui_update.devices.add()
+                device_status.device_id = device_info.device_id
+                device_status.replica_id = device_info.replica_id
+                device_status.server_id = device_info.server_id
+                device_status.status = device_info.status
+                device_status.utilization = device_info.utilization
+                device_status.temperature = device_info.temperature
+                device_status.memory_used = device_info.memory_used
+                device_status.memory_total = device_info.memory_total
 
                 # Add config
-                for key, value in gpu_info.config.items():
-                    gpu_status.config[key] = str(value)
+                for key, value in device_info.config.items():
+                    device_status.config[key] = str(value)
 
             # Add all training statuses
             for replica_info in self.status_tracker.replicas.values():
@@ -84,17 +84,15 @@ class UIUpdatePublisher(Publisher):
                 topology = ui_update.topology.add()
                 topology.server_id = server_info.server_id
                 topology.replica_group_id = server_info.replica_group_id
-                for gpu_id in server_info.gpu_ids:
-                    topology.gpu_ids.append(gpu_id)
+                for device_id in server_info.device_ids:
+                    topology.device_ids.append(device_id)
 
             # Publish to UI
             await self.nats_client.publish(
                 torchLoomConstants.subjects.UI_UPDATE, envelope.SerializeToString()
             )
 
-            logger.debug(
-                "[WEAVER->UI] Published UI update to clients"
-            )
+            logger.debug("[WEAVER->UI] Published UI update to clients")
 
         except Exception as e:
             logger.exception(f"[WEAVER->UI] Failed to publish UI update: {e}")
@@ -110,10 +108,17 @@ class UIUpdatePublisher(Publisher):
 
 
 class WeaveletCommandPublisher(Publisher):
-    """Publisher for sending commands FROM the weaver TO weavelets/training processes."""
+    """Publisher for sending commands FROM the weaver TO weavelets/training processes.
 
-    def __init__(self, nats_client=None):
+    Also includes heartbeat monitoring functionality to detect dead replicas
+    and publish failure events for them.
+    """
+
+    def __init__(self, nats_client=None, weavelet_handler=None):
         self.nats_client = nats_client
+        self.weavelet_handler = (
+            weavelet_handler  # Reference to weavelet handler for heartbeat monitoring
+        )
 
     async def publish_replica_fail_event(self, replica_id: str) -> None:
         """Publish a replica failure event to training processes."""
@@ -236,104 +241,24 @@ class WeaveletCommandPublisher(Publisher):
         else:
             logger.warning(f"[WEAVER->WEAVELET] Unknown message type: {message_type}")
 
-
-# ===========================================
-# HEARTBEAT MONITORING (Special Publisher)
-# ===========================================
-
-
-class HeartbeatMonitor(Publisher):
-    """Monitor for dead replicas based on heartbeat timeouts and publish failure events."""
-
-    def __init__(self, heartbeat_handler, weavelet_command_publisher):
-        self.heartbeat_handler = (
-            heartbeat_handler  # Reference to the inbound heartbeat handler
-        )
-        self.weavelet_command_publisher = weavelet_command_publisher
-
     async def check_and_publish_dead_replicas(self) -> Set[str]:
         """Check for dead replicas and publish failure events for them."""
         try:
-            # Get newly dead replicas from the heartbeat handler
-            newly_dead_replicas = self.heartbeat_handler.check_dead_replicas()
+            if not self.weavelet_handler:
+                logger.warning(
+                    "[WEAVER] No weavelet handler available for heartbeat monitoring"
+                )
+                return set()
+
+            # Get newly dead replicas from the weavelet handler
+            newly_dead_replicas = self.weavelet_handler.check_dead_replicas()
 
             # Publish replica fail events for newly dead replicas
             for replica_id in newly_dead_replicas:
-                await self.weavelet_command_publisher.publish_replica_fail_event(
-                    replica_id
-                )
+                await self.publish_replica_fail_event(replica_id)
 
             return newly_dead_replicas
 
         except Exception as e:
             logger.exception(f"[WEAVER] Error checking dead replicas: {e}")
             return set()
-
-    async def publish(self) -> None:
-        """Implement the abstract publish method."""
-        await self.check_and_publish_dead_replicas()
-
-
-# ===========================================
-# DEMO UTILITIES
-# ===========================================
-
-
-class DemoDataSimulator:
-    """Simulates training data for demo purposes."""
-
-    def __init__(self, status_tracker):
-        self.status_tracker = status_tracker
-        self.demo_replicas = ["demo_replica_1", "demo_replica_2", "demo_replica_3"]
-        self.demo_servers = ["server-1-0", "server-1-1", "server-2-0", "server-3-0"]
-
-        logger.info("[DEMO] Demo data simulator initialized")
-
-    def initialize_demo_data(self):
-        """Initialize demo GPUs and replicas."""
-        gpu_counter = 0
-
-        for i, replica_id in enumerate(self.demo_replicas):
-            # Create 2-4 GPUs per replica
-            gpu_count = 2 + (i % 3)  # 2, 3, or 4 GPUs
-            server_id = self.demo_servers[i % len(self.demo_servers)]
-
-            for j in range(gpu_count):
-                gpu_id = f"gpu-{gpu_counter}"
-                gpu_counter += 1
-
-                # Initialize GPU with demo data
-                self.status_tracker.update_gpu_status(
-                    gpu_id=gpu_id,
-                    replica_id=replica_id,
-                    server_id=server_id,
-                    status="active",
-                    utilization=60.0 + (gpu_counter % 30),  # 60-90%
-                    temperature=50.0 + (gpu_counter % 25),  # 50-75°C
-                    memory_used=2.0 + (gpu_counter % 6),  # 2-8GB
-                    memory_total=8.0,
-                    config={
-                        "batch_size": "32",
-                        "learning_rate": "0.001",
-                        "optimizer_type": "Adam",
-                    },
-                )
-
-            # Initialize replica progress
-            self.status_tracker.update_training_progress(
-                replica_id=replica_id,
-                current_step=0,
-                step_progress=0.0,
-                status="training",
-            )
-
-        logger.info(
-            f"[DEMO] Initialized demo data: {gpu_counter} GPUs across {len(self.demo_replicas)} replicas"
-        )
-
-    def simulate_training_step(self):
-        """Simulate one training step across all demo components."""
-        self.status_tracker.simulate_training_progress()
-        logger.debug(
-            "[DEMO] Simulated training step"
-        )

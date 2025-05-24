@@ -16,19 +16,13 @@ from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
 from .handlers import (
-    ConfigurationHandler,
-    DeviceRegistrationHandler,
     DeviceReplicaMapper,
-    DrainEventHandler,
-    FailureHandler,
-    GPUStatusHandler,
-    HeartbeatHandler,
+    ExternalHandler,
     MessageHandler,
-    TrainingStatusHandler,
-    UICommandHandler,
-    WeaverCommandHandler,
+    UIHandler,
+    WeaveletHandler,
 )
-from .publishers import DemoDataSimulator, UIUpdatePublisher
+from .publishers import UIUpdatePublisher, WeaveletCommandPublisher
 from .status_tracker import StatusTracker
 from .subscription import ConnectionManager, SubscriptionManager
 from .websocket_server import WebSocketServer
@@ -37,6 +31,7 @@ logger = setup_logger(
     name="torchLoom_weaver", log_file=Config.torchLoom_CONTROLLER_LOG_FILE
 )
 
+from torchLoom.common.constants import TimeConstants
 
 class Weaver:
     """Weaver for torchLoom.
@@ -55,7 +50,7 @@ class Weaver:
     - **DeviceRegistrationHandler**: Handles device registration from weavelets
     - **HeartbeatHandler**: Monitors weavelet liveness via heartbeat messages
     - **TrainingStatusHandler**: Processes training progress updates from weavelets
-    - **GPUStatusHandler**: Handles GPU status and utilization updates
+    - **deviceStatusHandler**: Handles device status and utilization updates
     - **NetworkStatusHandler**: Processes network connectivity and performance data
     - **FailureHandler**: Manages device and replica failure scenarios
     - **DrainEventHandler**: Handles graceful device drain requests
@@ -153,21 +148,18 @@ class Weaver:
                 port=self.ui_port,
             )
 
-        # Initialize message handlers
+        # Initialize consolidated message handlers
         self._handlers = {
-            "register_device": DeviceRegistrationHandler(self._device_mapper, self.status_tracker),
-            "failure": FailureHandler(self._device_mapper, nc),
-            "configuration": ConfigurationHandler(nc),
-            "heartbeat": HeartbeatHandler(self.status_tracker, nc),
-            "drain": DrainEventHandler(self._device_mapper, self.status_tracker),
-            "weaver_command": WeaverCommandHandler(self.status_tracker, nc),
-            "training_status": TrainingStatusHandler(self.status_tracker),
-            "gpu_status": GPUStatusHandler(self.status_tracker),
-            "ui_commands": UICommandHandler(self.status_tracker, nc),
+            "weavelet": WeaveletHandler(self._device_mapper, self.status_tracker, nc),
+            "external": ExternalHandler(self._device_mapper, nc, self.status_tracker),
+            "ui": UIHandler(self.status_tracker, nc),
         }
 
-        # Initialize UI update handler (for publishing consolidated updates)
+        # Initialize publishers
         self.ui_update_handler = UIUpdatePublisher(self.status_tracker, nc)
+        self.weavelet_command_handler = WeaveletCommandPublisher(
+            nc, self._handlers["weavelet"]
+        )
 
         logger.info("Weaver fully initialized with UI support")
 
@@ -175,65 +167,54 @@ class Weaver:
         """Centralized setup of all JetStream streams with complete subject configurations."""
         logger.info("Setting up all JetStream streams...")
         print("DEBUG: _setup_all_streams called")
-        
+
         if not self._subscription_manager:
             raise RuntimeError("Subscription manager not initialized")
-        
-        print(f"DEBUG: About to create WEAVELET_STREAM with subjects: {[torchLoomConstants.weaver_stream.subjects.DR_SUBJECT, torchLoomConstants.subjects.CONFIG_INFO, torchLoomConstants.subjects.WEAVER_COMMANDS]}")
-        
+
+        print(
+            f"DEBUG: About to create WEAVELET_STREAM with subjects: {[torchLoomConstants.weaver_stream.subjects.DR_SUBJECT, torchLoomConstants.subjects.CONFIG_INFO, torchLoomConstants.subjects.WEAVER_COMMANDS]}"
+        )
+
         # WEAVELET_STREAM: Used for weaver-weavelet communication
         await self._subscription_manager._stream_manager.maybe_create_stream(
             torchLoomConstants.weaver_stream.STREAM,
             [
-                torchLoomConstants.weaver_stream.subjects.DR_SUBJECT,    # Device registration 
-                torchLoomConstants.subjects.CONFIG_INFO,                 # Config updates
-                torchLoomConstants.subjects.WEAVER_COMMANDS,             # Weaver commands
-            ]
+                torchLoomConstants.weaver_stream.subjects.DR_SUBJECT,  # Device registration
+                torchLoomConstants.subjects.CONFIG_INFO,  # Config updates
+                torchLoomConstants.subjects.WEAVER_COMMANDS,  # Weaver commands
+            ],
         )
-        
+
         print("DEBUG: maybe_create_stream call completed")
-        
+
         logger.info("All JetStream streams setup completed")
 
     async def message_handler(self, msg: Msg) -> None:
-        """Main message handler that dispatches to specific handlers."""
+        """Main message handler that dispatches to consolidated handlers."""
         try:
             env = EventEnvelope()
             env.ParseFromString(msg.data)
             logger.debug(f"Received message: {env}")
 
-            # Handle different event types using dedicated handlers
-            if env.HasField("register_device"):
-                await self._handlers["register_device"].handle(env)
+            # Route messages to appropriate consolidated handlers
 
-            if env.HasField("monitored_fail"):
-                await self._handlers["failure"].handle(env)
+            # Weavelet messages (Training Process -> Weaver)
+            if (
+                env.HasField("register_device")
+                or env.HasField("heartbeat")
+                or env.HasField("training_status")
+                or env.HasField("device_status")
+                or env.HasField("drain")
+            ):
+                await self._handlers["weavelet"].handle(env)
 
-            if env.HasField("config_info"):
-                await self._handlers["configuration"].handle(env)
+            # External system messages (External Systems -> Weaver)
+            if env.HasField("monitored_fail") or env.HasField("config_info"):
+                await self._handlers["external"].handle(env)
 
-            # Drain event handling
-            if env.HasField("drain"):
-                await self._handlers["drain"].handle(env)
-
-            # Heartbeat handling
-            if env.HasField("heartbeat"):
-                await self._handlers["heartbeat"].handle(env)
-
-            # Weaver command response handling
-            if env.HasField("weaver_command"):
-                await self._handlers["weaver_command"].handle(env)
-
-            # UI-related message handling
+            # UI messages (UI -> Weaver)
             if env.HasField("ui_command"):
-                await self._handlers["ui_commands"].handle(env)
-
-            # Training Process -> Weaver message handling
-            if env.HasField("training_status"):
-                await self._handlers["training_status"].handle(env)
-
-            if env.HasField("gpu_status"):
-                await self._handlers["gpu_status"].handle(env)
+                await self._handlers["ui"].handle(env)
 
             # Note: ui_status_update is handled by the UIUpdatePublisher in the background task
             # No need to handle it here as it's an outbound message type
@@ -270,6 +251,28 @@ class Weaver:
             except Exception as e:
                 logger.exception(f"Error in UI update publisher: {e}")
                 await asyncio.sleep(2.0)
+
+    async def start_heartbeat_monitor(self) -> None:
+        """Start the background task to monitor dead replicas and publish failure events."""
+        logger.info("Starting heartbeat monitor")
+
+        while not self._stop_nats.is_set():
+            try:
+                # Check for dead replicas every 30 seconds
+                if self.weavelet_command_handler:
+                    dead_replicas = (
+                        await self.weavelet_command_handler.check_and_publish_dead_replicas()
+                    )
+                    if dead_replicas:
+                        logger.info(
+                            f"Published failure events for dead replicas: {dead_replicas}"
+                        )
+
+                await asyncio.sleep(TimeConstants.HEARTBEAT_MONITOR_INTERVAL)
+
+            except Exception as e:
+                logger.exception(f"Error in heartbeat monitor: {e}")
+                await asyncio.sleep(30.0)
 
     async def stop(self) -> None:
         """Stop the weaver and clean up resources."""
@@ -311,62 +314,70 @@ class Weaver:
         """Get replica to devices mapping."""
         return self._device_mapper.replica_to_devices
 
-    def override_handler(self, event_type: str, handler: MessageHandler) -> None:
-        """Override a default handler with a custom implementation.
+    def override_handler(self, handler_category: str, handler: MessageHandler) -> None:
+        """Override a consolidated handler with a custom implementation.
 
         Args:
-            event_type: The event type to override (e.g., "heartbeat", "training_status")
+            handler_category: The handler category to override ("weavelet", "external", or "ui")
             handler: The custom handler instance to use
 
         Example:
-            # Override the heartbeat handler with custom logic
-            custom_handler = MyCustomHeartbeatHandler(...)
-            weaver.override_handler("heartbeat", custom_handler)
+            # Override the weavelet handler with custom logic
+            custom_handler = MyCustomWeaveletHandler(...)
+            weaver.override_handler("weavelet", custom_handler)
         """
         if not self._handlers:
             raise RuntimeError("Weaver not initialized. Call initialize() first.")
 
-        self._handlers[event_type] = handler
-        logger.info(f"Overrode handler for event type: {event_type}")
+        valid_categories = ["weavelet", "external", "ui"]
+        if handler_category not in valid_categories:
+            raise ValueError(
+                f"Invalid handler category: {handler_category}. Must be one of {valid_categories}"
+            )
 
-    def add_custom_handler(self, event_type: str, handler: MessageHandler) -> None:
-        """Add a handler for a custom event type.
+        self._handlers[handler_category] = handler
+        logger.info(f"Overrode {handler_category} handler")
+
+    def add_custom_handler(
+        self, handler_category: str, handler: MessageHandler
+    ) -> None:
+        """Add a handler for a custom category.
 
         Args:
-            event_type: The custom event type name
+            handler_category: The custom handler category name
             handler: The handler instance to use
 
-        Note: You'll also need to add the corresponding HasField check in a custom
-        message_handler if you want to handle custom protobuf fields.
+        Note: You'll also need to add the corresponding message routing logic
+        in the message_handler method for custom categories.
         """
         if not self._handlers:
             raise RuntimeError("Weaver not initialized. Call initialize() first.")
 
-        self._handlers[event_type] = handler
-        logger.info(f"Added custom handler for event type: {event_type}")
+        self._handlers[handler_category] = handler
+        logger.info(f"Added custom handler for category: {handler_category}")
 
-    def get_handler(self, event_type: str) -> Optional[MessageHandler]:
-        """Get the current handler for an event type.
+    def get_handler(self, handler_category: str) -> Optional[MessageHandler]:
+        """Get the current handler for a category.
 
         Args:
-            event_type: The event type to get the handler for
+            handler_category: The handler category to get ("weavelet", "external", or "ui")
 
         Returns:
             The handler instance or None if not found
         """
-        return self._handlers.get(event_type) if self._handlers else None
+        return self._handlers.get(handler_category) if self._handlers else None
 
     def list_handlers(self) -> Dict[str, str]:
         """List all currently registered handlers.
 
         Returns:
-            Dictionary mapping event types to handler class names
+            Dictionary mapping handler categories to handler class names
         """
         if not self._handlers:
             return {}
         return {
-            event_type: handler.__class__.__name__
-            for event_type, handler in self._handlers.items()
+            category: handler.__class__.__name__
+            for category, handler in self._handlers.items()
         }
 
     def get_supported_events(self) -> Dict[str, str]:
@@ -383,7 +394,7 @@ class Weaver:
             "heartbeat": "Weavelet liveness monitoring",
             "weaver_command": "Command acknowledgments from weavelets",
             "training_status": "Training progress updates",
-            "gpu_status": "GPU status and utilization data",
+            "device_status": "device status and utilization data",
             "ui_command": "Commands from the UI",
             "ui_status_update": "UI status updates (outbound only)",
         }
@@ -432,7 +443,7 @@ async def main():
             )
             tg.create_task(
                 weaver.subscribe_nc(
-                    subject=torchLoomConstants.subjects.GPU_STATUS,
+                    subject=torchLoomConstants.subjects.device_STATUS,
                     message_handler=weaver.message_handler,
                 )
             )
@@ -441,11 +452,9 @@ async def main():
             if weaver.enable_ui:
                 tg.create_task(weaver.start_ui_server())
 
-            # Demo simulation (DISABLED - no more simulated data)
-            # tg.create_task(weaver.start_demo_simulation())
-
-            # UI update publisher
+            # Background tasks
             tg.create_task(weaver.start_ui_update_publisher())
+            tg.create_task(weaver.start_heartbeat_monitor())
 
             logger.info("All services started successfully")
 

@@ -34,9 +34,18 @@
 <Environment Specific Instructions>
 
 ## Testing
-- Run tests through pytest
-- You should run not only tests, but the code that you have changed.
-  - The tests should be in the ./tests folder
+- Start the weaver: `python -m torchLoom.weaver.core`
+- Make sure that the nats server and the VITE server are running (they most likely are). If they are not, run the following: 
+```sh
+cd torchLoom-ui
+npm run dev -y
+```
+
+and 
+
+```sh
+./nats/nats-server -c nats/nats.conf -D               
+```
 
 ## Linters
 - Run linters after changes, by doing 

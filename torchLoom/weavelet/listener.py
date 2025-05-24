@@ -19,7 +19,7 @@ from nats.js.api import RetentionPolicy, StorageType, StreamConfig
 from nats.js.client import JetStreamContext
 
 import nats
-from torchLoom.common import GPUStatus, TrainingStatus
+from torchLoom.common import deviceStatus, TrainingStatus
 from torchLoom.common.config import Config
 from torchLoom.common.constants import WeaverStream, torchLoomConstants
 from torchLoom.common.utils import cancel_subscriptions, get_device_uuid
@@ -414,8 +414,8 @@ class WeaveletListener:
                 "training_failed",
             ]:
                 await self._publish_training_status(status)
-            elif status_type == "gpu_status":
-                await self._publish_gpu_status(status)
+            elif status_type == "device_status":
+                await self._publish_device_status(status)
             else:
                 # Fallback to training status for backward compatibility
                 await self._publish_training_status(status)
@@ -462,39 +462,39 @@ class WeaveletListener:
         except Exception as e:
             self._logger.exception(f"Failed to publish training status: {e}")
 
-    async def _publish_gpu_status(self, status: Dict[str, Any]) -> None:
-        """Publish GPUStatus message to NATS."""
+    async def _publish_device_status(self, status: Dict[str, Any]) -> None:
+        """Publish deviceStatus message to NATS."""
         try:
-            # Create GPUStatus from dictionary
-            gpu_status_obj = GPUStatus.from_dict(status)
+            # Create deviceStatus from dictionary
+            device_status_obj = deviceStatus.from_dict(status)
 
             # Create protobuf message
             envelope = EventEnvelope()
-            gpu_status = envelope.gpu_status
-            gpu_status.gpu_id = gpu_status_obj.gpu_id
-            gpu_status.replica_id = gpu_status_obj.replica_id
-            gpu_status.server_id = gpu_status_obj.server_id
-            gpu_status.status = gpu_status_obj.status
-            gpu_status.utilization = gpu_status_obj.utilization
-            gpu_status.temperature = gpu_status_obj.temperature
-            gpu_status.memory_used = gpu_status_obj.memory_used
-            gpu_status.memory_total = gpu_status_obj.memory_total
+            device_status = envelope.device_status
+            device_status.device_id = device_status_obj.device_id
+            device_status.replica_id = device_status_obj.replica_id
+            device_status.server_id = device_status_obj.server_id
+            device_status.status = device_status_obj.status
+            device_status.utilization = device_status_obj.utilization
+            device_status.temperature = device_status_obj.temperature
+            device_status.memory_used = device_status_obj.memory_used
+            device_status.memory_total = device_status_obj.memory_total
 
             # Add configuration parameters
-            for key, value in gpu_status_obj.config.items():
-                gpu_status.config[key] = str(value)
+            for key, value in device_status_obj.config.items():
+                device_status.config[key] = str(value)
 
             # Publish to NATS
             await self._nc.publish(
-                torchLoomConstants.subjects.GPU_STATUS, envelope.SerializeToString()
+                torchLoomConstants.subjects.device_STATUS, envelope.SerializeToString()
             )
 
             self._logger.debug(
-                f"Published GPUStatus: {gpu_status_obj.gpu_id} status={gpu_status_obj.status}"
+                f"Published deviceStatus: {device_status_obj.device_id} status={device_status_obj.status}"
             )
 
         except Exception as e:
-            self._logger.exception(f"Failed to publish GPU status: {e}")
+            self._logger.exception(f"Failed to publish device status: {e}")
 
     async def _heartbeat_loop(self) -> None:
         """Background task to send periodic heartbeat messages to the weaver."""

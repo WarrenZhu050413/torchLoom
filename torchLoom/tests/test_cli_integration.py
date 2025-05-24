@@ -280,9 +280,9 @@ async def test_cli_full_workflow():
         try:
             async with TorchLoomClient(nats_url) as cli_client:
                 # Step 1: Register initial training setup
-                await cli_client.register_device("gpu1", "replica1")
-                await cli_client.register_device("gpu2", "replica2")
-                await cli_client.register_device("gpu3", "replica3")
+                await cli_client.register_device("device1", "replica1")
+                await cli_client.register_device("device2", "replica2")
+                await cli_client.register_device("device3", "replica3")
 
                 # Set initial learning rate
                 await cli_client.reset_learning_rate("0.01")
@@ -292,13 +292,13 @@ async def test_cli_full_workflow():
 
                 # Verify initial setup
                 assert len(weaver.device_to_replicas) == 3
-                assert weaver.get_replicas_for_device("gpu1") == {"replica1"}
+                assert weaver.get_replicas_for_device("device1") == {"replica1"}
 
                 # Clear messages for failure test
                 published_messages.clear()
 
-                # Step 2: Simulate GPU failure
-                await cli_client.fail_device("gpu1")
+                # Step 2: Simulate device failure
+                await cli_client.fail_device("device1")
 
                 # Wait for failure processing
                 await asyncio.sleep(0.5)
@@ -311,10 +311,10 @@ async def test_cli_full_workflow():
                 ]
                 assert len(replica_fail_messages) == 1
 
-                # Step 3: Register replacement GPU
+                # Step 3: Register replacement device
                 await cli_client.register_device(
-                    "gpu4", "replica1"
-                )  # Replace failed gpu1
+                    "device4", "replica1"
+                )  # Replace failed device1
 
                 # Adjust learning rate for recovery
                 await cli_client.reset_learning_rate("0.005")
@@ -323,8 +323,8 @@ async def test_cli_full_workflow():
                 await asyncio.sleep(0.5)
 
                 # Verify recovery
-                assert "gpu4" in weaver.device_to_replicas
-                assert weaver.get_replicas_for_device("gpu4") == {"replica1"}
+                assert "device4" in weaver.device_to_replicas
+                assert weaver.get_replicas_for_device("device4") == {"replica1"}
 
                 # Check config updates (learning rate is now a config parameter)
                 config_messages = [

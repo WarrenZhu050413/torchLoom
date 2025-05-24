@@ -11,24 +11,23 @@ This package contains the refactored Weaver implementation with separated concer
 from .core import Weaver
 
 # Message handlers (messages TO the weaver)
-from .handlers import (  # Weavelet -> Weaver handlers; External -> Weaver handlers; UI -> Weaver handlers; Utility classes
-    ConfigurationHandler,
+from .handlers import (  # Consolidated handlers and utility classes
     DeviceRegistrationHandler,
     DeviceReplicaMapper,
     DrainEventHandler,
+    ExternalHandler,
     FailureHandler,
-    GPUStatusHandler,
+    deviceStatusHandler,
     HeartbeatHandler,
     MessageHandler,
     TrainingStatusHandler,
     UICommandHandler,
-    WeaverCommandHandler,
+    UIHandler,
+    WeaveletHandler,
 )
 
 # Publishers (messages FROM the weaver)
-from .publishers import (  # Weaver -> UI publishers; Weaver -> Weavelet publishers; Demo utilities;
-    DemoDataSimulator,
-    HeartbeatMonitor,
+from .publishers import (  # Weaver -> UI publishers; Weaver -> Weavelet publishers
     Publisher,
     UIUpdatePublisher,
     WeaveletCommandPublisher,
@@ -40,22 +39,24 @@ from .subscription import ConnectionManager, StreamManager, SubscriptionManager
 __all__ = [
     # Core
     "Weaver",
-    # Message handlers (TO weaver)
+    # Consolidated message handlers (TO weaver)
     "MessageHandler",
+    "WeaveletHandler",
+    "ExternalHandler",
+    "UIHandler",
+    "DeviceReplicaMapper",
+    # Backward compatibility aliases
     "DeviceRegistrationHandler",
     "HeartbeatHandler",
     "TrainingStatusHandler",
-    "GPUStatusHandler",
+    "deviceStatusHandler",
     "FailureHandler",
     "UICommandHandler",
-    "ConfigurationHandler",
-    "DeviceReplicaMapper",
+    "DrainEventHandler",
     # Publishers (FROM weaver)
     "Publisher",
     "UIUpdatePublisher",
     "WeaveletCommandPublisher",
-    "HeartbeatMonitor",
-    "DemoDataSimulator",
     # Infrastructure
     "StreamManager",
     "SubscriptionManager",

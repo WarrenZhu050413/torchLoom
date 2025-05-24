@@ -62,10 +62,10 @@ class TrainingStatus:
 
 
 @dataclass
-class GPUStatus:
-    """GPU status information matching the protobuf GPUStatus message."""
+class deviceStatus:
+    """device status information matching the protobuf deviceStatus message."""
     
-    gpu_id: str
+    device_id: str
     replica_id: str
     server_id: str
     status: str = "active"  # "active", "offline", "failed"
@@ -78,8 +78,8 @@ class GPUStatus:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary format."""
         return {
-            "type": "gpu_status",
-            "gpu_id": self.gpu_id,
+            "type": "device_status",
+            "device_id": self.device_id,
             "replica_id": self.replica_id,
             "server_id": self.server_id,
             "status": self.status,
@@ -91,10 +91,10 @@ class GPUStatus:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "GPUStatus":
-        """Create GPUStatus from dictionary."""
+    def from_dict(cls, data: Dict[str, Any]) -> "deviceStatus":
+        """Create deviceStatus from dictionary."""
         return cls(
-            gpu_id=data.get("gpu_id", ""),
+            device_id=data.get("device_id", ""),
             replica_id=data.get("replica_id", ""),
             server_id=data.get("server_id", ""),
             status=data.get("status", "active"),
@@ -107,7 +107,7 @@ class GPUStatus:
 
 
 # Union type for status updates
-StatusUpdate = TrainingStatus | GPUStatus
+StatusUpdate = TrainingStatus | deviceStatus
 
 
 def create_training_start_status(replica_id: str, epochs: int = 1) -> TrainingStatus:
@@ -183,27 +183,3 @@ def create_training_complete_status(replica_id: str, final_metrics: Optional[Dic
         status="completed",
         metrics=metrics
     )
-
-
-def simulate_gpu_status(
-    replica_id: str, 
-    batch_idx: int, 
-    base_utilization: float = 60.0,
-    base_temperature: float = 50.0
-) -> GPUStatus:
-    """Simulate realistic GPU status based on training progress."""
-    # Simulate varying GPU metrics
-    utilization = base_utilization + (batch_idx % 30)  # 60-90%
-    temperature = base_temperature + (batch_idx % 25)   # 50-75°C
-    memory_used = 2.0 + (batch_idx % 6) * 0.5  # 2-5 GB
-    
-    return GPUStatus(
-        gpu_id=f"device_{replica_id}",
-        replica_id=replica_id,
-        server_id="local_server",
-        status="active",
-        utilization=utilization,
-        temperature=temperature,
-        memory_used=memory_used,
-        memory_total=8.0
-    ) 

@@ -24,7 +24,7 @@ async def test_weaver_real_nats_integration():
     1. Start NATS server
     2. Initialize Weaver
     3. Register devices and replicas
-    4. Simulate a GPU failure
+    4. Simulate a device failure
     5. Verify that replica failure events are sent
     """
     async with NatsTestServer() as nats_url:
@@ -83,7 +83,7 @@ async def test_weaver_real_nats_integration():
             assert weaver.replica_to_devices.get("replica1") == {"device1"}
             assert weaver.replica_to_devices.get("replica2") == {"device1"}
 
-            # Step 2: Simulate a GPU failure
+            # Step 2: Simulate a device failure
             fail_env = EventEnvelope()
             fail_env.monitored_fail.device_uuid = "device1"
 

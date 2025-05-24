@@ -29,8 +29,8 @@ message TrainingStatus {
   int64 batch_idx = 10;
 }
 
-message GPUStatus {
-  string gpu_id = 1;
+message deviceStatus {
+  string device_id = 1;
   string replica_id = 2;
   string server_id = 3;
   string status = 4;              // "active", "offline", "failed"
@@ -43,8 +43,8 @@ message GPUStatus {
 
 // UI -> Weaver messages
 message UICommand {
-  string command_type = 1;  // "deactivate_gpu", "reactivate_group", "update_config", "pause_training", "resume_training"
-  string target_id = 2;     // gpu_id or replica_group_id
+  string command_type = 1;  // "deactivate_device", "reactivate_group", "update_config", "pause_training", "resume_training"
+  string target_id = 2;     // device_id or replica_group_id
   map<string, string> params = 3;
 }
 
@@ -58,13 +58,13 @@ message WeaverCommand {
 // System topology information
 message SystemTopology {
   string server_id = 1;
-  repeated string gpu_ids = 2;
+  repeated string device_ids = 2;
   string replica_group_id = 3;
 }
 
 // Weaver -> UI messages
 message UIStatusUpdate {
-  repeated GPUStatus gpus = 2;
+  repeated deviceStatus devices = 2;
   repeated TrainingStatus training_status = 3;
   repeated SystemTopology topology = 5;
   string communication_status = 6; // "stable", "rebuilding"
@@ -86,7 +86,7 @@ message EventEnvelope {
     
     // Training Process -> Weaver
     TrainingStatus       training_status   = 17;
-    GPUStatus           gpu_status         = 18;
+    deviceStatus           device_status         = 18;
     
     // UI <-> Weaver
     UICommand           ui_command         = 21;
