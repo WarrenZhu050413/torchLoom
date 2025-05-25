@@ -22,7 +22,7 @@ torchLoom is that active controller. At its core, it is composed of two componen
 ## Design Goals
 
 The key goals for torchLoom are:
-- **MPMD-first**: Express heterogeneous pipelines as first-class citizens.
+- **MPMD-first**: Support complex control and data flows with adaptive, flexible algorithms.
 - **Single Controller, Multiple Data Flows**: Centralize all decision-making in one Weaver service and keeping the training workers focused on data flow. This centralized control simplifies global coordination and provides a holistic system view, drawing inspiration from systems like Google's Pathways and Bytedance's Hybridflow.
 - **Fault tolerance**: Achieve both torchFT style quorum-based HSDP fault-tolerance, whilst introducing the controller to achieve proactive fault tolerance capable of handling SPMD usecases.
 - **Network-aware**: Inspired by work like PCCL, communication-efficient optimizers (DeMo), low-communication allreduces (int8 Allreduce, Mirror Reduce), and network-aware training algorithms (DiLoCo), torchLoom treat these algorithm choices as runtime-mutable parameters to dynamically optimize network communication.
