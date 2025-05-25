@@ -20,7 +20,7 @@ from torchLoom.common import (
 )
 
 # torchLoom imports
-from torchLoom.weavelet import Weavelet, weavelet_handler
+from torchLoom.threadlet import Threadlet, threadlet_handler
 
 
 def simulate_device_status(
@@ -98,7 +98,7 @@ class IntegratedTrainer:
 
         self.replica_id = replica_id or f"train_integrated_{uuid.uuid4().hex[:8]}"
 
-        # Training parameters (configurable via weavelet)
+        # Training parameters (configurable via threadlet)
         self.learning_rate = args.lr
         self.batch_size = args.batch_size
         self.training_enabled = True
@@ -122,10 +122,10 @@ class IntegratedTrainer:
         self.train_loader = DataLoader(train_dataset, batch_size=self.batch_size)
         self.test_loader = DataLoader(test_dataset, batch_size=args.test_batch_size)
 
-        # Initialize weavelet for torchLoom integration
-        self.weavelet = Weavelet(replica_id=self.replica_id)
+        # Initialize threadlet for torchLoom integration
+        self.threadlet = Threadlet(replica_id=self.replica_id)
         self._register_handlers()
-        self.weavelet.start()
+        self.threadlet.start()
 
         print(f"🧵 Integrated trainer initialized with replica_id: {self.replica_id}")
         print(f"📊 Will publish comprehensive status to torchLoom UI")
@@ -150,42 +150,42 @@ class IntegratedTrainer:
         return device
 
     def _register_handlers(self):
-        """Register weavelet handlers for dynamic configuration."""
+        """Register threadlet handlers for dynamic configuration."""
 
-        @weavelet_handler("learning_rate", float)
+        @threadlet_handler("learning_rate", float)
         def update_learning_rate(new_lr: float):
             print(f"📈 Learning rate updated: {self.learning_rate} → {new_lr}")
             self.learning_rate = new_lr
             for param_group in self.optimizer.param_groups:
                 param_group["lr"] = new_lr
 
-        @weavelet_handler("batch_size", int)
+        @threadlet_handler("batch_size", int)
         def update_batch_size(new_batch_size: int):
             print(f"📦 Batch size updated: {self.batch_size} → {new_batch_size}")
             self.batch_size = new_batch_size
             # Note: Would need to recreate DataLoader for this to take effect
 
-        @weavelet_handler("training_enabled", bool)
+        @threadlet_handler("training_enabled", bool)
         def toggle_training(enabled: bool):
             print(f"⏯️ Training {'enabled' if enabled else 'paused'}")
             self.training_enabled = enabled
 
-        @weavelet_handler("verbose", bool)
+        @threadlet_handler("verbose", bool)
         def toggle_verbose(enabled: bool):
             print(f"🗣️ Verbose mode {'enabled' if enabled else 'disabled'}")
             self.verbose = enabled
         
-        @weavelet_handler("sync_frequency", int)
+        @threadlet_handler("sync_frequency", int)
         def update_sync_frequency(new_freq: int):
             print(f"🔁 Sync frequency updated: {self.sync_frequency} → {new_freq}")
             self.sync_frequency = new_freq
 
-        # Register all handlers with the weavelet
+        # Register all handlers with the threadlet
         for local_var in locals().values():
-            if callable(local_var) and hasattr(local_var, "_weavelet_config_key"):
-                config_key = local_var._weavelet_config_key
-                expected_type = getattr(local_var, "_weavelet_expected_type", None)
-                self.weavelet.register_handler(config_key, local_var, expected_type)
+            if callable(local_var) and hasattr(local_var, "_threadlet_config_key"):
+                config_key = local_var._threadlet_config_key
+                expected_type = getattr(local_var, "_threadlet_expected_type", None)
+                self.threadlet.register_handler(config_key, local_var, expected_type)
                 print(f"✅ Registered handler: {config_key}")
 
     def train_epoch(self, epoch):
@@ -206,7 +206,7 @@ class IntegratedTrainer:
         for batch_idx, (data, target) in enumerate(self.train_loader):
             time.sleep(0.1)
             # Check for configuration updates
-            self.weavelet.check_and_apply_updates()
+            self.threadlet.check_and_apply_updates()
             # Skip training if disabled
             if not self.training_enabled:
                 print("⏸️ Training paused - skipping batch")
@@ -379,21 +379,21 @@ class IntegratedTrainer:
             else:
                 status_dict = status
 
-            # # Check if weavelet is available and not stopping
-            if hasattr(self.weavelet, '_status_sender') and self.weavelet._status_sender:
+            # # Check if threadlet is available and not stopping
+            if hasattr(self.threadlet, '_status_sender') and self.threadlet._status_sender:
                 # Use non-blocking send to prevent hanging
-                if hasattr(self.weavelet._status_sender, 'poll'):
+                if hasattr(self.threadlet._status_sender, 'poll'):
                     # Check if pipe is ready for writing (not full)
-                    if self.weavelet._status_sender.poll(0):
+                    if self.threadlet._status_sender.poll(0):
                         # Pipe might be ready for reading, but we want to write
                         # Fall back to normal send with error handling
                         pass
                     
                 # Try to publish with error handling
-                self.weavelet.publish_status(status_dict)
+                self.threadlet.publish_status(status_dict)
             else:
                 if self.verbose:
-                    print("Warning: Weavelet not available for status publishing")
+                    print("Warning: Threadlet not available for status publishing")
 
         except Exception as e:
             print(f"Warning: Failed to publish status: {e}")
@@ -411,7 +411,7 @@ class IntegratedTrainer:
             meta={"loss": self.last_loss, "sample_count": self.args.train_samples}
         )
 
-        self.weavelet.publish_status(update_status.to_dict())
+        self.threadlet.publish_status(update_status.to_dict())
 
 
     def run_training(self):
@@ -491,9 +491,9 @@ class IntegratedTrainer:
     def cleanup(self):
         """Clean up resources."""
         try:
-            if hasattr(self, "weavelet"):
-                self.weavelet.stop()
-                print("🧵 Weavelet stopped")
+            if hasattr(self, "threadlet"):
+                self.threadlet.stop()
+                print("🧵 Threadlet stopped")
         except Exception as e:
             print(f"Warning: Error during cleanup: {e}")
 

@@ -29,15 +29,15 @@ The following handlers are automatically configured:
 
 | Handler | Event Type | Purpose |
 |---------|------------|---------|
-| `DeviceRegistrationHandler` | `register_device` | Handles device registration from weavelets |
-| `HeartbeatHandler` | `heartbeat` | Monitors weavelet liveness via heartbeat messages |
-| `TrainingStatusHandler` | `training_status` | Processes training progress updates from weavelets |
+| `DeviceRegistrationHandler` | `register_device` | Handles device registration from threadlets |
+| `HeartbeatHandler` | `heartbeat` | Monitors threadlet liveness via heartbeat messages |
+| `TrainingStatusHandler` | `training_status` | Processes training progress updates from threadlets |
 | `deviceStatusHandler` | `device_status` | Handles device status and utilization updates |
 | `NetworkStatusHandler` | `network_status` | Processes network connectivity and performance data |
 | `FailureHandler` | `monitored_fail` | Manages device and replica failure scenarios |
 | `DrainEventHandler` | `drain` | Handles graceful device drain requests |
 | `UICommandHandler` | `ui_command` | Processes commands from the UI (pause/resume/config changes) |
-| `WeaverCommandHandler` | `weaver_command` | Handles command acknowledgments from weavelets |
+| `WeaverCommandHandler` | `weaver_command` | Handles command acknowledgments from threadlets |
 | `ConfigurationHandler` | `config_info` | Manages configuration change events |
 
 ## 🔧 Customizing Handlers

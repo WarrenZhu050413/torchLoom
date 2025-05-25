@@ -1,5 +1,5 @@
 """
-Handler registration and dispatch system for weavelet configuration management.
+Handler registration and dispatch system for threadlet configuration management.
 """
 
 import inspect
@@ -11,10 +11,10 @@ from .config import TypeConverter
 logger = logging.getLogger(__name__)
 
 
-def weavelet_handler(config_key: str, expected_type: Optional[Type] = None):
-    """Global decorator function for weavelet handlers.
+def threadlet_handler(config_key: str, expected_type: Optional[Type] = None):
+    """Global decorator function for threadlet handlers.
 
-    This can be used as a standalone decorator when the weavelet instance
+    This can be used as a standalone decorator when the threadlet instance
     is not yet available during class definition.
 
     Args:
@@ -22,16 +22,16 @@ def weavelet_handler(config_key: str, expected_type: Optional[Type] = None):
         expected_type: Expected type for the parameter value
 
     Usage:
-        class MyTrainer(WeaveletLightningModule):
-            @weavelet_handler("optimizer_type")
+        class MyTrainer(ThreadletLightningModule):
+            @threadlet_handler("optimizer_type")
             def update_optimizer(self, new_type: str):
                 pass
     """
 
     def decorator(func):
         # Store handler metadata on the function
-        func._weavelet_config_key = config_key
-        func._weavelet_expected_type = expected_type
+        func._threadlet_config_key = config_key
+        func._threadlet_expected_type = expected_type
         return func
 
     return decorator
@@ -159,7 +159,7 @@ class HandlerRegistry:
                 self.register_handler(config_key, handler_func, expected_type)
                 registered_count += 1
 
-        logger.info(f"Registered {registered_count} default weavelet handlers")
+        logger.info(f"Registered {registered_count} default threadlet handlers")
 
     # Default handler implementations
     def _default_learning_rate_handler(self, new_lr: float) -> None:

@@ -1,5 +1,5 @@
 """
-Async weavelet listener implementation.
+Async threadlet listener implementation.
 """
 
 import asyncio
@@ -26,11 +26,11 @@ from torchLoom.common.utils import cancel_subscriptions, get_device_uuid
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope, RegisterDevice
 
-logger = setup_logger(name="weavelet_listener")
+logger = setup_logger(name="threadlet_listener")
 
 
-class WeaveletListener:
-    """Async implementation of weavelet listener that runs inside the subprocess."""
+class ThreadletListener:
+    """Async implementation of threadlet listener that runs inside the subprocess."""
 
     def __init__(
         self,
@@ -42,7 +42,7 @@ class WeaveletListener:
     ):
         # Setup logging
         self._logger = setup_logger(
-            name="weavelet_logger",
+            name="threadlet_logger",
             log_file=Config.MANAGER_torchLoom_LOG_FILE,
             format_log=True,
             print_to_console=False,
@@ -70,11 +70,11 @@ class WeaveletListener:
         self._exception_sleep = Config.EXCEPTION_RETRY_TIME or 1
 
         self._logger.info(
-            f"WeaveletListener initialized with replica_id: {self._replica_id}"
+            f"ThreadletListener initialized with replica_id: {self._replica_id}"
         )
 
     async def run(self) -> None:
-        """Main run loop for the async weavelet listener."""
+        """Main run loop for the async threadlet listener."""
         try:
             await self._connect()
             await self._setup_subscriptions()
@@ -88,7 +88,7 @@ class WeaveletListener:
             ]
 
             self._logger.info(
-                "WeaveletListener async initialization completed, starting main loop"
+                "ThreadletListener async initialization completed, starting main loop"
             )
 
             # Wait for stop signal or task completion
@@ -104,10 +104,10 @@ class WeaveletListener:
                 except asyncio.CancelledError:
                     pass
 
-            self._logger.info("WeaveletListener main loop completed")
+            self._logger.info("ThreadletListener main loop completed")
 
         except Exception as e:
-            self._logger.exception(f"Error in weavelet listener run loop: {e}")
+            self._logger.exception(f"Error in threadlet listener run loop: {e}")
         finally:
             await self._cleanup()
 
@@ -134,7 +134,7 @@ class WeaveletListener:
             await self._subscribe_js(
                 stream=WeaverStream.STREAM,
                 subject=torchLoomConstants.subjects.CONFIG_INFO,
-                consumer=f"weavelet-{self._replica_id}",
+                consumer=f"threadlet-{self._replica_id}",
                 message_handler=self._handle_config_message,
             )
 
@@ -148,11 +148,11 @@ class WeaveletListener:
             await self._subscribe_js(
                 stream=WeaverStream.STREAM,
                 subject=torchLoomConstants.subjects.WEAVER_COMMANDS,
-                consumer=f"weavelet-{self._replica_id}",
+                consumer=f"threadlet-{self._replica_id}",
                 message_handler=self._handle_weaver_command,
             )
 
-            self._logger.info("WeaveletListener subscriptions set up successfully")
+            self._logger.info("ThreadletListener subscriptions set up successfully")
         except Exception as e:
             self._logger.exception(f"Failed to set up subscriptions: {e}")
             raise
@@ -554,7 +554,7 @@ class WeaveletListener:
     async def _cleanup(self) -> None:
         """Clean up resources."""
         try:
-            self._logger.info("Starting WeaveletListener cleanup...")
+            self._logger.info("Starting ThreadletListener cleanup...")
 
             # Cancel all subscriptions and wait for them to complete
             for subject, (sub, task) in self._subscriptions.items():
@@ -612,6 +612,6 @@ class WeaveletListener:
                 except Exception as e:
                     self._logger.warning(f"Error closing NATS connection: {e}")
 
-            self._logger.info("WeaveletListener cleanup completed")
+            self._logger.info("ThreadletListener cleanup completed")
         except Exception as e:
             self._logger.exception(f"Error during cleanup: {e}")

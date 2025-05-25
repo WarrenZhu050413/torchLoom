@@ -21,7 +21,7 @@ import lightning as L
 import torch
 import torch.nn as nn
 
-from torchLoom.lightning_wrapper import WeaveletWrapper, make_weavelet, weavelet_handler
+from torchLoom.lightning_wrapper import ThreadletWrapper, make_threadlet, threadlet_handler
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope, Heartbeat
 from torchLoom.weaver.handlers import HeartbeatHandler
 from torchLoom.weaver.status_tracker import StatusTracker
@@ -51,7 +51,7 @@ class HeartbeatTestModule(L.LightningModule):
         self.learning_rate = 0.001
         self.model = TestModel()
 
-    @weavelet_handler("learning_rate", float)
+    @threadlet_handler("learning_rate", float)
     def update_learning_rate(self, new_lr: float):
         """Handler for dynamic learning rate updates."""
         print(f"📈 Learning rate updated to: {new_lr}")
@@ -72,11 +72,11 @@ def simulate_training_replica(replica_id: str, duration: int = 60):
     """Simulate a training replica that will be alive for a certain duration."""
     print(f"🚀 Starting training replica: {replica_id}")
 
-    # Create Lightning module and wrap with weavelet
+    # Create Lightning module and wrap with threadlet
     trainer_module = HeartbeatTestModule()
-    weavelet_trainer = make_weavelet(trainer_module, replica_id=replica_id)
+    threadlet_trainer = make_threadlet(trainer_module, replica_id=replica_id)
 
-    print(f"✅ Weavelet started for replica: {replica_id}")
+    print(f"✅ Threadlet started for replica: {replica_id}")
     print(f"   PID: {os.getpid()}")
     print(f"   Will run for {duration} seconds...")
 
@@ -90,7 +90,7 @@ def simulate_training_replica(replica_id: str, duration: int = 60):
 
     finally:
         print(f"🧹 Cleaning up replica: {replica_id}")
-        weavelet_trainer.cleanup()
+        threadlet_trainer.cleanup()
         print(f"✅ Replica {replica_id} cleaned up successfully")
 
 
@@ -196,7 +196,7 @@ async def main():
     print("🧪 HEARTBEAT FUNCTIONALITY TEST")
     print("=" * 80)
     print("This test demonstrates:")
-    print("  1. Weavelets sending periodic heartbeats to weaver")
+    print("  1. Threadlets sending periodic heartbeats to weaver")
     print("  2. Weaver detecting dead processes when heartbeats stop")
     print("  3. Process lifecycle management")
     print("=" * 80)

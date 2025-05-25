@@ -1,16 +1,16 @@
-# torchLoom Weavelet Default Handlers
+# torchLoom Threadlet Default Handlers
 
-The torchLoom Weavelet now comes with **comprehensive default handlers** for common configuration parameters, eliminating the need for users to manually define handlers for standard use cases.
+The torchLoom Threadlet now comes with **comprehensive default handlers** for common configuration parameters, eliminating the need for users to manually define handlers for standard use cases.
 
 ## 🎯 Zero-Configuration Usage
 
 ### Lightning Integration
 
-For most Lightning-based training, you can now use weavelets with **zero configuration**:
+For most Lightning-based training, you can now use threadlets with **zero configuration**:
 
 ```python
 import pytorch_lightning as L
-from torchLoom.lightning_wrapper import WeaveletWrapper
+from torchLoom.lightning_wrapper import ThreadletWrapper
 
 class MyTrainer(L.LightningModule):
     def __init__(self):
@@ -23,7 +23,7 @@ class MyTrainer(L.LightningModule):
 
 # Zero configuration - default handlers automatically enabled!
 trainer = MyTrainer()
-weavelet_trainer = WeaveletWrapper(trainer, replica_id="my_trainer")
+threadlet_trainer = ThreadletWrapper(trainer, replica_id="my_trainer")
 
 # All common config parameters are now handled automatically! 🎉
 ```
@@ -33,7 +33,7 @@ weavelet_trainer = WeaveletWrapper(trainer, replica_id="my_trainer")
 For non-Lightning usage:
 
 ```python
-from torchLoom.weavelet import Weavelet
+from torchLoom.threadlet import Threadlet
 
 class MyConfig:
     def __init__(self):
@@ -41,9 +41,9 @@ class MyConfig:
         self.batch_size = 32
 
 config = MyConfig()
-weavelet = Weavelet(replica_id="my_training")
-weavelet.enable_default_handlers(config)  # Enable defaults with target object
-weavelet.start()
+threadlet = Threadlet(replica_id="my_training")
+threadlet.enable_default_handlers(config)  # Enable defaults with target object
+threadlet.start()
 
 # All default handlers are now active!
 ```
@@ -125,14 +125,14 @@ class MyTrainer(L.LightningModule):
         # This needs a custom handler
         self.custom_parameter = 1.0
     
-    @weavelet_handler("custom_parameter", float)
+    @threadlet_handler("custom_parameter", float)
     def update_custom_param(self, new_value: float):
         """Custom handler for specialized parameter."""
         self.custom_parameter = new_value
         # Your custom logic here
 
 # Both default and custom handlers work together!
-weavelet_trainer = WeaveletWrapper(trainer, replica_id="my_trainer")
+threadlet_trainer = ThreadletWrapper(trainer, replica_id="my_trainer")
 ```
 
 ## 🔍 Inspecting Handlers
@@ -141,7 +141,7 @@ weavelet_trainer = WeaveletWrapper(trainer, replica_id="my_trainer")
 
 ```python
 # See all supported configuration parameters
-handlers = weavelet_trainer.list_config_handlers()
+handlers = threadlet_trainer.list_config_handlers()
 for param, description in handlers.items():
     print(f"{param}: {description}")
 ```
@@ -150,7 +150,7 @@ for param, description in handlers.items():
 
 ```python
 # See what handlers are actually registered
-registered = weavelet_trainer.get_registered_handlers()
+registered = threadlet_trainer.get_registered_handlers()
 for param, param_type in registered.items():
     print(f"{param}: {param_type.__name__}")
 ```
@@ -158,9 +158,9 @@ for param, param_type in registered.items():
 ### Get Handler Information
 
 ```python
-# For standalone weavelet
-supported = weavelet.get_supported_config_parameters()
-registered = weavelet.get_registered_handlers()
+# For standalone threadlet
+supported = threadlet.get_supported_config_parameters()
+registered = threadlet.get_registered_handlers()
 ```
 
 ## ⚙️ Customizing Default Handlers
@@ -169,17 +169,17 @@ registered = weavelet.get_registered_handlers()
 
 ```python
 # Disable default handlers (manual setup required)
-weavelet.disable_default_handlers()
+threadlet.disable_default_handlers()
 
 # Re-enable with target object
-weavelet.enable_default_handlers(my_training_object)
+threadlet.enable_default_handlers(my_training_object)
 ```
 
 ### Set Target Object
 
 ```python
 # Change the target object for configuration updates
-weavelet.set_target_object(new_training_object)
+threadlet.set_target_object(new_training_object)
 ```
 
 ### Override Default Handlers
@@ -187,7 +187,7 @@ weavelet.set_target_object(new_training_object)
 Default handlers can be overridden by registering custom handlers with the same parameter name:
 
 ```python
-@weavelet_handler("learning_rate", float)
+@threadlet_handler("learning_rate", float)
 def my_custom_lr_handler(self, new_lr: float):
     """Custom learning rate handler that overrides the default."""
     # Your custom logic
@@ -204,7 +204,7 @@ class MyTrainer(L.LightningModule):
         super().__init__()
         self.learning_rate = 0.001
     
-    @weavelet_handler("learning_rate", float)
+    @threadlet_handler("learning_rate", float)
     def update_lr(self, new_lr: float):
         self.learning_rate = new_lr
         # Update optimizer manually
@@ -213,7 +213,7 @@ class MyTrainer(L.LightningModule):
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = new_lr
     
-    @weavelet_handler("batch_size", int)  
+    @threadlet_handler("batch_size", int)  
     def update_batch_size(self, new_size: int):
         self.batch_size = new_size
     
@@ -231,7 +231,7 @@ class MyTrainer(L.LightningModule):
         # All common parameters handled automatically! 
 
 # Just wrap and go!
-weavelet_trainer = WeaveletWrapper(trainer, replica_id="my_trainer")
+threadlet_trainer = ThreadletWrapper(trainer, replica_id="my_trainer")
 ```
 
 ## 🎯 Best Practices
@@ -257,7 +257,7 @@ class OptimalTrainer(L.LightningModule):
 Use custom handlers when you need specialized behavior:
 
 ```python
-@weavelet_handler("model_complexity", int)
+@threadlet_handler("model_complexity", int)
 def update_model_complexity(self, complexity: int):
     """Custom handler for complex model reconfiguration."""
     if complexity == 1:
@@ -307,8 +307,8 @@ Default handlers provide **100% coverage** for common configuration parameters u
 - **Logging Changes**: `log_level` updates the global Python logging level
 - **Attribute Matching**: Handlers work best when target object has matching attribute names
 
-The default handlers system makes torchLoom weavelets incredibly easy to use while maintaining full flexibility for advanced customization when needed.
+The default handlers system makes torchLoom threadlets incredibly easy to use while maintaining full flexibility for advanced customization when needed.
 
 ## 📚 Examples
 
-See [examples/weavelet_default_handlers.py](../examples/weavelet_default_handlers.py) for comprehensive working examples demonstrating all features. 
+See [examples/threadlet_default_handlers.py](../examples/threadlet_default_handlers.py) for comprehensive working examples demonstrating all features. 

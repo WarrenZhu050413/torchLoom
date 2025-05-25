@@ -7,7 +7,7 @@ Welcome to torchLoom! This guide will help you understand, set up, and start wor
 ### Essential Files to Know
 
 **Core Communication Components:**
-- `torchLoom/weavelet/core.py` - Client-side component that integrates with training processes
+- `torchLoom/threadlet/core.py` - Client-side component that integrates with training processes
 - `torchLoom/weaver/core.py` - Central controller that orchestrates all communication
 - `torchLoom/weaver/websocket_server.py` - WebSocket server for real-time UI communication
 - `torchLoom/common/constants.py` - All NATS subjects and communication constants
@@ -17,19 +17,21 @@ Welcome to torchLoom! This guide will help you understand, set up, and start wor
 **Handler Organization:**
 - `torchLoom/weaver/handlers/` - Message handlers for different communication directions
 - `torchLoom/weaver/publishers/` - Outbound message publishers
-- `torchLoom/weavelet/handlers/` - Client-side configuration handlers
+- `torchLoom/threadlet/handlers/` - Client-side configuration handlers
 
 **Protocol Definitions:**
 - `torchLoom/proto/torchLoom_pb2.py` - Protobuf message definitions for NATS communication
 
 ### Message Flow Architecture
 
+For a visual representation of the overall system, please refer to the [Architecture Diagram](docs/design/architecture.md#architecture-diagram).
+
 #### 🔄 Training Process → UI (Status Updates)
 
-**1. Training Process → Weavelet**
+**1. Training Process → Threadlet**
 ```python
-# In training code, weavelet publishes status updates
-weavelet.publish_status({
+# In training code, threadlet publishes status updates
+threadlet.publish_status({
     "replica_id": "train_ddp_1:uuid",
     "status_type": "batch_update", 
     "current_step": 150,
@@ -37,9 +39,9 @@ weavelet.publish_status({
 })
 ```
 
-**2. Weavelet → Weaver (via NATS)**
+**2. Threadlet → Weaver (via NATS)**
 - **Subject:** `torchLoomConstants.subjects.TRAINING_STATUS` ("torchLoom.training.status")
-- **Handler:** `WeaveletHandler.handle()` in `torchLoom/weaver/handlers/`
+- **Handler:** `ThreadletHandler.handle()` in `torchLoom/weaver/handlers/`
 - **Message Type:** `EventEnvelope.training_status`
 
 **3. Weaver → UI (via WebSocket)**
@@ -73,18 +75,18 @@ await apiService.updateConfig(replicaId, {
 - **NATS Subject:** `torchLoomConstants.subjects.UI_COMMAND` ("torchLoom.ui.commands")
 - **Message Type:** `EventEnvelope.ui_command`
 
-**3. Weaver → Weavelet (via NATS)**
-- **Publisher:** `WeaveletCommandPublisher.publish_command()`
+**3. Weaver → Threadlet (via NATS)**
+- **Publisher:** `ThreadletCommandPublisher.publish_command()`
 - **Subject:** `torchLoomConstants.subjects.WEAVER_COMMANDS` ("torchLoom.weaver.commands")
 - **Message Type:** `EventEnvelope.weaver_command`
 
-**4. Weavelet → Training Process**
+**4. Threadlet → Training Process**
 ```python
-# In weavelet core.py
-config_update = weavelet.get_config_update()
+# In threadlet core.py
+config_update = threadlet.get_config_update()
 if config_update:
     # Automatically dispatches to registered handlers
-    # e.g., @weavelet.handler("learning_rate")
+    # e.g., @threadlet.handler("learning_rate")
     def update_lr(new_lr):
         optimizer.param_groups[0]['lr'] = new_lr
 ```
@@ -101,7 +103,7 @@ if config_update:
 - `torchLoom.ui.commands` - Control commands from UI
 - `torchLoom.ui.update` - Status broadcasts to UI (via WebSocket, not NATS)
 
-**Weaver → Weavelet:**
+**Weaver → Threadlet:**
 - `torchLoom.weaver.commands` - Configuration updates and control commands
 - `torchLoom.config.info` - Configuration change notifications
 
@@ -119,7 +121,7 @@ async def message_handler(self, msg: Msg):
     
     # Route to consolidated handlers
     if env.HasField("training_status") or env.HasField("device_status"):
-        await self._handlers["weavelet"].handle(env)  # WeaveletHandler
+        await self._handlers["threadlet"].handle(env)  # ThreadletHandler
     
     if env.HasField("ui_command"):
         await self._handlers["ui"].handle(env)        # UIHandler
@@ -129,7 +131,7 @@ async def message_handler(self, msg: Msg):
 ```
 
 **Handler Classes:**
-- `WeaveletHandler` - Processes training status, device status, heartbeats, device registration
+- `ThreadletHandler` - Processes training status, device status, heartbeats, device registration
 - `UIHandler` - Processes UI commands (deactivate device, reactivate group, config updates)
 - `ExternalHandler` - Processes external failure notifications and config changes
 
@@ -173,9 +175,9 @@ EventEnvelope {
 }
 ```
 
-5. **Weavelet handler dispatch:**
+5. **Threadlet handler dispatch:**
 ```python
-@weavelet.handler("learning_rate")
+@threadlet.handler("learning_rate")
 def update_learning_rate(new_lr: float):
     for param_group in optimizer.param_groups:
         param_group['lr'] = new_lr

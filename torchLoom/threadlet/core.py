@@ -1,5 +1,5 @@
 """
-Core Weavelet class for process-based configuration management.
+Core Threadlet class for process-based configuration management.
 """
 
 import asyncio
@@ -14,11 +14,11 @@ from torchLoom.common.config import Config
 from torchLoom.common.constants import torchLoomConstants
 
 from .handlers import HandlerRegistry
-from .listener import WeaveletListener
+from .listener import ThreadletListener
 
 
-class Weavelet:
-    """Process-based Weavelet for torchLoom training processes.
+class Threadlet:
+    """Process-based Threadlet for torchLoom training processes.
 
     This class manages all communication between training processes and the weaver,
     including receiving configuration updates and sending training status updates.
@@ -44,7 +44,7 @@ class Weavelet:
         ] = None,
     ):
         # Core identifiers
-        self._replica_id = replica_id or f"weavelet:{uuid.uuid4()}"
+        self._replica_id = replica_id or f"threadlet:{uuid.uuid4()}"
         self._device_uuid: Optional[str] = None
 
         # NATS connection setup
@@ -104,7 +104,7 @@ class Weavelet:
             expected_type: Expected type for the parameter value
 
         Usage:
-            @weavelet.handler("optimizer_type")
+            @threadlet.handler("optimizer_type")
             def update_optimizer(self, new_type: str):
                 # Implementation here
                 pass
@@ -121,7 +121,7 @@ class Weavelet:
         self._handler_registry.dispatch_handlers(config_updates)
 
     def get_config_update(self, timeout: float = 0.1) -> Optional[Dict[str, str]]:
-        """Get configuration update from the weavelet process if available.
+        """Get configuration update from the threadlet process if available.
 
         If auto_dispatch is enabled (default), this will automatically call
         registered handlers. Otherwise, it returns the config update dict.
@@ -265,14 +265,14 @@ class Weavelet:
         return descriptions
 
     def start(self) -> None:
-        """Start the weavelet in a separate process."""
+        """Start the threadlet in a separate process."""
         try:
             # Register default handlers if enabled
             if self._default_handlers_enabled:
                 self._handler_registry.register_default_handlers(self._target_object)
 
             self._process = multiprocessing.Process(
-                target=self._run_weavelet_listener_process,
+                target=self._run_threadlet_listener_process,
                 args=(
                     self._replica_id,
                     self._torchLoom_addr,
@@ -280,27 +280,27 @@ class Weavelet:
                     self._status_receiver,  # Receive side of status pipe
                     self._stop_event,
                 ),
-                name=f"weavelet-{self._replica_id}",
+                name=f"threadlet-{self._replica_id}",
             )
             self._process.start()
 
             # Give the process a moment to start
             time.sleep(0.1)
 
-            print(f"Weavelet process started with PID: {self._process.pid}")
+            print(f"Threadlet process started with PID: {self._process.pid}")
 
             # Log registered handlers
             handlers = self.get_registered_handlers()
-            print(f"Weavelet has {len(handlers)} registered configuration handlers")
+            print(f"Threadlet has {len(handlers)} registered configuration handlers")
         except Exception as e:
-            print(f"Failed to start weavelet process: {e}")
+            print(f"Failed to start threadlet process: {e}")
             raise
 
     def stop(self) -> None:
-        """Stop the weavelet process and clean up resources."""
+        """Stop the threadlet process and clean up resources."""
         try:
             if self._process and self._process.is_alive():
-                print("Stopping weavelet process")
+                print("Stopping threadlet process")
                 self._stop_event.set()
 
                 # Wait for the process to finish gracefully
@@ -308,7 +308,7 @@ class Weavelet:
 
                 # If still alive, terminate forcefully
                 if self._process.is_alive():
-                    print("Force terminating weavelet process")
+                    print("Force terminating threadlet process")
                     self._process.terminate()
                     self._process.join(timeout=2)
 
@@ -317,7 +317,7 @@ class Weavelet:
                         self._process.kill()
                         self._process.join()
 
-                print("Weavelet process stopped successfully")
+                print("Threadlet process stopped successfully")
 
             # Clean up pipe resources
             try:
@@ -359,7 +359,7 @@ class Weavelet:
                 print(f"Error cleaning up multiprocessing resources: {e}")
 
         except Exception as e:
-            print(f"Error stopping weavelet process: {e}")
+            print(f"Error stopping threadlet process: {e}")
 
     def publish_status(self, status: Dict[str, Any]) -> None:
         """
@@ -382,21 +382,21 @@ class Weavelet:
             self._logger.warning(f"Error sending status via pipe: {e}")
 
     @staticmethod
-    def _run_weavelet_listener_process(
+    def _run_threadlet_listener_process(
         replica_id: str,
         torchLoom_addr: str,
         config_sender: Connection,
         status_receiver: Connection,
         stop_event: multiprocessing.Event,
     ) -> None:
-        """Main function that runs in the separate weavelet listener process."""
+        """Main function that runs in the separate threadlet listener process."""
         try:
             # Create event loop for this process
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
-            # Create the async weavelet listener instance
-            weavelet_listener = WeaveletListener(
+            # Create the async threadlet listener instance
+            threadlet_listener = ThreadletListener(
                 replica_id=replica_id,
                 torchLoom_addr=torchLoom_addr,
                 config_sender=config_sender,
@@ -405,9 +405,9 @@ class Weavelet:
             )
 
             # Run the async main loop
-            loop.run_until_complete(weavelet_listener.run())
+            loop.run_until_complete(threadlet_listener.run())
         except Exception as e:
-            print(f"Error in weavelet listener process: {e}")
+            print(f"Error in threadlet listener process: {e}")
         finally:
             # Clean up
             try:

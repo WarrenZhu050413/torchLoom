@@ -23,14 +23,14 @@ from .handlers import (  # Consolidated handlers and utility classes
     TrainingStatusHandler,
     UICommandHandler,
     UIHandler,
-    WeaveletHandler,
+    ThreadletHandler,
 )
 
 # Publishers (messages FROM the weaver)
-from .publishers import (  # Weaver -> UI publishers; Weaver -> Weavelet publishers
+from .publishers import (  # Weaver -> UI publishers; Weaver -> Threadlet publishers
     Publisher,
     UIUpdatePublisher,
-    WeaveletCommandPublisher,
+    ThreadletCommandPublisher,
 )
 
 # Core infrastructure
@@ -41,7 +41,7 @@ __all__ = [
     "Weaver",
     # Consolidated message handlers (TO weaver)
     "MessageHandler",
-    "WeaveletHandler",
+    "ThreadletHandler",
     "ExternalHandler",
     "UIHandler",
     "DeviceReplicaMapper",
@@ -56,7 +56,7 @@ __all__ = [
     # Publishers (FROM weaver)
     "Publisher",
     "UIUpdatePublisher",
-    "WeaveletCommandPublisher",
+    "ThreadletCommandPublisher",
     # Infrastructure
     "StreamManager",
     "SubscriptionManager",

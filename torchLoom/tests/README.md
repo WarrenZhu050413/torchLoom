@@ -37,7 +37,7 @@ The test suite has been reorganized and simplified into essential categories:
   - Subscription management verification
 
 ### Additional Component Tests
-- **`test_weavelet_callback.py`**: Weavelet callback system tests
+- **`test_threadlet_callback.py`**: Threadlet callback system tests
   - Enhanced handler system with decorators
   - Type validation and conversion
   - Lightning integration testing
@@ -60,7 +60,7 @@ The test suite has been reorganized and simplified into essential categories:
 
 ### Areas for Improvement 📈
 1. **JetStream Testing**: Current focus is on regular NATS, JetStream usage is minimal
-2. **Weavelet Integration**: More comprehensive weavelet-weaver interaction tests
+2. **Threadlet Integration**: More comprehensive threadlet-weaver interaction tests
 3. **Failure Recovery**: More sophisticated failure scenarios and recovery patterns
 4. **Configuration Validation**: Edge cases in config parameter handling
 5. **Network Resilience**: NATS server restart/reconnection scenarios

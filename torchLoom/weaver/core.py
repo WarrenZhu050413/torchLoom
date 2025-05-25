@@ -20,9 +20,9 @@ from .handlers import (
     ExternalHandler,
     MessageHandler,
     UIHandler,
-    WeaveletHandler,
+    ThreadletHandler,
 )
-from .publishers import UIUpdatePublisher, WeaveletCommandPublisher
+from .publishers import UIUpdatePublisher, ThreadletCommandPublisher
 from .status_tracker import StatusTracker
 from .subscription import ConnectionManager, SubscriptionManager
 from .websocket_server import WebSocketServer
@@ -47,15 +47,15 @@ class Weaver:
 
     The Weaver includes the following default handlers out of the box:
 
-    - **DeviceRegistrationHandler**: Handles device registration from weavelets
-    - **HeartbeatHandler**: Monitors weavelet liveness via heartbeat messages
-    - **TrainingStatusHandler**: Processes training progress updates from weavelets
+    - **DeviceRegistrationHandler**: Handles device registration from threadlets
+    - **HeartbeatHandler**: Monitors threadlet liveness via heartbeat messages
+    - **TrainingStatusHandler**: Processes training progress updates from threadlets
     - **deviceStatusHandler**: Handles device status and utilization updates
     - **NetworkStatusHandler**: Processes network connectivity and performance data
     - **FailureHandler**: Manages device and replica failure scenarios
     - **DrainEventHandler**: Handles graceful device drain requests
     - **UICommandHandler**: Processes commands from the UI (pause/resume/config changes)
-    - **WeaverCommandHandler**: Handles command acknowledgments from weavelets
+    - **WeaverCommandHandler**: Handles command acknowledgments from threadlets
     - **ConfigurationHandler**: Manages configuration change events
 
     ## Customizing Handlers
@@ -150,15 +150,15 @@ class Weaver:
 
         # Initialize consolidated message handlers
         self._handlers = {
-            "weavelet": WeaveletHandler(self._device_mapper, self.status_tracker, nc),
+            "threadlet": ThreadletHandler(self._device_mapper, self.status_tracker, nc),
             "external": ExternalHandler(self._device_mapper, nc, self.status_tracker),
             "ui": UIHandler(self.status_tracker, nc),
         }
 
         # Initialize publishers
         self.ui_update_handler = UIUpdatePublisher(self.status_tracker, nc)
-        self.weavelet_command_handler = WeaveletCommandPublisher(
-            nc, self._handlers["weavelet"]
+        self.threadlet_command_handler = ThreadletCommandPublisher(
+            nc, self._handlers["threadlet"]
         )
 
         logger.info("Weaver fully initialized with UI support")
@@ -175,7 +175,7 @@ class Weaver:
             f"DEBUG: About to create WEAVELET_STREAM with subjects: {[torchLoomConstants.weaver_stream.subjects.DR_SUBJECT, torchLoomConstants.subjects.CONFIG_INFO, torchLoomConstants.subjects.WEAVER_COMMANDS]}"
         )
 
-        # WEAVELET_STREAM: Used for weaver-weavelet communication
+        # WEAVELET_STREAM: Used for weaver-threadlet communication
         await self._subscription_manager._stream_manager.maybe_create_stream(
             torchLoomConstants.weaver_stream.STREAM,
             [
@@ -198,7 +198,7 @@ class Weaver:
 
             # Route messages to appropriate consolidated handlers
 
-            # Weavelet messages (Training Process -> Weaver)
+            # Threadlet messages (Training Process -> Weaver)
             if (
                 env.HasField("register_device")
                 or env.HasField("heartbeat")
@@ -206,7 +206,7 @@ class Weaver:
                 or env.HasField("device_status")
                 or env.HasField("drain")
             ):
-                await self._handlers["weavelet"].handle(env)
+                await self._handlers["threadlet"].handle(env)
 
             # External system messages (External Systems -> Weaver)
             if env.HasField("monitored_fail") or env.HasField("config_info"):
@@ -259,9 +259,9 @@ class Weaver:
         while not self._stop_nats.is_set():
             try:
                 # Check for dead replicas every 30 seconds
-                if self.weavelet_command_handler:
+                if self.threadlet_command_handler:
                     dead_replicas = (
-                        await self.weavelet_command_handler.check_and_publish_dead_replicas()
+                        await self.threadlet_command_handler.check_and_publish_dead_replicas()
                     )
                     if dead_replicas:
                         logger.info(
@@ -318,18 +318,18 @@ class Weaver:
         """Override a consolidated handler with a custom implementation.
 
         Args:
-            handler_category: The handler category to override ("weavelet", "external", or "ui")
+            handler_category: The handler category to override ("threadlet", "external", or "ui")
             handler: The custom handler instance to use
 
         Example:
-            # Override the weavelet handler with custom logic
-            custom_handler = MyCustomWeaveletHandler(...)
-            weaver.override_handler("weavelet", custom_handler)
+            # Override the threadlet handler with custom logic
+            custom_handler = MyCustomThreadletHandler(...)
+            weaver.override_handler("threadlet", custom_handler)
         """
         if not self._handlers:
             raise RuntimeError("Weaver not initialized. Call initialize() first.")
 
-        valid_categories = ["weavelet", "external", "ui"]
+        valid_categories = ["threadlet", "external", "ui"]
         if handler_category not in valid_categories:
             raise ValueError(
                 f"Invalid handler category: {handler_category}. Must be one of {valid_categories}"
@@ -360,7 +360,7 @@ class Weaver:
         """Get the current handler for a category.
 
         Args:
-            handler_category: The handler category to get ("weavelet", "external", or "ui")
+            handler_category: The handler category to get ("threadlet", "external", or "ui")
 
         Returns:
             The handler instance or None if not found
@@ -387,12 +387,12 @@ class Weaver:
             Dictionary mapping protobuf field names to their descriptions
         """
         return {
-            "register_device": "Device registration from weavelets",
+            "register_device": "Device registration from threadlets",
             "monitored_fail": "Device failure notifications",
             "config_info": "Configuration change events",
             "drain": "Graceful device drain requests",
-            "heartbeat": "Weavelet liveness monitoring",
-            "weaver_command": "Command acknowledgments from weavelets",
+            "heartbeat": "Threadlet liveness monitoring",
+            "weaver_command": "Command acknowledgments from threadlets",
             "training_status": "Training progress updates",
             "device_status": "device status and utilization data",
             "ui_command": "Commands from the UI",

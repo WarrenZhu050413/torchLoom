@@ -3,7 +3,7 @@ Publishers for the torchLoom Weaver.
 
 This module contains publishers for sending messages FROM the weaver to other components:
 - UI publishers: Publish updates and responses to the UI
-- Weavelet publishers: Publish commands and notifications to weavelets
+- Threadlet publishers: Publish commands and notifications to threadlets
 - Demo utilities: Simulate data for demonstration purposes
 """
 
@@ -107,17 +107,17 @@ class UIUpdatePublisher(Publisher):
 # ===========================================
 
 
-class WeaveletCommandPublisher(Publisher):
-    """Publisher for sending commands FROM the weaver TO weavelets/training processes.
+class ThreadletCommandPublisher(Publisher):
+    """Publisher for sending commands FROM the weaver TO threadlets/training processes.
 
     Also includes heartbeat monitoring functionality to detect dead replicas
     and publish failure events for them.
     """
 
-    def __init__(self, nats_client=None, weavelet_handler=None):
+    def __init__(self, nats_client=None, threadlet_handler=None):
         self.nats_client = nats_client
-        self.weavelet_handler = (
-            weavelet_handler  # Reference to weavelet handler for heartbeat monitoring
+        self.threadlet_handler = (
+            threadlet_handler  # Reference to threadlet handler for heartbeat monitoring
         )
 
     async def publish_replica_fail_event(self, replica_id: str) -> None:
@@ -244,14 +244,14 @@ class WeaveletCommandPublisher(Publisher):
     async def check_and_publish_dead_replicas(self) -> Set[str]:
         """Check for dead replicas and publish failure events for them."""
         try:
-            if not self.weavelet_handler:
+            if not self.threadlet_handler:
                 logger.warning(
-                    "[WEAVER] No weavelet handler available for heartbeat monitoring"
+                    "[WEAVER] No threadlet handler available for heartbeat monitoring"
                 )
                 return set()
 
-            # Get newly dead replicas from the weavelet handler
-            newly_dead_replicas = self.weavelet_handler.check_dead_replicas()
+            # Get newly dead replicas from the threadlet handler
+            newly_dead_replicas = self.threadlet_handler.check_dead_replicas()
 
             # Publish replica fail events for newly dead replicas
             for replica_id in newly_dead_replicas:

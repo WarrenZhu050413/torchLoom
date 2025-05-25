@@ -2,7 +2,7 @@
 Message handlers for the torchLoom Weaver.
 
 This module contains consolidated handlers for processing messages sent TO the weaver from different sources:
-- WeaveletHandler: Process messages from weavelets/training processes
+- ThreadletHandler: Process messages from threadlets/training processes
 - ExternalHandler: Process messages from external monitoring systems  
 - UIHandler: Process commands from the UI
 """
@@ -33,8 +33,8 @@ class MessageHandler(ABC):
 # ===========================================
 
 
-class WeaveletHandler(MessageHandler):
-    """Consolidated handler for all messages from weavelets/training processes to weaver."""
+class ThreadletHandler(MessageHandler):
+    """Consolidated handler for all messages from threadlets/training processes to weaver."""
 
     def __init__(
         self,
@@ -55,7 +55,7 @@ class WeaveletHandler(MessageHandler):
         self._dead_replicas: Set[str] = set()  # Track replicas that are considered dead
 
     async def handle(self, env: EventEnvelope) -> None:
-        """Handle messages from weavelets."""
+        """Handle messages from threadlets."""
         try:
             if env.HasField("register_device"):
                 await self._handle_device_registration(env)
@@ -68,10 +68,10 @@ class WeaveletHandler(MessageHandler):
             elif env.HasField("drain"):
                 await self._handle_drain_event(env)
         except Exception as e:
-            logger.exception(f"Error in WeaveletHandler: {e}")
+            logger.exception(f"Error in ThreadletHandler: {e}")
 
     async def _handle_device_registration(self, env: EventEnvelope) -> None:
-        """Handle device registration events from weavelets."""
+        """Handle device registration events from threadlets."""
         device_uuid: str = env.register_device.device_uuid
         replica_id: str = env.register_device.replica_id
 
@@ -129,7 +129,7 @@ class WeaveletHandler(MessageHandler):
             )
 
     async def _handle_heartbeat(self, env: EventEnvelope) -> None:
-        """Handle heartbeat events from weavelets."""
+        """Handle heartbeat events from threadlets."""
         heartbeat = env.heartbeat
         replica_id = heartbeat.replica_id
         current_time = time.time()
@@ -152,7 +152,7 @@ class WeaveletHandler(MessageHandler):
         )
 
     async def _handle_training_status(self, env: EventEnvelope) -> None:
-        """Handle training status events from weavelets."""
+        """Handle training status events from threadlets."""
         training_status = env.training_status
 
         # Update training progress in status tracker
@@ -170,7 +170,7 @@ class WeaveletHandler(MessageHandler):
         )
 
     async def _handle_device_status(self, env: EventEnvelope) -> None:
-        """Handle device status events from weavelets."""
+        """Handle device status events from threadlets."""
         device_status = env.device_status
 
         # Convert protobuf config map to dict
@@ -194,7 +194,7 @@ class WeaveletHandler(MessageHandler):
         )
 
     async def _handle_drain_event(self, env: EventEnvelope) -> None:
-        """Handle drain events from weavelets."""
+        """Handle drain events from threadlets."""
         device_uuid = env.drain.device_uuid
 
         logger.info("\n" + "-" * 100)
@@ -551,11 +551,11 @@ class DeviceReplicaMapper:
 # ===========================================
 
 # Aliases for backward compatibility - users can still import individual handler names
-DeviceRegistrationHandler = WeaveletHandler
-HeartbeatHandler = WeaveletHandler
-TrainingStatusHandler = WeaveletHandler
-deviceStatusHandler = WeaveletHandler
-DrainEventHandler = WeaveletHandler
+DeviceRegistrationHandler = ThreadletHandler
+HeartbeatHandler = ThreadletHandler
+TrainingStatusHandler = ThreadletHandler
+deviceStatusHandler = ThreadletHandler
+DrainEventHandler = ThreadletHandler
 FailureHandler = ExternalHandler
 ConfigurationHandler = ExternalHandler
 UICommandHandler = UIHandler

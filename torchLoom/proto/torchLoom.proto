@@ -6,7 +6,7 @@ message ReplicaFailEvent     { string  replica_id = 1; }
 message MonitoredFailEvent   { string  device_uuid = 1; }
 message ChangeConfigEvent    { map<string, string> config_params = 1; }
 
-// Heartbeat message for weavelet -> weaver
+// Heartbeat message for threadlet -> weaver
 message Heartbeat {
   string replica_id = 1;
   string device_uuid = 2;

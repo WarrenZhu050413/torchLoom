@@ -36,7 +36,7 @@ class torchLoomSubjects:
     # Weaver -> Training Process subjects
     WEAVER_COMMANDS: str = "torchLoom.weaver.commands"
 
-    WEAVELET_STATUS: str = "torchLoom.weavelet.status"
+    WEAVELET_STATUS: str = "torchLoom.threadlet.status"
 
 
 class WeaverSubjects:
