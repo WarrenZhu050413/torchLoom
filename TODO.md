@@ -1,1 +1,0 @@
-1. Add stronger consistency models by doing weaver_command_response, add an ACK. 
