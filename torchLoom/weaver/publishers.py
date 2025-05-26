@@ -36,21 +36,16 @@ class Publisher(ABC):
 class UIUpdatePublisher(Publisher):
     """Publisher for sending consolidated UI updates FROM the weaver TO the UI."""
 
-    def __init__(self, status_tracker, nats_client=None):
+    def __init__(self, status_tracker):
         self.status_tracker = status_tracker
-        self.nats_client = nats_client
 
-    async def publish_ui_update(self) -> None:
-        """Publish consolidated UIStatusUpdate to the UI."""
+    async def publish_ui_update(self) -> Optional[EventEnvelope]:
+        """Constructs a UIStatusUpdate message. Does not publish to NATS anymore."""
         try:
-            if not self.nats_client:
-                logger.warning("[WEAVER->UI] Cannot publish UI update - no NATS client")
-                return
-
             # Create consolidated UIStatusUpdate
             envelope = EventEnvelope()
             ui_update = envelope.ui_status_update
-            ui_update.communication_status = self.status_tracker.communication_status
+            # ui_update.communication_status = self.status_tracker.communication_status # This field is not in UIStatusUpdate proto
             ui_update.timestamp = int(time.time())
 
             # Add all device statuses
@@ -87,25 +82,27 @@ class UIUpdatePublisher(Publisher):
                 for device_id in server_info.device_ids:
                     topology.device_ids.append(device_id)
 
-            # Publish to UI
-            await self.nats_client.publish(
-                torchLoomConstants.subjects.UI_UPDATE, envelope.SerializeToString()
-            )
+            # Publish to UI - This part is removed as UI_UPDATE NATS subject is removed.
+            # await self.nats_client.publish(
+            #     torchLoomConstants.subjects.UI_UPDATE, envelope.SerializeToString()
+            # )
 
-            logger.debug("[WEAVER->UI] Published UI update to clients")
+            # logger.debug("[WEAVER->UI] Published UI update to clients") # Logged that it was constructed
+            logger.debug("[WEAVER->UI] Constructed UIStatusUpdate envelope. Publishing to NATS is removed.")
+            return envelope # Return the constructed envelope
 
         except Exception as e:
-            logger.exception(f"[WEAVER->UI] Failed to publish UI update: {e}")
+            logger.exception(f"[WEAVER->UI] Failed to construct UIStatusUpdate envelope: {e}")
+            return None
 
     async def publish(self) -> None:
         """Implement the abstract publish method."""
-        await self.publish_ui_update()
+        await self.publish_ui_update() # Now just constructs and logs
 
 
 # ===========================================
 # WEAVELET PUBLISHERS (Weaver -> Training Processes)
 # ===========================================
-
 
 class ThreadletCommandPublisher(Publisher):
     """Publisher for sending commands FROM the weaver TO threadlets/training processes.
@@ -119,31 +116,6 @@ class ThreadletCommandPublisher(Publisher):
         self.threadlet_handler = (
             threadlet_handler  # Reference to threadlet handler for heartbeat monitoring
         )
-
-    async def publish_replica_fail_event(self, replica_id: str) -> None:
-        """Publish a replica failure event to training processes."""
-        try:
-            if not self.nats_client:
-                logger.warning(
-                    "[WEAVER->WEAVELET] Cannot publish replica fail event - no NATS client"
-                )
-                return
-
-            envelope = EventEnvelope()
-            envelope.replica_fail.replica_id = replica_id
-
-            await self.nats_client.publish(
-                torchLoomConstants.subjects.REPLICA_FAIL, envelope.SerializeToString()
-            )
-
-            logger.info(
-                f"[WEAVER->WEAVELET] Published replica fail event for {replica_id}"
-            )
-
-        except Exception as e:
-            logger.exception(
-                f"[WEAVER->WEAVELET] Failed to publish replica fail event: {e}"
-            )
 
     async def publish_weaver_command(
         self,
@@ -210,15 +182,7 @@ class ThreadletCommandPublisher(Publisher):
 
     async def publish(self, message_type: str, **kwargs) -> None:
         """Generic publish method for different message types."""
-        if message_type == "replica_fail":
-            replica_id = kwargs.get("replica_id")
-            if replica_id is not None:
-                await self.publish_replica_fail_event(replica_id)
-            else:
-                logger.warning(
-                    "[WEAVER->WEAVELET] Missing replica_id for replica_fail message"
-                )
-        elif message_type == "weaver_command":
+        if message_type == "weaver_command":
             command_type = kwargs.get("command_type")
             target_replica_id = kwargs.get("target_replica_id")
             params = kwargs.get("params")
@@ -239,26 +203,4 @@ class ThreadletCommandPublisher(Publisher):
                     "[WEAVER->WEAVELET] Missing config_params for config_update message"
                 )
         else:
-            logger.warning(f"[WEAVER->WEAVELET] Unknown message type: {message_type}")
-
-    async def check_and_publish_dead_replicas(self) -> Set[str]:
-        """Check for dead replicas and publish failure events for them."""
-        try:
-            if not self.threadlet_handler:
-                logger.warning(
-                    "[WEAVER] No threadlet handler available for heartbeat monitoring"
-                )
-                return set()
-
-            # Get newly dead replicas from the threadlet handler
-            newly_dead_replicas = self.threadlet_handler.check_dead_replicas()
-
-            # Publish replica fail events for newly dead replicas
-            for replica_id in newly_dead_replicas:
-                await self.publish_replica_fail_event(replica_id)
-
-            return newly_dead_replicas
-
-        except Exception as e:
-            logger.exception(f"[WEAVER] Error checking dead replicas: {e}")
-            return set()
+            logger.warning(f"Unknown message type for ThreadletCommandPublisher: {message_type}")

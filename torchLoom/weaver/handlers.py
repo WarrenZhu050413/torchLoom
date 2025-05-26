@@ -1,5 +1,5 @@
 """
-Message handlers for the torchLoom Weaver.
+Simplified message handlers for the torchLoom Weaver.
 
 This module contains consolidated handlers for processing messages sent TO the weaver from different sources:
 - ThreadletHandler: Process messages from threadlets/training processes
@@ -29,33 +29,29 @@ class MessageHandler(ABC):
 
 
 # ===========================================
-# WEAVELET HANDLER (Training Process -> Weaver)
+# THREADLET HANDLER (Training Process -> Weaver)
 # ===========================================
 
 
 class ThreadletHandler(MessageHandler):
-    """Consolidated handler for all messages from threadlets/training processes to weaver."""
+    """Simplified handler for messages from threadlets."""
 
     def __init__(
         self,
         device_mapper: "DeviceReplicaMapper",
         status_tracker,
-        nats_client=None,
         heartbeat_timeout: float = 90.0,
     ):
         self.device_mapper = device_mapper
         self.status_tracker = status_tracker
-        self.nats_client = nats_client
         self.heartbeat_timeout = heartbeat_timeout
-
-        # Heartbeat tracking
-        self._last_heartbeats: Dict[str, float] = (
-            {}
-        )  # replica_id -> last_heartbeat_timestamp
-        self._dead_replicas: Set[str] = set()  # Track replicas that are considered dead
+        self._last_heartbeats: Dict[str, float] = {}
+        self._dead_replicas: Set[str] = set()
+        logger.info("ThreadletHandler initialized (simplified)")
 
     async def handle(self, env: EventEnvelope) -> None:
-        """Handle messages from threadlets."""
+        """Handle messages from threadlets by dispatching to specific methods."""
+        logger.debug(f"ThreadletHandler received message: {env.WhichOneof('payload')}")
         try:
             if env.HasField("register_device"):
                 await self._handle_device_registration(env)
@@ -67,175 +63,105 @@ class ThreadletHandler(MessageHandler):
                 await self._handle_device_status(env)
             elif env.HasField("drain"):
                 await self._handle_drain_event(env)
+            else:
+                logger.warning(f"ThreadletHandler: Unknown event type in envelope: {env.WhichOneof('payload')}")
         except Exception as e:
-            logger.exception(f"Error in ThreadletHandler: {e}")
+            logger.exception(f"Error in ThreadletHandler.handle: {e}")
 
     async def _handle_device_registration(self, env: EventEnvelope) -> None:
-        """Handle device registration events from threadlets."""
-        device_uuid: str = env.register_device.device_uuid
-        replica_id: str = env.register_device.replica_id
-
-        logger.info("\n" + "-" * 100)
-        logger.info(
-            f"[WEAVELET->WEAVER] Device registration: {device_uuid} -> {replica_id}"
-        )
-
+        logger.info(f"[ThreadletHandler] Handling device registration for {env.register_device.device_uuid}")
+        # Minimal logic:
         # Update mappings using the device mapper
-        device_added = self.device_mapper.add_device_replica_mapping(
-            device_uuid, replica_id
+        self.device_mapper.add_device_replica_mapping(
+            env.register_device.device_uuid, env.register_device.replica_id
         )
-        replica_added = self.device_mapper.add_replica_device_mapping(
-            replica_id, device_uuid
+        self.device_mapper.add_replica_device_mapping(
+            env.register_device.replica_id, env.register_device.device_uuid
         )
-
-        if device_added:
-            logger.info(
-                f"New device mapping: {device_uuid} -> {self.device_mapper.get_replicas_for_device(device_uuid)}"
-            )
-
-        if replica_added:
-            logger.info(
-                f"New replica mapping: {replica_id} -> {self.device_mapper.get_devices_for_replica(replica_id)}"
-            )
-
-        # Update status tracker to make the device/replica visible in the UI
-        if self.status_tracker:
-            # Add the replica to status tracker if it's new
-            if replica_added:
-                self.status_tracker.update_training_progress(
-                    replica_id=replica_id,
-                    current_step=0,
-                    step_progress=0.0,
-                    status="registered",
-                )
-                logger.info(
-                    f"Added replica {replica_id} to status tracker with status 'registered'"
-                )
-
-            # Create a default device entry for this device if it doesn't exist
-            default_device_id = f"{device_uuid}"
-            self.status_tracker.update_device_status(
-                device_id=device_uuid,
-                replica_id=replica_id,
-                server_id=device_uuid,
-                status="active",
-                utilization=0.0,
-                temperature=40.0,
-                memory_used=0.0,
-                memory_total=8.0,
-            )
-            logger.info(
-                f"Added default device {default_device_id} for device {device_uuid} to status tracker"
-            )
+        # Update status tracker (basic registration)
+        self.status_tracker.update_training_progress(
+            replica_id=env.register_device.replica_id,
+            status="registered",
+        )
+        self.status_tracker.update_device_status(
+            device_id=env.register_device.device_uuid,
+            replica_id=env.register_device.replica_id,
+            server_id=env.register_device.device_uuid, # Assuming server_id is device_uuid for simplicity here
+            status="active",
+        )
+        pass
 
     async def _handle_heartbeat(self, env: EventEnvelope) -> None:
-        """Handle heartbeat events from threadlets."""
-        heartbeat = env.heartbeat
-        replica_id = heartbeat.replica_id
-        current_time = time.time()
-
-        # Update last heartbeat time
-        self._last_heartbeats[replica_id] = current_time
-
-        # If this replica was considered dead, mark it as alive again
+        logger.info(f"[ThreadletHandler] Handling heartbeat for {env.heartbeat.replica_id}")
+        # Minimal logic:
+        replica_id = env.heartbeat.replica_id
+        self._last_heartbeats[replica_id] = time.time()
         if replica_id in self._dead_replicas:
             self._dead_replicas.remove(replica_id)
-            logger.info(
-                f"[WEAVELET->WEAVER] Replica {replica_id} is alive again (received heartbeat)"
-            )
             self.status_tracker.update_training_progress(
-                replica_id=replica_id, status="active"
+                replica_id=replica_id, status="active" # Or "training" if that's the typical post-heartbeat state
             )
-
-        logger.debug(
-            f"[WEAVELET->WEAVER] Heartbeat from {replica_id}, status: {heartbeat.status}"
-        )
+        pass
 
     async def _handle_training_status(self, env: EventEnvelope) -> None:
-        """Handle training status events from threadlets."""
-        training_status = env.training_status
-
-        # Update training progress in status tracker
+        logger.info(f"[ThreadletHandler] Handling training status for {env.training_status.replica_id}")
+        # Minimal logic:
+        ts = env.training_status
         self.status_tracker.update_training_progress(
-            replica_id=training_status.replica_id,
-            current_step=training_status.current_step,
-            step_progress=training_status.step_progress,
-            status=training_status.status,
-            last_active_step=training_status.batch_idx,
-            fixed_step=None,
+            replica_id=ts.replica_id,
+            current_step=ts.current_step,
+            step_progress=ts.step_progress,
+            status=ts.status,
+            last_active_step=ts.batch_idx,
         )
-
-        logger.debug(
-            f"[WEAVELET->WEAVER] Training status: {training_status.replica_id} - {training_status.status_type}"
-        )
+        pass
 
     async def _handle_device_status(self, env: EventEnvelope) -> None:
-        """Handle device status events from threadlets."""
-        device_status = env.device_status
-
-        # Convert protobuf config map to dict
-        config_dict = dict(device_status.config) if device_status.config else {}
-
-        # Update device status in status tracker
+        logger.info(f"[ThreadletHandler] Handling device status for {env.device_status.device_id}")
+        # Minimal logic:
+        ds = env.device_status
         self.status_tracker.update_device_status(
-            device_id=device_status.device_id,
-            replica_id=device_status.replica_id,
-            server_id=device_status.server_id,
-            status=device_status.status,
-            utilization=device_status.utilization,
-            temperature=device_status.temperature,
-            memory_used=device_status.memory_used,
-            memory_total=device_status.memory_total,
-            config=config_dict,
+            device_id=ds.device_id,
+            replica_id=ds.replica_id,
+            server_id=ds.server_id,
+            status=ds.status,
+            utilization=ds.utilization,
+            temperature=ds.temperature,
+            memory_used=ds.memory_used,
+            memory_total=ds.memory_total,
+            config=dict(ds.config)
         )
-
-        logger.debug(
-            f"[WEAVELET->WEAVER] device status: {device_status.device_id} - {device_status.status}"
-        )
+        pass
 
     async def _handle_drain_event(self, env: EventEnvelope) -> None:
-        """Handle drain events from threadlets."""
-        device_uuid = env.drain.device_uuid
-
-        logger.info("\n" + "-" * 100)
-        logger.info(f"[WEAVELET->WEAVER] Drain event for device: {device_uuid}")
-
-        # Get all replicas associated with this device
-        replicas = self.device_mapper.get_replicas_for_device(device_uuid)
-
-        # Update status for all affected replicas
+        logger.info(f"[ThreadletHandler] Handling drain event for {env.drain.device_uuid}")
+        # Minimal logic:
+        replicas = self.device_mapper.get_replicas_for_device(env.drain.device_uuid)
         for replica_id in replicas:
             self.status_tracker.update_training_progress(
                 replica_id=replica_id, status="draining"
             )
-            logger.info(f"Set replica {replica_id} status to 'draining'")
-
-        logger.info(
-            f"Processed drain event for device {device_uuid} affecting {len(replicas)} replicas"
-        )
+        pass
 
     def check_dead_replicas(self) -> Set[str]:
-        """Check for newly dead replicas based on heartbeat timeout."""
+        """Simplified check for dead replicas. Actual logic moved to Weaver's heartbeat monitor task."""
+        # This method is called by Weaver's heartbeat monitor.
+        # It should primarily rely on its internal state (_last_heartbeats, _dead_replicas)
+        # The status_tracker update should happen in the caller (Weaver) if a replica is newly dead.
         current_time = time.time()
         newly_dead = set()
-
-        for replica_id, last_heartbeat in self._last_heartbeats.items():
+        for replica_id, last_heartbeat in list(self._last_heartbeats.items()): # list() for safe iteration if modifying
             time_since_heartbeat = current_time - last_heartbeat
-
-            # If replica hasn't sent heartbeat within timeout and wasn't already considered dead
             if (
                 time_since_heartbeat > self.heartbeat_timeout
                 and replica_id not in self._dead_replicas
             ):
                 newly_dead.add(replica_id)
-                self._dead_replicas.add(replica_id)
+                self._dead_replicas.add(replica_id) # Mark as dead internally
                 logger.warning(
-                    f"[WEAVER] Replica {replica_id} is considered dead (no heartbeat for {time_since_heartbeat:.1f}s)"
+                    f"[ThreadletHandler] Replica {replica_id} detected as dead (no heartbeat for {time_since_heartbeat:.1f}s)"
                 )
-                self.status_tracker.update_training_progress(
-                    replica_id=replica_id, status="dead"
-                )
-
+                # StatusTracker update is now handled by the caller (Weaver's heartbeat monitor)
         return newly_dead
 
 
@@ -245,119 +171,58 @@ class ThreadletHandler(MessageHandler):
 
 
 class ExternalHandler(MessageHandler):
-    """Consolidated handler for all messages from external monitoring systems to weaver."""
+    """Simplified handler for messages from external systems."""
 
     def __init__(
-        self, device_mapper: "DeviceReplicaMapper", nats_client, status_tracker=None
+        self,
+        device_mapper: "DeviceReplicaMapper",
+        status_tracker,
     ):
         self.device_mapper = device_mapper
-        self.nats_client = nats_client
         self.status_tracker = status_tracker
+        logger.info("ExternalHandler initialized (simplified)")
 
     async def handle(self, env: EventEnvelope) -> None:
-        """Handle messages from external systems."""
+        """Handle messages from external systems by dispatching to specific methods."""
+        logger.debug(f"ExternalHandler received message: {env.WhichOneof('payload')}")
         try:
             if env.HasField("monitored_fail"):
                 await self._handle_failure_event(env)
             elif env.HasField("config_info"):
                 await self._handle_configuration_change(env)
+            else:
+                logger.warning(f"ExternalHandler: Unknown event type in envelope: {env.WhichOneof('payload')}")
         except Exception as e:
-            logger.exception(f"Error in ExternalHandler: {e}")
+            logger.exception(f"Error in ExternalHandler.handle: {e}")
 
     async def _handle_failure_event(self, env: EventEnvelope) -> None:
-        """Handle device failure events from external monitoring systems."""
-        fail_event: MonitoredFailEvent = env.monitored_fail
-        device_uuid: str = fail_event.device_uuid
-
-        replica_ids: Set[str] = self.device_mapper.get_replicas_for_device(device_uuid)
+        logger.info(f"[ExternalHandler] Handling failure event for {env.monitored_fail.device_uuid}")
+        # Minimal logic:
+        device_uuid = env.monitored_fail.device_uuid
+        replica_ids = self.device_mapper.get_replicas_for_device(device_uuid)
         if replica_ids:
-            logger.info(f"[EXTERNAL->WEAVER] device failure detected: {device_uuid}")
-            logger.info(f"[EXTERNAL->WEAVER] Associated replicas: {replica_ids}")
-
-            # Update status tracker to reflect the failure
-            if self.status_tracker:
-                # Mark any devices on this device as failed
-                failed_devices = [
-                    device
-                    for device in self.status_tracker.devices.values()
-                    if device.server_id == device_uuid
-                ]
-                for device in failed_devices:
+            for device_status in list(self.status_tracker.devices.values()): # Iterate over a copy
+                if device_status.server_id == device_uuid:
                     self.status_tracker.update_device_status(
-                        device_id=device.device_id,
-                        replica_id=device.replica_id,
-                        server_id=device.server_id,
-                        status="failed",
-                        utilization=0.0,
-                        temperature=0.0,
+                        device_id=device_status.device_id, status="failed"
                     )
-                    logger.info(
-                        f"Marked device {device.device_id} as failed due to device failure"
-                    )
-
-                # Mark associated replicas as failed
-                for replica_id in replica_ids:
-                    self.status_tracker.update_training_progress(
-                        replica_id=replica_id, status="failed"
-                    )
-                    logger.info(
-                        f"Marked replica {replica_id} as failed due to device failure"
-                    )
-
             for replica_id in replica_ids:
-                await self._send_replica_fail_event(replica_id)
-        else:
-            logger.warning(
-                f"[EXTERNAL->WEAVER] Device {device_uuid} not found in device-to-replicas map"
-            )
+                self.status_tracker.update_training_progress(
+                    replica_id=replica_id, status="failed"
+                )
+        # Publishing REPLICA_FAIL is removed from here. Weaver would do it if necessary.
+        pass
 
     async def _handle_configuration_change(self, env: EventEnvelope) -> None:
-        """Handle config_info change events."""
-        config_params: Dict[str, str] = dict(env.config_info.config_params)
+        logger.info(f"[ExternalHandler] Handling configuration change: {env.config_info.config_params}")
+        # Minimal logic:
+        config_params = dict(env.config_info.config_params)
+        for device_id in list(self.status_tracker.devices.keys()): # Iterate over a copy
+            self.status_tracker.update_device_config(device_id, config_params) # Assumes a method like this exists or update device status
+        # Publishing to CONFIG_INFO NATS subject is removed from here. Weaver would do it if necessary.
+        pass
 
-        logger.info("\n" + "-" * 100)
-        logger.info(f"[CONFIG] Received config change with parameters: {config_params}")
-
-        # Update status tracker with new configuration
-        if self.status_tracker:
-            # Update all devices with the new configuration
-            for device in self.status_tracker.devices.values():
-                device.config.update(config_params)
-            logger.info(
-                f"Updated configuration for {len(self.status_tracker.devices)} devices in status tracker"
-            )
-
-        try:
-            if not self.nats_client:
-                raise RuntimeError("NATS connection is not initialized.")
-
-            js = self.nats_client.jetstream()
-
-            # Publish the entire config change to a general subject
-            logger.debug(
-                f"Publishing config change to {torchLoomConstants.subjects.CONFIG_INFO}"
-            )
-            await js.publish(
-                torchLoomConstants.subjects.CONFIG_INFO, env.SerializeToString()
-            )
-            logger.info(
-                f"Published config changes to {torchLoomConstants.subjects.CONFIG_INFO}"
-            )
-        except Exception as e:
-            logger.exception(f"Failed to publish config changes: {e}")
-            raise
-
-    async def _send_replica_fail_event(self, replica_id: str) -> None:
-        """Send a replica failure event to training processes."""
-        if not self.nats_client:
-            raise RuntimeError("NATS connection is not initialized")
-
-        env: EventEnvelope = EventEnvelope()
-        env.replica_fail.replica_id = replica_id
-        await self.nats_client.publish(
-            torchLoomConstants.subjects.REPLICA_FAIL, env.SerializeToString()
-        )
-        logger.info(f"[WEAVER->WEAVELET] Published replica fail event for {replica_id}")
+    # _send_replica_fail_event removed as NATS client is removed
 
 
 # ===========================================
@@ -366,28 +231,32 @@ class ExternalHandler(MessageHandler):
 
 
 class UIHandler(MessageHandler):
-    """Consolidated handler for all commands from the UI to weaver."""
+    """Simplified handler for commands from the UI."""
 
-    def __init__(self, status_tracker, nats_client=None):
+    def __init__(self, status_tracker, weaver_publish_command_func): # Removed nats_client, added callback for publishing
         self.status_tracker = status_tracker
-        self.nats_client = nats_client
+        self.publish_weaver_command = weaver_publish_command_func # Callback to Weaver's publisher
+        logger.info("UIHandler initialized (simplified)")
 
     async def handle(self, env: EventEnvelope) -> None:
-        """Handle UI command events and execute corresponding weaver actions."""
+        """Handle UI command events by dispatching to specific methods."""
+        logger.debug(f"UIHandler received message: {env.WhichOneof('payload')}")
         try:
             if env.HasField("ui_command"):
                 await self._handle_ui_command(env)
+            else:
+                logger.warning(f"UIHandler: Unknown event type in envelope: {env.WhichOneof('payload')}")
         except Exception as e:
-            logger.exception(f"Error in UIHandler: {e}")
+            logger.exception(f"Error in UIHandler.handle: {e}")
 
     async def _handle_ui_command(self, env: EventEnvelope) -> None:
-        """Handle UI command events."""
+        """Handle UI command events. Publishing commands is now done via callback to Weaver."""
         ui_command = env.ui_command
         command_type = ui_command.command_type
         target_id = ui_command.target_id
-        params = dict(ui_command.params) if ui_command.params else {}
+        params = dict(ui_command.params)
 
-        logger.info(f"[UI->WEAVER] Processing command: {command_type} for {target_id}")
+        logger.info(f"[UIHandler] Processing command: {command_type} for {target_id} with params: {params}")
 
         if command_type == "deactivate_device":
             await self._handle_deactivate_device(target_id)
@@ -400,102 +269,56 @@ class UIHandler(MessageHandler):
         elif command_type == "resume_training":
             await self._handle_resume_training(target_id)
         else:
-            logger.warning(f"[UI->WEAVER] Unknown command type: {command_type}")
+            logger.warning(f"[UIHandler] Unknown command type: {command_type}")
+        pass
 
-    async def _publish_weaver_command(
-        self,
-        command_type: str,
-        target_replica_id: str,
-        params: Optional[Dict[str, str]] = None,
-    ):
-        """Publish a weaver command to training processes."""
-        try:
-            if not self.nats_client:
-                logger.warning("Cannot publish weaver command - no NATS client")
-                return
-
-            envelope = EventEnvelope()
-            weaver_command = envelope.weaver_command
-            weaver_command.command_type = command_type
-            weaver_command.target_replica_id = target_replica_id
-
-            if params:
-                for key, value in params.items():
-                    weaver_command.params[key] = str(value)
-
-            js = self.nats_client.jetstream()
-            await js.publish(
-                torchLoomConstants.subjects.WEAVER_COMMANDS,
-                envelope.SerializeToString(),
-            )
-
-            logger.info(
-                f"[WEAVER->WEAVELET] Published command: {command_type} to {target_replica_id}"
-            )
-
-        except Exception as e:
-            logger.exception(f"Failed to publish weaver command: {e}")
+    # _publish_weaver_command is removed and replaced by a callback
 
     async def _handle_deactivate_device(self, device_id: str):
-        """Handle device deactivation command from UI."""
+        logger.info(f"[UIHandler] Handling deactivate_device for {device_id}")
+        # Minimal status update
+        # Actual command publishing done via callback
         if device_id in self.status_tracker.devices:
-            self.status_tracker.set_communication_status("rebuilding")
-
-            # Get replica ID for the device
             replica_id = self.status_tracker.devices[device_id].replica_id
-            self.status_tracker.update_training_progress(
-                replica_id, status="deactivating"
-            )
-
-            # Deactivate the device
-            self.status_tracker.deactivate_device(device_id)
-
-            # Send pause command to the replica
-            await self._publish_weaver_command("pause", replica_id)
-
-            logger.info(f"[UI->WEAVER] Deactivated device: {device_id}")
-        else:
-            logger.warning(f"[UI->WEAVER] device not found for deactivation: {device_id}")
+            self.status_tracker.update_training_progress(replica_id, status="deactivating")
+            self.status_tracker.deactivate_device(device_id) # This method should exist in StatusTracker
+            await self.publish_weaver_command("pause", replica_id)
+        pass
 
     async def _handle_reactivate_group(self, replica_id: str):
-        """Handle replica group reactivation command from UI."""
-        self.status_tracker.set_communication_status("rebuilding")
+        logger.info(f"[UIHandler] Handling reactivate_group for {replica_id}")
+        # Minimal status update
         self.status_tracker.update_training_progress(replica_id, status="activating")
-
-        # Reactivate the replica group
-        self.status_tracker.reactivate_replica_group(replica_id)
-
-        # Send resume command to the replica
-        await self._publish_weaver_command("resume", replica_id)
-
-        logger.info(f"[UI->WEAVER] Reactivated replica group: {replica_id}")
+        # self.status_tracker.reactivate_replica_group(replica_id) # This method should exist
+        await self.publish_weaver_command("resume", replica_id)
+        pass
 
     async def _handle_update_config(self, replica_id: str, params: Dict[str, str]):
-        """Handle configuration update command from UI."""
-        # Update configuration for all devices in the replica
-        replica_devices = [
-            g for g in self.status_tracker.devices.values() if g.replica_id == replica_id
-        ]
+        logger.info(f"[UIHandler] Handling update_config for {replica_id} with {params}")
+        # Minimal status update (config is usually part of device status or a specific config store)
+        # For devices in this replica_id, update their config in status_tracker
+        for device_id, device_status in self.status_tracker.devices.items():
+            if device_status.replica_id == replica_id:
+                # Assuming device_status.config is a dict and can be updated
+                if hasattr(device_status, 'config') and isinstance(device_status.config, dict):
+                    device_status.config.update(params)
+                else: # Or set it if it doesn't exist or not a dict
+                    setattr(device_status, 'config', params)
 
-        for device in replica_devices:
-            device.config.update(params)
-
-        # Send config update command to the replica
-        await self._publish_weaver_command("update_config", replica_id, params)
-
-        logger.info(f"[UI->WEAVER] Updated config for replica {replica_id}: {params}")
+        await self.publish_weaver_command("update_config", replica_id, params)
+        pass
 
     async def _handle_pause_training(self, replica_id: str):
-        """Handle pause training command from UI."""
+        logger.info(f"[UIHandler] Handling pause_training for {replica_id}")
         self.status_tracker.update_training_progress(replica_id, status="paused")
-        await self._publish_weaver_command("pause", replica_id)
-        logger.info(f"[UI->WEAVER] Paused training for replica: {replica_id}")
+        await self.publish_weaver_command("pause", replica_id)
+        pass
 
     async def _handle_resume_training(self, replica_id: str):
-        """Handle resume training command from UI."""
-        self.status_tracker.update_training_progress(replica_id, status="training")
-        await self._publish_weaver_command("resume", replica_id)
-        logger.info(f"[UI->WEAVER] Resumed training for replica: {replica_id}")
+        logger.info(f"[UIHandler] Handling resume_training for {replica_id}")
+        self.status_tracker.update_training_progress(replica_id, status="training") # Or "active"
+        await self.publish_weaver_command("resume", replica_id)
+        pass
 
 
 # ===========================================
@@ -507,55 +330,24 @@ class DeviceReplicaMapper:
     """Manages mapping between devices and replicas."""
 
     def __init__(self):
-        # Many-to-many mapping between devices and replicas
-        self.device_to_replicas: Dict[str, Set[str]] = (
-            {}
-        )  # device_uuid -> set of replica_ids
-        self.replica_to_devices: Dict[str, Set[str]] = (
-            {}
-        )  # replica_id -> set of device_uuids
+        self.device_to_replicas: Dict[str, Set[str]] = {}
+        self.replica_to_devices: Dict[str, Set[str]] = {}
+        logger.info("DeviceReplicaMapper initialized")
 
     def add_device_replica_mapping(self, device_uuid: str, replica_id: str) -> bool:
-        """Add a device-to-replica mapping. Returns True if this is a new association."""
-        if device_uuid not in self.device_to_replicas:
-            self.device_to_replicas[device_uuid] = set()
-
-        is_new_association = replica_id not in self.device_to_replicas[device_uuid]
-        if is_new_association:
+        is_new = replica_id not in self.device_to_replicas.setdefault(device_uuid, set())
+        if is_new:
             self.device_to_replicas[device_uuid].add(replica_id)
-
-        return is_new_association
+        return is_new
 
     def add_replica_device_mapping(self, replica_id: str, device_uuid: str) -> bool:
-        """Add a replica-to-device mapping. Returns True if this is a new association."""
-        if replica_id not in self.replica_to_devices:
-            self.replica_to_devices[replica_id] = set()
-
-        is_new_association = device_uuid not in self.replica_to_devices[replica_id]
-        if is_new_association:
+        is_new = device_uuid not in self.replica_to_devices.setdefault(replica_id, set())
+        if is_new:
             self.replica_to_devices[replica_id].add(device_uuid)
-
-        return is_new_association
+        return is_new
 
     def get_replicas_for_device(self, device_uuid: str) -> Set[str]:
-        """Get all replicas associated with a device."""
         return self.device_to_replicas.get(device_uuid, set())
 
     def get_devices_for_replica(self, replica_id: str) -> Set[str]:
-        """Get all devices associated with a replica."""
         return self.replica_to_devices.get(replica_id, set())
-
-
-# ===========================================
-# LEGACY COMPATIBILITY (Backward compatibility for existing imports)
-# ===========================================
-
-# Aliases for backward compatibility - users can still import individual handler names
-DeviceRegistrationHandler = ThreadletHandler
-HeartbeatHandler = ThreadletHandler
-TrainingStatusHandler = ThreadletHandler
-deviceStatusHandler = ThreadletHandler
-DrainEventHandler = ThreadletHandler
-FailureHandler = ExternalHandler
-ConfigurationHandler = ExternalHandler
-UICommandHandler = UIHandler

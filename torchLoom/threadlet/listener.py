@@ -22,7 +22,7 @@ import nats
 from torchLoom.common import TrainingStatus, deviceStatus
 from torchLoom.common.config import Config
 from torchLoom.common.constants import WeaverStream, torchLoomConstants
-from torchLoom.common.utils import cancel_subscriptions, get_device_uuid
+from torchLoom.common.utils import get_device_uuid
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope, RegisterDevice
 from torchLoom.proto import torchLoom_pb2
@@ -179,7 +179,7 @@ class ThreadletListener:
             envelope.register_device.replica_id = self._replica_id
 
             await self._subscription_manager.js.publish( # Use SubscriptionManager's js
-                torchLoomConstants.weaver_stream.subjects.DR_SUBJECT,
+                torchLoomConstants.subjects.THREADLET_EVENTS, # Changed subject
                 envelope.SerializeToString(),
             )
 
@@ -280,7 +280,8 @@ class ThreadletListener:
 
             # Publish heartbeat
             await self._subscription_manager.nc.publish( # Use SubscriptionManager's nc
-                torchLoomConstants.subjects.HEARTBEAT, envelope.SerializeToString()
+                torchLoomConstants.subjects.THREADLET_EVENTS, # Changed subject
+                envelope.SerializeToString()
             )
 
             self._logger.debug(f"Sent heartbeat for replica {self._replica_id}")
@@ -441,9 +442,9 @@ class ThreadletListener:
         self._copy_training_status_fields(envelope.training_status, training_status_obj)
 
         await self._publish_envelope(
-            torchLoomConstants.subjects.TRAINING_STATUS,
+            torchLoomConstants.subjects.THREADLET_EVENTS, # Changed subject
             envelope,
-            f"TrainingStatus: {training_status_obj.status_type} for {training_status_obj.replica_id}"
+            f"TrainingStatus: {training_status_obj.status_type} for {training_status_obj.replica_id} to THREADLET_EVENTS"
         )
 
     async def _publish_device_status(self, status: Dict[str, Any]) -> None:
@@ -455,9 +456,9 @@ class ThreadletListener:
         self._copy_device_status_fields(envelope.device_status, device_status_obj)
 
         await self._publish_envelope(
-            torchLoomConstants.subjects.device_STATUS,
+            torchLoomConstants.subjects.THREADLET_EVENTS, # Changed subject
             envelope,
-            f"deviceStatus: {device_status_obj.device_id} status={device_status_obj.status}"
+            f"deviceStatus: {device_status_obj.device_id} status={device_status_obj.status} to THREADLET_EVENTS"
         )
 
     def _copy_training_status_fields(self, protobuf_msg, status_obj: TrainingStatus) -> None:

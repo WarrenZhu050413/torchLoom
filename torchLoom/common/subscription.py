@@ -17,7 +17,6 @@ from nats.js.client import JetStreamContext
 import nats
 from torchLoom.common.config import Config
 from torchLoom.common.constants import JS, NC, torchLoomConstants
-from torchLoom.common.utils import cancel_subscriptions
 from torchLoom.log.log_utils import log_and_raise_exception
 from torchLoom.log.logger import setup_logger
 

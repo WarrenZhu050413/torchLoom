@@ -25,22 +25,3 @@ def get_device_uuid():
         platform_name = platform.node()
         logger.warning(f"Failed to get device UUID, on {platform_name}, Error: {e}")
         return platform.node()
-
-
-async def cancel_subscriptions(
-    subscriptions: Dict[str, Tuple[Any, asyncio.Task | None]]
-):
-    # cancel all the tasks (skip None tasks for callback subscriptions)
-    tasks_to_cancel = []
-    for _, task in subscriptions.values():
-        if task is not None:
-            task.cancel()
-            tasks_to_cancel.append(task)
-
-    # wait for cancellation to finish (only for non-None tasks)
-    if tasks_to_cancel:
-        await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
-
-    # unsubscribe from NATS
-    for sub, _ in subscriptions.values():
-        await sub.unsubscribe()
