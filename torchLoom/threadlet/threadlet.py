@@ -38,18 +38,6 @@ class Threadlet:
         self,
         replica_id: Optional[str] = None,
         torchLoom_addr: str = torchLoomConstants.DEFAULT_ADDR,
-        config_pipe: Optional[
-            Tuple[
-                Connection,
-                Connection,
-            ]
-        ] = None,
-        status_pipe: Optional[
-            Tuple[
-                Connection,
-                Connection,
-            ]
-        ] = None,
     ):
         # Core identifiers
         self._replica_id = replica_id or f"threadlet:{uuid.uuid4()}"
@@ -60,20 +48,18 @@ class Threadlet:
         self._stop_event = multiprocessing.Event()
         self._pipe_listener_stop_event = threading.Event()
 
-        # Inter-process communication using a single duplex pipe
-        # self._main_pipe_conn is used by Threadlet (this class)
-        # self._listener_pipe_conn is passed to ThreadletListener process
+        # Inter-process communication with the listener process
         self._listener_pipe_conn, self._main_pipe_conn = multiprocessing.Pipe(duplex=True)
 
         # Process management
-        self._process: Optional[multiprocessing.Process] = None
+        self._threadlet_listener_process: Optional[multiprocessing.Process] = None
         self._pipe_listener_thread: Optional[threading.Thread] = None
 
         # Configuration
         self._nc_timeout = Config.NC_TIMEOUT or 1
         self._exception_sleep = Config.EXCEPTION_RETRY_TIME or 1
 
-        # Enhanced handler system using the new registry
+        # Can register handler using the handler decorator in the registry
         self._handler_registry = HandlerRegistry()
         self._auto_dispatch = True
 
@@ -90,7 +76,7 @@ class Threadlet:
         Args:
             config_key: The configuration parameter name (e.g., 'optimizer_type')
             handler: Function to call when this parameter changes
-            expected_type: Expected type for the parameter value (inferred if not provided)
+            expected_type: Expected type for the parameter value (ignored - no type checking)
         """
         self._handler_registry.register_handler(config_key, handler, expected_type)
 
@@ -99,7 +85,7 @@ class Threadlet:
 
         Args:
             config_key: The configuration parameter name
-            expected_type: Expected type for the parameter value
+            expected_type: Expected type for the parameter value (ignored - no type checking)
 
         Usage:
             @threadlet.handler("optimizer_type")
@@ -124,32 +110,25 @@ class Threadlet:
         try:
             while not self._pipe_listener_stop_event.is_set():
                 if self._main_pipe_conn.poll(0.1): # Poll with a timeout
-                    raw_message = self._main_pipe_conn.recv()
-                    self._logger.debug(f"Received raw message from listener process: {raw_message}")
+                    received_data = self._main_pipe_conn.recv()
+                    self._logger.debug(f"Received raw data from listener process: {type(received_data)}")
                     
-                    # Try to deserialize the message using the new message types
-                    message = deserialize_message(raw_message) if isinstance(raw_message, dict) else None
+                    message = None
+                    if isinstance(received_data, tuple) and len(received_data) == 2:
+                        message_type_str, serialized_bytes = received_data
+                        if isinstance(serialized_bytes, bytes) and isinstance(message_type_str, str):
+                            message = deserialize_message(serialized_bytes, message_type_str)
+                        else:
+                            self._logger.warning(f"Received malformed tuple from pipe: types were {type(message_type_str)}, {type(serialized_bytes)}")
+                    else:
+                        self._logger.warning(f"Received unexpected data type from pipe: {type(received_data)}")
                     
                     if message:
-                        # Handle structured messages
-                        if message.message_type == MessageType.CONFIG:
-                            self._handle_config_message(message)
-                        elif message.message_type == MessageType.COMMAND:
+                        # Only COMMAND messages are expected from Listener to Threadlet now
+                        if message.message_type == MessageType.COMMAND.value: # Compare with protobuf enum value
                             self._handle_command_message(message)
                         else:
-                            self._logger.warning(f"Received unknown structured message type: {message.message_type}")
-                    else:
-                        # Fallback to legacy message handling
-                        msg_type = raw_message.get("type") if isinstance(raw_message, dict) else None
-                        payload = raw_message.get("payload") if isinstance(raw_message, dict) else None
-
-                        if msg_type in ["config_update", "weaver_command"]:
-                            if payload:
-                                self._dispatch_handlers(payload)
-                            else:
-                                self._logger.warning(f"Received {msg_type} with no payload.")
-                        else:
-                            self._logger.warning(f"Received unknown legacy message type from pipe: {msg_type}")
+                            self._logger.warning(f"Received unexpected message type {message.message_type} from listener. Expected COMMAND.")
         except EOFError:
             self._logger.info("Pipe closed, listener process likely terminated.")
         except Exception as e:
@@ -158,39 +137,38 @@ class Threadlet:
         finally:
             self._logger.info("Pipe message processor loop stopped.")
 
-    def _handle_config_message(self, message) -> None:
-        """Handle config message from ThreadletListener."""
-        try:
-            self._logger.info(f"Received config update: {message.config_params}")
-            if self._auto_dispatch:
-                self._dispatch_handlers(message.config_params)
-        except Exception as e:
-            self._logger.exception(f"Error handling config message: {e}")
-
     def _handle_command_message(self, message) -> None:
-        """Handle command message from ThreadletListener."""
+        """Handle command message from ThreadletListener (includes config updates)."""
         try:
             command_type = message.command_type.value if hasattr(message.command_type, 'value') else message.command_type
-            self._logger.info(f"Received command: {command_type} with params: {message.params}")
+            params = dict(message.params) if message.params else {}
+            
+            # Check for custom command type in params
+            actual_command_type = params.pop("_command_type", None) or command_type
+            
+            self._logger.info(f"Received command: {actual_command_type} with params: {params}")
             
             # Handle specific commands
-            if message.command_type == CommandType.KILL:
+            if message.command_type == CommandType.KILL or actual_command_type == "KILL":
                 self._logger.warning("Received KILL command from weaver")
                 self.stop()
-            elif message.command_type == CommandType.PAUSE:
+            elif message.command_type == CommandType.PAUSE or actual_command_type == "PAUSE":
                 self._logger.info("Received PAUSE command from weaver")
                 if self._auto_dispatch:
                     self._dispatch_handlers({"pause_training": True})
-            elif message.command_type == CommandType.RESUME:
+            elif message.command_type == CommandType.RESUME or actual_command_type == "RESUME":
                 self._logger.info("Received RESUME command from weaver")
                 if self._auto_dispatch:
                     self._dispatch_handlers({"resume_training": True})
-            elif message.command_type == CommandType.UPDATE_CONFIG:
-                self._logger.info("Received UPDATE_CONFIG command from weaver")
-                if self._auto_dispatch and message.params:
-                    self._dispatch_handlers(message.params)
+            elif message.command_type == CommandType.UPDATE_CONFIG or actual_command_type in ["UPDATE_CONFIG", "CONFIG"]:
+                self._logger.info(f"Received config update command with params: {params}")
+                if self._auto_dispatch and params:
+                    self._dispatch_handlers(params)
+            elif actual_command_type == "STATUS":
+                self._logger.info(f"Received status command: {params}")
+                # Handle status updates if needed
             else:
-                self._logger.warning(f"Unknown command type: {command_type}")
+                self._logger.warning(f"Unknown command type: {actual_command_type}")
         except Exception as e:
             self._logger.exception(f"Error handling command message: {e}")
 
@@ -312,7 +290,7 @@ class Threadlet:
             self._pipe_listener_thread.start()
             self._logger.info("Threadlet pipe listener thread started.")
 
-            self._process = multiprocessing.Process(
+            self._threadlet_listener_process = multiprocessing.Process(
                 target=self._run_threadlet_listener_process,
                 args=(
                     self._replica_id,
@@ -322,12 +300,12 @@ class Threadlet:
                 ),
                 name=f"threadlet-listener-proc-{self._replica_id}",
             )
-            self._process.start()
+            self._threadlet_listener_process.start()
 
             # Give the process a moment to start
             time.sleep(0.1)
 
-            self._logger.info(f"ThreadletListener process started with PID: {self._process.pid}")
+            self._logger.info(f"ThreadletListener process started with PID: {self._threadlet_listener_process.pid}")
 
             # Log registered handlers
             handlers = self.get_registered_handlers()
@@ -338,10 +316,10 @@ class Threadlet:
             if self._pipe_listener_thread and self._pipe_listener_thread.is_alive():
                 self._pipe_listener_stop_event.set()
                 self._pipe_listener_thread.join(timeout=1)
-            if self._process and self._process.is_alive():
+            if self._threadlet_listener_process and self._threadlet_listener_process.is_alive():
                 self._stop_event.set()
-                self._process.join(timeout=1)
-                if self._process.is_alive(): self._process.terminate()
+                self._threadlet_listener_process.join(timeout=1)
+                if self._threadlet_listener_process.is_alive(): self._threadlet_listener_process.terminate()
             raise
 
     def stop(self) -> None:
@@ -359,20 +337,20 @@ class Threadlet:
                     self._logger.info("Pipe listener thread stopped.")
             
             # Stop the ThreadletListener process
-            if self._process and self._process.is_alive():
+            if self._threadlet_listener_process and self._threadlet_listener_process.is_alive():
                 self._logger.info("Stopping ThreadletListener process...")
                 self._stop_event.set()
-                self._process.join(timeout=5)
+                self._threadlet_listener_process.join(timeout=5)
 
-                if self._process.is_alive():
+                if self._threadlet_listener_process.is_alive():
                     self._logger.warning("ThreadletListener process did not stop gracefully, terminating.")
-                    self._process.terminate()
-                    self._process.join(timeout=2)
+                    self._threadlet_listener_process.terminate()
+                    self._threadlet_listener_process.join(timeout=2)
 
-                    if self._process.is_alive():
+                    if self._threadlet_listener_process.is_alive():
                         self._logger.error("Failed to terminate ThreadletListener process, killing.")
-                        self._process.kill()
-                        self._process.join()
+                        self._threadlet_listener_process.kill()
+                        self._threadlet_listener_process.join()
                 else:
                     self._logger.info("ThreadletListener process stopped successfully.")
 
@@ -504,13 +482,3 @@ class Threadlet:
     def _handler_types(self):
         """Backward compatibility: access to handler types."""
         return self._handler_registry._handler_types
-
-    def _validate_and_convert_value(self, config_key: str, value, expected_type=None):
-        """Backward compatibility: validate and convert value."""
-        if expected_type is None:
-            expected_type = self._handler_registry.get_handler_type(config_key)
-            if expected_type is None:
-                return value
-        return self._handler_registry._type_converter.validate_and_convert_value(
-            config_key, value, expected_type
-        )

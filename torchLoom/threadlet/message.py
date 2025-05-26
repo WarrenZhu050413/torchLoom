@@ -4,99 +4,54 @@ Simplified message types for pipe communication between Threadlet and ThreadletL
 This module defines basic message types for inter-process communication.
 """
 
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, Optional, Union
-import time
+
+from torchLoom.proto import torchLoom_pb2 
+
+# Use only command messages - config is now a command type
+PipeMessage = Union[
+    torchLoom_pb2.PipeHeartbeatMessage,
+    torchLoom_pb2.PipeMetricsMessage,
+    torchLoom_pb2.PipeCommandMessage,
+]
+ThreadletToListenerMessage = Union[torchLoom_pb2.PipeHeartbeatMessage, torchLoom_pb2.PipeMetricsMessage]
+ListenerToThreadletMessage = torchLoom_pb2.PipeCommandMessage  # Only command messages now
 
 
 class MessageType(Enum):
-    """Basic message types for pipe communication."""
-    
-    # Threadlet -> ThreadletListener messages
-    HEARTBEAT = "heartbeat"
-    METRICS = "metrics"
-    STATUS = "status"
-    
-    # ThreadletListener -> Threadlet messages
-    CONFIG = "config"
-    COMMAND = "command"
+    """Message types for pipe communication (simplified to only use COMMAND)."""
+    HEARTBEAT = torchLoom_pb2.PIPE_HEARTBEAT
+    METRICS = torchLoom_pb2.PIPE_METRICS
+    COMMAND = torchLoom_pb2.PIPE_COMMAND
+    # CONFIG removed - now handled as a command type
 
 
 class CommandType(Enum):
-    """Simple command types."""
-    KILL = "kill"
-    PAUSE = "pause"
-    RESUME = "resume"
-    UPDATE_CONFIG = "update_config"
-
-
-@dataclass
-class BaseMessage:
-    """Base message class."""
-    message_type: MessageType
-    timestamp: float = field(default_factory=time.time)
-    replica_id: Optional[str] = None
-
-
-@dataclass
-class HeartbeatMessage(BaseMessage):
-    """Simple heartbeat message."""
-    message_type: MessageType = MessageType.HEARTBEAT
-    status: str = "active"
-
-
-@dataclass
-class MetricsMessage(BaseMessage):
-    """Basic metrics message."""
-    message_type: MessageType = MessageType.METRICS
-    step: int = 0
-    epoch: int = 0
-    loss: Optional[float] = None
-    accuracy: Optional[float] = None
-    gradient_norm: Optional[float] = None
-    metrics: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class StatusMessage(BaseMessage):
-    """Basic status message."""
-    message_type: MessageType = MessageType.STATUS
-    status: str = "active"  # active, paused, error, complete
-    current_step: int = 0
-    epoch: int = 0
-    message: str = ""
-
-
-@dataclass
-class ConfigMessage(BaseMessage):
-    """Configuration update message."""
-    message_type: MessageType = MessageType.CONFIG
-    config_params: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class CommandMessage(BaseMessage):
-    """Command message."""
-    message_type: MessageType = MessageType.COMMAND
-    command_type: CommandType = CommandType.UPDATE_CONFIG
-    params: Dict[str, Any] = field(default_factory=dict)
-
-
-# Type aliases
-ThreadletToListenerMessage = Union[HeartbeatMessage, MetricsMessage, StatusMessage]
-ListenerToThreadletMessage = Union[ConfigMessage, CommandMessage]
-PipeMessage = Union[ThreadletToListenerMessage, ListenerToThreadletMessage]
+    """Command types for command messages."""
+    KILL = torchLoom_pb2.KILL
+    PAUSE = torchLoom_pb2.PAUSE
+    RESUME = torchLoom_pb2.RESUME
+    UPDATE_CONFIG = torchLoom_pb2.UPDATE_CONFIG
+    # Add CONFIG as a command type to replace the separate config message
+    CONFIG = "CONFIG"  # Custom command type for config updates
 
 
 class MessageFactory:
-    """Simple factory for creating messages."""
-    
+    """Simple factory for creating messages using Protobuf."""
+
     @staticmethod
-    def create_heartbeat(replica_id: str, status: str = "active") -> HeartbeatMessage:
-        """Create a heartbeat message."""
-        return HeartbeatMessage(replica_id=replica_id, status=status)
-    
+    def create_heartbeat(replica_id: str, status: str = "active") -> torchLoom_pb2.PipeHeartbeatMessage:
+        """Create a protobuf heartbeat message."""
+        return torchLoom_pb2.PipeHeartbeatMessage(
+            message_type=torchLoom_pb2.PIPE_HEARTBEAT,
+            timestamp=int(time.time()), # Protobuf uses int64 for timestamp
+            replica_id=replica_id,
+            status=status,
+        )
+
     @staticmethod
     def create_metrics(
         replica_id: str,
@@ -105,19 +60,72 @@ class MessageFactory:
         loss: Optional[float] = None,
         accuracy: Optional[float] = None,
         gradient_norm: Optional[float] = None,
-        **kwargs
-    ) -> MetricsMessage:
-        """Create a metrics message."""
-        return MetricsMessage(
+        **kwargs: Any, # Protobuf map<string, string> for metrics
+    ) -> torchLoom_pb2.PipeMetricsMessage:
+        """Create a protobuf metrics message."""
+        # Convert all kwargs to string for the protobuf map
+        string_metrics = {k: str(v) for k, v in kwargs.items()}
+        
+        metrics_msg = torchLoom_pb2.PipeMetricsMessage(
+            message_type=torchLoom_pb2.PIPE_METRICS,
+            timestamp=int(time.time()),
             replica_id=replica_id,
             step=step,
             epoch=epoch,
-            loss=loss,
-            accuracy=accuracy,
-            gradient_norm=gradient_norm,
-            metrics=kwargs
+            metrics=string_metrics,
         )
-    
+        if loss is not None:
+            metrics_msg.loss = loss
+        if accuracy is not None:
+            metrics_msg.accuracy = accuracy
+        if gradient_norm is not None:
+            metrics_msg.gradient_norm = gradient_norm
+        return metrics_msg
+
+    @staticmethod
+    def create_config(replica_id: str, config_params: Dict[str, Any]) -> torchLoom_pb2.PipeCommandMessage:
+        """Create a command message for config updates (replaces separate config message)."""
+        # Convert all config_params values to string
+        string_config_params = {k: str(v) for k, v in config_params.items()}
+        return torchLoom_pb2.PipeCommandMessage(
+            message_type=torchLoom_pb2.PIPE_COMMAND,
+            timestamp=int(time.time()),
+            replica_id=replica_id,
+            command_type=torchLoom_pb2.UPDATE_CONFIG,  # Use UPDATE_CONFIG for config updates
+            params=string_config_params,
+        )
+
+    @staticmethod
+    def create_command(
+        replica_id: str,
+        command_type: Union[torchLoom_pb2.PipeCommandType, str], # Allow string for custom commands
+        params: Optional[Dict[str, Any]] = None,
+    ) -> torchLoom_pb2.PipeCommandMessage:
+        """Create a protobuf command message."""
+        # Convert all params values to string
+        string_params = {k: str(v) for k, v in (params or {}).items()}
+        
+        # Handle custom command types (like CONFIG)
+        if isinstance(command_type, str):
+            # For custom commands, we'll use UPDATE_CONFIG as the protobuf enum
+            # and store the actual command type in params
+            if command_type == "CONFIG":
+                pb_command_type = torchLoom_pb2.UPDATE_CONFIG
+                string_params["_command_type"] = command_type
+            else:
+                pb_command_type = torchLoom_pb2.UPDATE_CONFIG  # Default fallback
+                string_params["_command_type"] = command_type
+        else:
+            pb_command_type = command_type
+        
+        return torchLoom_pb2.PipeCommandMessage(
+            message_type=torchLoom_pb2.PIPE_COMMAND,
+            timestamp=int(time.time()),
+            replica_id=replica_id,
+            command_type=pb_command_type,
+            params=string_params,
+        )
+
     @staticmethod
     def create_status(
         replica_id: str,
@@ -125,75 +133,43 @@ class MessageFactory:
         current_step: int = 0,
         epoch: int = 0,
         message: str = ""
-    ) -> StatusMessage:
-        """Create a status message."""
-        return StatusMessage(
+    ) -> torchLoom_pb2.PipeCommandMessage:
+        """Create a command message for status updates."""
+        params = {
+            "status": status,
+            "current_step": str(current_step),
+            "epoch": str(epoch),
+            "message": message
+        }
+        return MessageFactory.create_command(
             replica_id=replica_id,
-            status=status,
-            current_step=current_step,
-            epoch=epoch,
-            message=message
-        )
-    
-    @staticmethod
-    def create_config(
-        replica_id: str,
-        config_params: Dict[str, Any]
-    ) -> ConfigMessage:
-        """Create a config message."""
-        return ConfigMessage(
-            replica_id=replica_id,
-            config_params=config_params
-        )
-    
-    @staticmethod
-    def create_command(
-        replica_id: str,
-        command_type: CommandType,
-        params: Optional[Dict[str, Any]] = None
-    ) -> CommandMessage:
-        """Create a command message."""
-        return CommandMessage(
-            replica_id=replica_id,
-            command_type=command_type,
-            params=params or {}
+            command_type="STATUS",
+            params=params
         )
 
 
-def serialize_message(message: PipeMessage) -> Dict[str, Any]:
-    """Serialize a message to a dictionary for pipe transmission."""
-    if hasattr(message, '__dict__'):
-        result = message.__dict__.copy()
-        # Convert enums to their values
-        for key, value in result.items():
-            if isinstance(value, Enum):
-                result[key] = value.value
-        return result
-    else:
-        return {"message_type": "unknown", "data": str(message)}
+# Helper functions for protobuf serialization (using native protobuf methods)
+def serialize_message(message: PipeMessage) -> bytes:
+    """Serialize a protobuf message to bytes using native protobuf serialization."""
+    return message.SerializeToString()
 
 
-def deserialize_message(data: Dict[str, Any]) -> Optional[PipeMessage]:
-    """Deserialize a dictionary back to a message object."""
+def deserialize_message(data: bytes, message_type: str) -> Optional[PipeMessage]:
+    """Deserialize bytes back to a protobuf message using native protobuf deserialization."""
     try:
-        message_type_str = data.get("message_type")
-        if not message_type_str:
-            return None
-        
-        message_type = MessageType(message_type_str)
-        
-        # Create the appropriate message type
-        if message_type == MessageType.HEARTBEAT:
-            return HeartbeatMessage(**data)
-        elif message_type == MessageType.METRICS:
-            return MetricsMessage(**data)
-        elif message_type == MessageType.STATUS:
-            return StatusMessage(**data)
-        elif message_type == MessageType.CONFIG:
-            return ConfigMessage(**data)
-        elif message_type == MessageType.COMMAND:
-            return CommandMessage(**data)
+        if message_type == "HEARTBEAT":
+            msg = torchLoom_pb2.PipeHeartbeatMessage()
+            msg.ParseFromString(data)
+            return msg
+        elif message_type == "METRICS":
+            msg = torchLoom_pb2.PipeMetricsMessage()
+            msg.ParseFromString(data)
+            return msg
+        elif message_type == "COMMAND":
+            msg = torchLoom_pb2.PipeCommandMessage()
+            msg.ParseFromString(data)
+            return msg
         else:
             return None
     except Exception:
-        return None 
+        return None

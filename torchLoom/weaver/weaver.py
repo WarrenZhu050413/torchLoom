@@ -24,7 +24,7 @@ from .handlers import (
 )
 from .publishers import UIUpdatePublisher, ThreadletCommandPublisher
 from .status_tracker import StatusTracker
-from .subscription import ConnectionManager, SubscriptionManager
+from torchLoom.common.subscription import SubscriptionManager
 from .websocket_server import WebSocketServer
 
 logger = setup_logger(
@@ -106,9 +106,11 @@ class Weaver:
         self._stop_nats = asyncio.Event()
         self.seq = 0
 
-        # Connection management
-        self._connection_manager = ConnectionManager(torchLoom_addr)
-        self._subscription_manager = None
+        # Initialize SubscriptionManager directly
+        self._subscription_manager = SubscriptionManager(
+            torchLoom_addr=torchLoom_addr, 
+            stop_event=self._stop_nats
+        )
 
         # Device-replica mapping
         self._device_mapper = DeviceReplicaMapper()
@@ -129,11 +131,9 @@ class Weaver:
             logger.info(f"UI server will be started on {ui_host}:{ui_port}")
 
     async def initialize(self) -> None:
-        """Initialize NATS connection and JetStream."""
-        nc, js = await self._connection_manager.initialize()
-
-        # Initialize subscription manager
-        self._subscription_manager = SubscriptionManager(nc, js, self._stop_nats)
+        """Initialize NATS connection and JetStream via SubscriptionManager."""
+        # Initialize SubscriptionManager's connection
+        await self._subscription_manager.initialize()
 
         # Centralized stream setup - create ALL streams here with complete subject lists
         await self._setup_all_streams()
@@ -142,23 +142,39 @@ class Weaver:
         if self.enable_ui:
             self.websocket_server = WebSocketServer(
                 status_tracker=self.status_tracker,
-                weaver=self,  # Pass weaver instance for direct command handling
-                nats_client=nc,
+                weaver=self,
+                # Get nc from SubscriptionManager
+                nats_client=self._subscription_manager.nc,
                 host=self.ui_host,
                 port=self.ui_port,
             )
 
         # Initialize consolidated message handlers
         self._handlers = {
-            "threadlet": ThreadletHandler(self._device_mapper, self.status_tracker, nc),
-            "external": ExternalHandler(self._device_mapper, nc, self.status_tracker),
-            "ui": UIHandler(self.status_tracker, nc),
+            "threadlet": ThreadletHandler(
+                self._device_mapper, 
+                self.status_tracker, 
+                self._subscription_manager.nc # Get nc from SubscriptionManager
+            ),
+            "external": ExternalHandler(
+                self._device_mapper, 
+                self._subscription_manager.nc, # Get nc from SubscriptionManager
+                self.status_tracker
+            ),
+            "ui": UIHandler(
+                self.status_tracker, 
+                self._subscription_manager.nc # Get nc from SubscriptionManager
+            ),
         }
 
         # Initialize publishers
-        self.ui_update_handler = UIUpdatePublisher(self.status_tracker, nc)
+        self.ui_update_handler = UIUpdatePublisher(
+            self.status_tracker, 
+            self._subscription_manager.nc # Get nc from SubscriptionManager
+        )
         self.threadlet_command_handler = ThreadletCommandPublisher(
-            nc, self._handlers["threadlet"]
+            self._subscription_manager.nc, # Get nc from SubscriptionManager
+            self._handlers["threadlet"]
         )
 
         logger.info("Weaver fully initialized with UI support")
@@ -168,15 +184,11 @@ class Weaver:
         logger.info("Setting up all JetStream streams...")
         print("DEBUG: _setup_all_streams called")
 
-        if not self._subscription_manager:
-            raise RuntimeError("Subscription manager not initialized")
-
-        print(
-            f"DEBUG: About to create WEAVELET_STREAM with subjects: {[torchLoomConstants.weaver_stream.subjects.DR_SUBJECT, torchLoomConstants.subjects.CONFIG_INFO, torchLoomConstants.subjects.WEAVER_COMMANDS]}"
-        )
+        if not self._subscription_manager or not self._subscription_manager.js: # Check js for stream ops
+            raise RuntimeError("Subscription manager or JetStream not initialized")
 
         # WEAVELET_STREAM: Used for weaver-threadlet communication
-        await self._subscription_manager._stream_manager.maybe_create_stream(
+        await self._subscription_manager.stream_manager.maybe_create_stream(
             torchLoomConstants.weaver_stream.STREAM,
             [
                 torchLoomConstants.weaver_stream.subjects.DR_SUBJECT,  # Device registration
@@ -184,8 +196,6 @@ class Weaver:
                 torchLoomConstants.subjects.WEAVER_COMMANDS,  # Weaver commands
             ],
         )
-
-        print("DEBUG: maybe_create_stream call completed")
 
         logger.info("All JetStream streams setup completed")
 
@@ -275,34 +285,32 @@ class Weaver:
                 await asyncio.sleep(30.0)
 
     async def stop(self) -> None:
-        """Stop the weaver and clean up resources."""
-        logger.info("Stopping Weaver")
+        """Stop the weaver, its components, and close NATS connection."""
+        logger.info("Stopping Weaver...")
+        self._stop_nats.set()  # Signal all async tasks managed by stop_event to terminate
 
-        # Signal all loops to exit
-        self._stop_nats.set()
+        # Stop WebSocket server
+        if self.websocket_server:
+            await self.websocket_server.stop()
+            logger.info("WebSocket server stopped.")
 
-        # Stop all subscriptions
+        # Stop UI update publisher (if it has a specific stop method, otherwise it relies on NATS closure)
+        # Assuming UIUpdatePublisher's tasks will end when NATS connection closes or via stop_event if integrated.
+
+        # Stop heartbeat monitor (if it has a specific stop method or task to cancel)
+        # Similar to above, assuming it will terminate.
+
+        # Stop SubscriptionManager (this will stop all its subscriptions and close NATS)
         if self._subscription_manager:
-            await self._subscription_manager.stop_all_subscriptions()
+            await self._subscription_manager.close()
+            logger.info("Subscription manager stopped and NATS connection closed.")
+        
+        # Cancel any other top-level tasks specific to Weaver not covered by _stop_nats
+        # For example, if start_ui_server or start_heartbeat_monitor create tasks not directly
+        # using _stop_nats in their loops, they would need explicit cancellation here.
+        # However, based on current structure, they seem to rely on NATS or are short-lived setup.
 
-        # Close connection
-        await self._connection_manager.close()
-
-    async def subscribe_js(
-        self, stream: str, subject: str, consumer: str, message_handler
-    ) -> None:
-        """Subscribe to a JetStream subject."""
-        if not self._subscription_manager:
-            raise RuntimeError("Weaver not initialized. Call initialize() first.")
-        await self._subscription_manager.subscribe_js(
-            stream, subject, consumer, message_handler
-        )
-
-    async def subscribe_nc(self, subject: str, message_handler) -> None:
-        """Subscribe to a regular NATS subject."""
-        if not self._subscription_manager:
-            raise RuntimeError("Weaver not initialized. Call initialize() first.")
-        await self._subscription_manager.subscribe_nc(subject, message_handler)
+        logger.info("Weaver stopped successfully.")
 
     @property
     def device_to_replicas(self) -> Dict[str, Set[str]]:
@@ -414,7 +422,7 @@ async def main():
             # NATS subscriptions (distributed communication)
             # Streams are already created in weaver.initialize() -> _setup_all_streams()
             tg.create_task(
-                weaver.subscribe_js(
+                weaver._subscription_manager.subscribe_js(
                     torchLoomConstants.weaver_stream.STREAM,
                     torchLoomConstants.weaver_stream.subjects.DR_SUBJECT,
                     torchLoomConstants.weaver_stream.CONSUMER,
@@ -422,13 +430,13 @@ async def main():
                 )
             )
             tg.create_task(
-                weaver.subscribe_nc(
+                weaver._subscription_manager.subscribe_nc(
                     subject=torchLoomConstants.subjects.MONITOR,
                     message_handler=weaver.message_handler,
                 )
             )
             tg.create_task(
-                weaver.subscribe_nc(
+                weaver._subscription_manager.subscribe_nc(
                     subject=torchLoomConstants.subjects.CONFIG_INFO,
                     message_handler=weaver.message_handler,
                 )
@@ -436,19 +444,19 @@ async def main():
 
             # Training Process -> Weaver subscriptions
             tg.create_task(
-                weaver.subscribe_nc(
+                weaver._subscription_manager.subscribe_nc(
                     subject=torchLoomConstants.subjects.TRAINING_STATUS,
                     message_handler=weaver.message_handler,
                 )
             )
             tg.create_task(
-                weaver.subscribe_nc(
+                weaver._subscription_manager.subscribe_nc(
                     subject=torchLoomConstants.subjects.device_STATUS,
                     message_handler=weaver.message_handler,
                 )
             )
             tg.create_task(
-                weaver.subscribe_nc(
+                weaver._subscription_manager.subscribe_nc(
                     subject=torchLoomConstants.subjects.HEARTBEAT,
                     message_handler=weaver.message_handler,
                 )

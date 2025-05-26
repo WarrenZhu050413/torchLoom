@@ -6,7 +6,7 @@ import inspect
 import logging
 from typing import Any, Callable, Dict, Optional, Type
 
-from .config import TypeConverter
+
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ def threadlet_handler(config_key: str, expected_type: Optional[Type] = None):
 
     Args:
         config_key: Configuration parameter name
-        expected_type: Expected type for the parameter value
+        expected_type: Expected type for the parameter value (ignored - no type checking)
 
     Usage:
         class MyTrainer(ThreadletLightningModule):
@@ -42,8 +42,7 @@ class HandlerRegistry:
 
     def __init__(self):
         self._handlers: Dict[str, Callable] = {}
-        self._handler_types: Dict[str, Type] = {}
-        self._type_converter = TypeConverter()
+        self._handler_types: Dict[str, Type] = {}  # Kept for backward compatibility but not used
 
     def register_handler(
         self, config_key: str, handler: Callable, expected_type: Optional[Type] = None
@@ -53,22 +52,13 @@ class HandlerRegistry:
         Args:
             config_key: The configuration parameter name (e.g., 'optimizer_type')
             handler: Function to call when this parameter changes
-            expected_type: Expected type for the parameter value (inferred if not provided)
+            expected_type: Expected type for the parameter value (ignored - no type checking)
         """
-        # Infer type from handler signature if not provided
-        if expected_type is None:
-            sig = inspect.signature(handler)
-            params = list(sig.parameters.values())
-            if len(params) >= 1:
-                param = params[0]  # First parameter (after self if it's a method)
-                if param.annotation != inspect.Parameter.empty:
-                    expected_type = param.annotation
-                else:
-                    expected_type = str  # Default to string
-
+        # Store handler without any type checking or inference
         self._handlers[config_key] = handler
-        self._handler_types[config_key] = expected_type or str
-        print(f"Registered handler for '{config_key}' with type {expected_type}")
+        # Store None to indicate no type checking
+        self._handler_types[config_key] = None
+        print(f"Registered handler for '{config_key}' (no type checking)")
 
     def has_handler(self, config_key: str) -> bool:
         """Check if a handler is registered for the given config key."""
@@ -87,18 +77,12 @@ class HandlerRegistry:
         for config_key, value in config_updates.items():
             if config_key in self._handlers:
                 try:
-                    # Validate and convert the value
-                    expected_type = self._handler_types[config_key]
-                    converted_value = self._type_converter.validate_and_convert_value(
-                        config_key, value, expected_type
-                    )
-
-                    # Call the handler
+                    # Call the handler directly without type checking or conversion
                     handler = self._handlers[config_key]
                     print(
-                        f"Calling handler for '{config_key}' with value: {converted_value}"
+                        f"Calling handler for '{config_key}' with value: {value}"
                     )
-                    handler(converted_value)
+                    handler(value)
 
                 except Exception as e:
                     print(f"Error in handler for '{config_key}': {e}")
@@ -111,8 +95,9 @@ class HandlerRegistry:
         self._handler_types.clear()
 
     def list_handlers(self) -> Dict[str, Type]:
-        """List all registered handlers and their expected types."""
-        return self._handler_types.copy()
+        """List all registered handlers (no type information since type checking is disabled)."""
+        # Return handler names with None types since we don't do type checking
+        return {key: None for key in self._handlers.keys()}
 
     def register_default_handlers(self, target_object: Optional[Any] = None) -> None:
         """Register default handlers for common configuration parameters.
@@ -124,28 +109,28 @@ class HandlerRegistry:
         # Register default handlers for common configuration parameters
         default_handlers = {
             # Training parameters
-            "learning_rate": (self._default_learning_rate_handler, float),
-            "lr": (self._default_learning_rate_handler, float),  # Common alias
-            "batch_size": (self._default_batch_size_handler, int),
-            "momentum": (self._default_momentum_handler, float),
-            "weight_decay": (self._default_weight_decay_handler, float),
+            "learning_rate": self._default_learning_rate_handler,
+            "lr": self._default_learning_rate_handler,  # Common alias
+            "batch_size": self._default_batch_size_handler,
+            "momentum": self._default_momentum_handler,
+            "weight_decay": self._default_weight_decay_handler,
             # Optimizer parameters
-            "optimizer_type": (self._default_optimizer_handler, str),
-            "optimizer": (self._default_optimizer_handler, str),  # Alias
+            "optimizer_type": self._default_optimizer_handler,
+            "optimizer": self._default_optimizer_handler,  # Alias
             # Training control
-            "training_enabled": (self._default_training_control_handler, bool),
-            "pause_training": (self._default_pause_handler, bool),
-            "resume_training": (self._default_resume_handler, bool),
+            "training_enabled": self._default_training_control_handler,
+            "pause_training": self._default_pause_handler,
+            "resume_training": self._default_resume_handler,
             # Model parameters
-            "dropout_rate": (self._default_dropout_handler, float),
-            "dropout": (self._default_dropout_handler, float),  # Alias
+            "dropout_rate": self._default_dropout_handler,
+            "dropout": self._default_dropout_handler,  # Alias
             # Logging and debugging
-            "log_level": (self._default_log_level_handler, str),
-            "logging_interval": (self._default_logging_interval_handler, int),
-            "verbose": (self._default_verbose_handler, bool),
+            "log_level": self._default_log_level_handler,
+            "logging_interval": self._default_logging_interval_handler,
+            "verbose": self._default_verbose_handler,
             # Advanced parameters
-            "gradient_clip_val": (self._default_gradient_clip_handler, float),
-            "accumulate_grad_batches": (self._default_grad_accumulation_handler, int),
+            "gradient_clip_val": self._default_gradient_clip_handler,
+            "accumulate_grad_batches": self._default_grad_accumulation_handler,
         }
 
         # Store reference to target object for handlers that need it
@@ -153,10 +138,10 @@ class HandlerRegistry:
 
         # Register all default handlers
         registered_count = 0
-        for config_key, (handler_func, expected_type) in default_handlers.items():
+        for config_key, handler_func in default_handlers.items():
             # Only register if not already registered (allow user overrides)
             if not self.has_handler(config_key):
-                self.register_handler(config_key, handler_func, expected_type)
+                self.register_handler(config_key, handler_func)
                 registered_count += 1
 
         logger.info(f"Registered {registered_count} default threadlet handlers")
