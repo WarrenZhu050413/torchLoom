@@ -141,11 +141,14 @@ graph TD
 
 ## Environment setup
 
-See the [setup_mac.md](setup_mac.md) for a guide on how to setup torchLoom on a Mac, [setup_linux_cpu.md](setup_linux_cpu.md) for a guide on how to setup torchLoom on a Linux CPU machine, and [setup_linux_gpu.md](setup_linux_gpu.md) for a guide on how to setup torchLoom on a Linux machine with GPUs.
+cd into scripts and run the setup script for your machine.
+See the [setup_mac.md](scripts/setup_mac.md) for a guide on how to setup torchLoom on a Mac, [setup_linux_cpu.md](scripts/setup_linux_cpu.md) for a guide on how to setup torchLoom on a Linux CPU machine, and [setup_linux_gpu.md](scripts/setup_linux_gpu.md) for a guide on how to setup torchLoom on a Linux machine with GPUs.
+
+Run [preamble.sh](scripts/preamble.sh) to kill any existing processes and clear the jetstream store.
 
 ## Agents
 
-We aim to be an AI agent friendly library. In [AGENTS.md](AGENTS.md) are some instructions for AI Agents, and [onboarding.md](onboarding.md) are initial context for an agent to explore the repo. Feel free to contribute to them to improve the agentic workflow on torchLoom!
+We aim to be an AI agent friendly library. In [AGENTS.md](AGENTS.md) are some instructions for AI Agents, [onboarding.md](onboarding.md) are initial context for an agent to explore the repo, and we include useful cursor rules for agents to follow in [.cursor/rules](.cursor/rules). Feel free to contribute to them to improve the agentic workflow on torchLoom!
 
 ## Explore More
 

@@ -2,6 +2,7 @@
 
 jetstream
 lightning_logs
+checkpoints
 
 # Python
 __pycache__
