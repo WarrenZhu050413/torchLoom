@@ -1,17 +1,19 @@
 import argparse
 import time
 import uuid
+import os
+import numpy as np
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
+import torch.multiprocessing as mp
 
 from torchLoom.common import (
     deviceStatus,
     TrainingStatus,
-    ModelUpdateStatus,
     create_batch_update_status,
     create_epoch_complete_status,
     create_epoch_start_status,
@@ -139,7 +141,10 @@ class IntegratedTrainer:
 
         if use_accel:
             if torch.cuda.is_available():
-                device = torch.device("cuda")
+                group_id = getattr(self.args, "replica_group_id", 0)
+                rank = getattr(self.args, "rank", 0)
+                device = _get_device_for_rank(rank, group_id)
+                # device = torch.device("cuda")
             elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
                 device = torch.device("mps")
             else:
@@ -398,21 +403,6 @@ class IntegratedTrainer:
         except Exception as e:
             print(f"Warning: Failed to publish status: {e}")
 
-    def _perform_model_sync(self):
-        
-        path = f"./aggregation/replica_{self.replica_id}_epoch{self.current_epoch}.pt"
-        torch.save(self.model.state_dict(), path)
-
-        update_status = ModelUpdateStatus(
-            replica_id=self.replica_id,
-            epoch=self.current_epoch,
-            step=self.global_step,
-            model_path=path,
-            meta={"loss": self.last_loss, "sample_count": self.args.train_samples}
-        )
-
-        self.threadlet.publish_status(update_status.to_dict())
-
 
     def run_training(self):
         """Main training loop with comprehensive status reporting."""
@@ -498,7 +488,7 @@ class IntegratedTrainer:
             print(f"Warning: Error during cleanup: {e}")
 
 
-def main():
+def parse_args():
     parser = argparse.ArgumentParser(
         description="PyTorch Random Data Example with Comprehensive torchLoom Integration"
     )
@@ -565,15 +555,109 @@ def main():
         default=None,
         help="Replica ID for torchLoom (auto-generated if not provided)",
     )
+    parser.add_argument(
+        "--world-size", 
+        type=int, 
+        default=1, 
+        help="Number of processes (default: 1)"
+    )
+    parser.add_argument(
+        "--replica-group-id",
+        type=int,
+        default=0,
+        help="Replica group ID (default: 0)"
+    )
+    parser.add_argument(
+        "--num-groups",
+        type=int,
+        default=1,
+        help="Number of replica groups to simulate (default: 1)",
+    )
+    return parser.parse_args()
 
-    args = parser.parse_args()
 
+def get_device_for_rank(rank: int, group_id: int, gpus_per_group: int = 8) -> torch.device:
+        """
+        Map rank within a replica group to a physical device index.
+        """
+        base_gpu_index = group_id * gpus_per_group
+        assigned_gpu = base_gpu_index + (rank % gpus_per_group) 
+        return torch.device(f"cuda:{assigned_gpu}")
+
+def _get_device_for_rank(rank: int, group_id: int, gpus_per_group: int = 1) -> torch.device:
+    """Always return cuda:0 for simulated multi-GPU on single GPU machine."""
+    return torch.device("cuda:0")
+
+def init_distributed(rank: int, world_size: int, group_id: int):
+    if torch.cuda.is_available():
+        backend = "nccl"
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        backend = "gloo"
+    else:
+        backend = "gloo"
+
+    master_addr = "127.0.0.1"
+    master_port = 23456 + group_id
+    init_method = f"tcp://{master_addr}:{master_port}"
+
+    print(f"[group {group_id}][rank {rank}] Initializing process group on {init_method}")
+    time.sleep(3)
+    torch.distributed.init_process_group(
+        backend=backend,
+        init_method=init_method,
+        rank=rank,
+        world_size=world_size,
+    )
+
+
+
+def main_worker(rank: int, args: argparse.Namespace):
     torch.manual_seed(args.seed)
 
-    # Create and run integrated trainer
+    args.rank = rank
+    args.replica_id = args.replica_id or f"group{args.replica_group_id}-rank{rank}"
+    
+    init_distributed(rank, args.world_size, args.replica_group_id)
+    
     trainer = IntegratedTrainer(args, replica_id=args.replica_id)
     trainer.run_training()
 
+    if torch.distributed.is_initialized():
+        for param in trainer.model.parameters():
+            if param.requires_grad:
+                torch.distributed.all_reduce(param.data, op=torch.distributed.ReduceOp.SUM)
+                param.data /= args.world_size
+
 
 if __name__ == "__main__":
-    main()
+    os.environ["NCCL_P2P_DISABLE"] = "1"
+    os.environ["NCCL_SHM_DISABLE"] = "1"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
+    mp.set_start_method('spawn', force=True)
+    
+    args = parse_args()
+    
+    num_gpus_in_each_group = np.round(np.linspace(0, args.world_size, args.num_groups + 1))
+    num_gpus_in_each_group = num_gpus_in_each_group[1:] - num_gpus_in_each_group[:-1]
+    num_gpus_in_each_group = num_gpus_in_each_group.astype(int)
+
+    procs = []
+    global_rank = 0
+    for group_id, num_gpus in enumerate(num_gpus_in_each_group):
+        for local_rank in range(num_gpus):
+            # Create per-process arguments
+            group_args = argparse.Namespace(**vars(args))
+            group_args.replica_group_id = group_id
+            group_args.rank = global_rank
+            group_args.local_rank_in_group = local_rank
+            group_args.world_size = args.world_size
+
+            print(f"🚀 Launching rank {global_rank} in group {group_id} (local rank: {local_rank})")
+            p = mp.Process(target=main_worker, args=(global_rank, group_args))
+            p.start()
+            procs.append(p)
+            global_rank += 1
+
+    for p in procs:
+        p.join()
