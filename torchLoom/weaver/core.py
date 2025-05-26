@@ -447,6 +447,12 @@ async def main():
                     message_handler=weaver.message_handler,
                 )
             )
+            tg.create_task(
+                weaver.subscribe_nc(
+                    subject=torchLoomConstants.subjects.HEARTBEAT,
+                    message_handler=weaver.message_handler,
+                )
+            )
 
             # UI services (direct WebSocket communication - no NATS)
             if weaver.enable_ui:

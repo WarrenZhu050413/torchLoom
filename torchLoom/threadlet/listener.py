@@ -7,6 +7,7 @@ import json
 import multiprocessing
 import os
 import time
+import threading
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional
 
 if TYPE_CHECKING:
@@ -26,6 +27,14 @@ from torchLoom.common.utils import cancel_subscriptions, get_device_uuid
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope, RegisterDevice
 
+from .message import (
+    MessageType, 
+    MessageFactory, 
+    serialize_message, 
+    deserialize_message,
+    CommandType
+)
+
 logger = setup_logger(name="threadlet_listener")
 
 
@@ -36,8 +45,7 @@ class ThreadletListener:
         self,
         replica_id: str,
         torchLoom_addr: str,
-        config_sender: "Connection",
-        status_receiver: "Connection",
+        pipe_to_main_process: "Connection",
         stop_event: "Event",
     ):
         # Setup logging
@@ -58,12 +66,10 @@ class ThreadletListener:
         self._js: Optional[JetStreamContext] = None
         self._subscriptions: Dict[str, Any] = {}
 
-        # Inter-process communication using pipes
-        self._config_sender = config_sender  # Send config updates to main process
-        self._status_receiver = (
-            status_receiver  # Receive status updates from main process
-        )
+        # Inter-process communication using a single duplex pipe
+        self._pipe_to_main_process = pipe_to_main_process
         self._stop_event = stop_event
+        self._pipe_listener_stop_event = threading.Event()
 
         # Configuration
         self._nc_timeout = Config.NC_TIMEOUT or 1
@@ -81,11 +87,19 @@ class ThreadletListener:
             await self._register_device()
 
             # Start background tasks
-            tasks = [
-                asyncio.create_task(self._status_publisher_loop()),
+            async_tasks = [
                 asyncio.create_task(self._heartbeat_loop()),
                 asyncio.create_task(self._monitor_stop_event()),
             ]
+
+            # Start the synchronous pipe listener thread
+            self._pipe_listener_thread = threading.Thread(
+                target=self._pipe_message_processor_loop,
+                name=f"listener-pipe-thread-{self._replica_id}",
+                daemon=True
+            )
+            self._pipe_listener_thread.start()
+            self._logger.info("ThreadletListener pipe message processor thread started.")
 
             self._logger.info(
                 "ThreadletListener async initialization completed, starting main loop"
@@ -93,7 +107,7 @@ class ThreadletListener:
 
             # Wait for stop signal or task completion
             done, pending = await asyncio.wait(
-                tasks, return_when=asyncio.FIRST_COMPLETED
+                async_tasks, return_when=asyncio.FIRST_COMPLETED
             )
 
             # Cancel remaining tasks
@@ -102,7 +116,9 @@ class ThreadletListener:
                 try:
                     await task
                 except asyncio.CancelledError:
-                    pass
+                    self._logger.debug(f"Async task {task.__name__} cancelled.")
+                except Exception as e:
+                    self._logger.warning(f"Error during cancellation of async task: {e}")
 
             self._logger.info("ThreadletListener main loop completed")
 
@@ -197,15 +213,16 @@ class ThreadletListener:
                 params = dict(envelope.config_info.config_params)
                 self._logger.info(f"Received config update: {params}")
 
-                # Send config updates to the main process via pipe
+                # Send config updates to the main process via pipe using structured messages
                 try:
-                    if self._config_sender and not self._config_sender.closed:
-                        self._config_sender.send(params)
-                        self._logger.info(
-                            f"Sent config update to main process: {params}"
-                        )
-                except (BrokenPipeError, OSError):
-                    self._logger.warning("Config pipe is broken, dropping update")
+                    config_message = MessageFactory.create_config(
+                        replica_id=self._replica_id,
+                        config_params=params
+                    )
+                    self._send_message_to_threadlet(config_message)
+                    self._logger.info(
+                        f"Sent config update to main process: {params}"
+                    )
                 except Exception as e:
                     self._logger.warning(f"Error sending config update via pipe: {e}")
 
@@ -257,22 +274,19 @@ class ThreadletListener:
                         f"Received weaver command: {command_type} with params: {params}"
                     )
 
-                    # Send command to main process via config pipe
-                    command_data = {
-                        "command_type": command_type,
-                        "params": params,
-                        "_is_weaver_command": True,  # Flag to distinguish from config updates
-                    }
-
+                    # Send command to main process via pipe using structured messages
                     try:
-                        if self._config_sender and not self._config_sender.closed:
-                            self._config_sender.send(command_data)
-                            self._logger.info(
-                                f"Sent weaver command to main process: {command_type}"
-                            )
-                    except (BrokenPipeError, OSError):
-                        self._logger.warning(
-                            "Config pipe is broken, dropping weaver command"
+                        # Convert string command type to enum
+                        cmd_type = CommandType(command_type) if command_type in [e.value for e in CommandType] else CommandType.UPDATE_CONFIG
+                        
+                        command_message = MessageFactory.create_command(
+                            replica_id=self._replica_id,
+                            command_type=cmd_type,
+                            params=params
+                        )
+                        self._send_message_to_threadlet(command_message)
+                        self._logger.info(
+                            f"Sent weaver command to main process: {command_type}"
                         )
                     except Exception as e:
                         self._logger.warning(
@@ -356,35 +370,165 @@ class ThreadletListener:
             self._logger.exception(f"Failed to subscribe to NATS {subject}: {e}")
             raise
 
-    async def _status_publisher_loop(self) -> None:
-        """Background task to publish training status updates."""
-        self._logger.info("Started status publisher loop")
+    async def _heartbeat_loop(self) -> None:
+        """Background task to send periodic heartbeat messages to the weaver."""
+        self._logger.info("Started heartbeat loop")
+        heartbeat_interval = 30.0  # Send heartbeat every 30 seconds
+
         while not self._stop_event.is_set():
             try:
-                # Check for status updates from main process using non-blocking poll
-                try:
-                    if self._status_receiver and not self._status_receiver.closed:
-                        if self._status_receiver.poll(0):  # Non-blocking check
-                            status = self._status_receiver.recv()
-                            await self._publish_status(status)
-                except EOFError:
-                    # Pipe has been closed from the other end
-                    self._logger.info("Status pipe closed, stopping status publisher")
-                    break
-                except (BrokenPipeError, OSError):
-                    # Pipe is broken
-                    self._logger.warning(
-                        "Status pipe broken, stopping status publisher"
-                    )
-                    break
-                except Exception as e:
-                    self._logger.warning(f"Error receiving status from pipe: {e}")
-
-                # Sleep briefly to avoid busy waiting
-                await asyncio.sleep(0.1)
+                await self._send_heartbeat()
+                await asyncio.sleep(heartbeat_interval)
             except Exception as e:
-                self._logger.exception(f"Error in status publisher loop: {e}")
-                await asyncio.sleep(self._exception_sleep)
+                self._logger.exception(f"Error in heartbeat loop: {e}")
+                await asyncio.sleep(5.0)  # Wait a bit before retrying
+
+    async def _send_heartbeat(self) -> None:
+        """Send a heartbeat message to the weaver."""
+        try:
+            if not self._nc:
+                self._logger.warning("Cannot send heartbeat - not connected to NATS")
+                return
+
+            # Import protobuf message types
+            if not EventEnvelope:
+                self._logger.warning("EventEnvelope not available, skipping heartbeat")
+                return
+
+            # Create heartbeat message
+            envelope = EventEnvelope()
+            heartbeat = envelope.heartbeat
+            heartbeat.replica_id = self._replica_id
+            heartbeat.device_uuid = self._device_uuid or f"device_{self._replica_id}"
+            heartbeat.timestamp = int(time.time())
+            heartbeat.status = "active"
+
+            # Add some metadata (this could be extended to include training metrics)
+            heartbeat.metadata["process_id"] = (
+                str(os.getpid()) if hasattr(os, "getpid") else "unknown"
+            )
+            heartbeat.metadata["nats_addr"] = self._torchLoom_addr
+
+            # Publish heartbeat
+            await self._nc.publish(
+                torchLoomConstants.subjects.HEARTBEAT, envelope.SerializeToString()
+            )
+
+            self._logger.debug(f"Sent heartbeat for replica {self._replica_id}")
+
+        except Exception as e:
+            self._logger.exception(f"Failed to send heartbeat: {e}")
+
+    async def _monitor_stop_event(self) -> None:
+        """Monitor the stop event and exit when signaled."""
+        while not self._stop_event.is_set():
+            await asyncio.sleep(0.1)
+        self._logger.info("Stop event detected, shutting down")
+
+    def _pipe_message_processor_loop(self) -> None:
+        """Continuously listens for messages on the pipe from the main Threadlet process."""
+        self._logger.info("Pipe message processor loop started for ThreadletListener.")
+        loop = asyncio.new_event_loop()  # Create a new event loop for this thread
+        asyncio.set_event_loop(loop)
+
+        try:
+            while not self._pipe_listener_stop_event.is_set():
+                if self._pipe_to_main_process.poll(0.1): # Poll with a timeout
+                    raw_message = self._pipe_to_main_process.recv()
+                    self._logger.debug(f"Received raw message from main process: {raw_message}")
+                    
+                    # Try to deserialize the message using the new message types
+                    message = deserialize_message(raw_message) if isinstance(raw_message, dict) else None
+                    
+                    if message:
+                        # Handle structured messages
+                        if message.message_type == MessageType.HEARTBEAT:
+                            loop.run_until_complete(self._handle_heartbeat_message(message))
+                        elif message.message_type == MessageType.METRICS:
+                            loop.run_until_complete(self._handle_metrics_message(message))
+                        elif message.message_type == MessageType.STATUS:
+                            loop.run_until_complete(self._handle_status_message(message))
+                        else:
+                            self._logger.warning(f"Received unknown structured message type: {message.message_type}")
+                    else:
+                        # Fallback to legacy message handling
+                        msg_type = raw_message.get("type") if isinstance(raw_message, dict) else None
+                        payload = raw_message.get("payload") if isinstance(raw_message, dict) else None
+
+                        if msg_type == "status_update":
+                            if payload:
+                                # Run _publish_status in this thread's event loop
+                                loop.run_until_complete(self._publish_status(payload))
+                            else:
+                                self._logger.warning("Received status_update with no payload.")
+                        else:
+                            self._logger.warning(f"Received unknown legacy message type from main pipe: {msg_type}")
+        except EOFError:
+            self._logger.info("Pipe to main process closed, main process likely terminated.")
+        except Exception as e:
+            if not self._pipe_listener_stop_event.is_set(): # Log only if not intentionally stopping
+                self._logger.exception(f"Error in listener's pipe message processor loop: {e}")
+        finally:
+            loop.close()
+            self._logger.info("Pipe message processor loop stopped for ThreadletListener.")
+
+    async def _handle_heartbeat_message(self, message) -> None:
+        """Handle heartbeat message from Threadlet."""
+        try:
+            # Just log the heartbeat - no need to publish to NATS
+            self._logger.debug(f"Received heartbeat from {message.replica_id}: {message.status}")
+        except Exception as e:
+            self._logger.exception(f"Error handling heartbeat message: {e}")
+
+    async def _handle_metrics_message(self, message) -> None:
+        """Handle metrics message from Threadlet."""
+        try:
+            status_dict = {
+                "type": "training_status",
+                "status_type": "metrics_update",
+                "replica_id": message.replica_id,
+                "current_step": message.step,
+                "epoch": message.epoch,
+                "metrics": {
+                    **message.metrics,
+                    "loss": message.loss,
+                    "accuracy": message.accuracy,
+                    "gradient_norm": message.gradient_norm,
+                }
+            }
+            await self._publish_status(status_dict)
+            self._logger.debug(f"Handled metrics message from {message.replica_id}")
+        except Exception as e:
+            self._logger.exception(f"Error handling metrics message: {e}")
+
+    async def _handle_status_message(self, message) -> None:
+        """Handle status message from Threadlet."""
+        try:
+            status_dict = {
+                "type": "training_status",
+                "status_type": "status_update",
+                "replica_id": message.replica_id,
+                "current_step": message.current_step,
+                "epoch": message.epoch,
+                "status": message.status,
+                "message": message.message,
+            }
+            await self._publish_status(status_dict)
+            self._logger.debug(f"Handled status message from {message.replica_id}: {message.status}")
+        except Exception as e:
+            self._logger.exception(f"Error handling status message: {e}")
+
+    def _send_message_to_threadlet(self, message) -> None:
+        """Send a structured message to the main Threadlet process."""
+        try:
+            if self._pipe_to_main_process and not self._pipe_to_main_process.closed:
+                serialized_message = serialize_message(message)
+                self._pipe_to_main_process.send(serialized_message)
+                self._logger.debug(f"Sent message to Threadlet: {message.message_type}")
+        except (BrokenPipeError, OSError):
+            self._logger.warning("Pipe to main process is broken, dropping message")
+        except Exception as e:
+            self._logger.warning(f"Error sending message via pipe: {e}")
 
     async def _publish_status(self, status: Dict[str, Any]) -> None:
         """Publish status to NATS using protobuf messages based on status type."""
@@ -496,84 +640,46 @@ class ThreadletListener:
         except Exception as e:
             self._logger.exception(f"Failed to publish device status: {e}")
 
-    async def _heartbeat_loop(self) -> None:
-        """Background task to send periodic heartbeat messages to the weaver."""
-        self._logger.info("Started heartbeat loop")
-        heartbeat_interval = 30.0  # Send heartbeat every 30 seconds
-
-        while not self._stop_event.is_set():
-            try:
-                await self._send_heartbeat()
-                await asyncio.sleep(heartbeat_interval)
-            except Exception as e:
-                self._logger.exception(f"Error in heartbeat loop: {e}")
-                await asyncio.sleep(5.0)  # Wait a bit before retrying
-
-    async def _send_heartbeat(self) -> None:
-        """Send a heartbeat message to the weaver."""
-        try:
-            if not self._nc:
-                self._logger.warning("Cannot send heartbeat - not connected to NATS")
-                return
-
-            # Import protobuf message types
-            if not EventEnvelope:
-                self._logger.warning("EventEnvelope not available, skipping heartbeat")
-                return
-
-            # Create heartbeat message
-            envelope = EventEnvelope()
-            heartbeat = envelope.heartbeat
-            heartbeat.replica_id = self._replica_id
-            heartbeat.device_uuid = self._device_uuid or f"device_{self._replica_id}"
-            heartbeat.timestamp = int(time.time())
-            heartbeat.status = "active"
-
-            # Add some metadata (this could be extended to include training metrics)
-            heartbeat.metadata["process_id"] = (
-                str(os.getpid()) if hasattr(os, "getpid") else "unknown"
-            )
-            heartbeat.metadata["nats_addr"] = self._torchLoom_addr
-
-            # Publish heartbeat
-            await self._nc.publish(
-                torchLoomConstants.subjects.HEARTBEAT, envelope.SerializeToString()
-            )
-
-            self._logger.debug(f"Sent heartbeat for replica {self._replica_id}")
-
-        except Exception as e:
-            self._logger.exception(f"Failed to send heartbeat: {e}")
-
-    async def _monitor_stop_event(self) -> None:
-        """Monitor the stop event and exit when signaled."""
-        while not self._stop_event.is_set():
-            await asyncio.sleep(0.1)
-        self._logger.info("Stop event detected, shutting down")
-
     async def _cleanup(self) -> None:
         """Clean up resources."""
         try:
             self._logger.info("Starting ThreadletListener cleanup...")
 
+            # Signal and wait for the pipe listener thread to stop
+            if hasattr(self, '_pipe_listener_thread') and self._pipe_listener_thread.is_alive():
+                self._logger.info("Stopping ThreadletListener pipe message processor thread...")
+                self._pipe_listener_stop_event.set()
+                self._pipe_listener_thread.join(timeout=2)
+                if self._pipe_listener_thread.is_alive():
+                    self._logger.warning("ThreadletListener pipe processor thread did not stop in time.")
+                else:
+                    self._logger.info("ThreadletListener pipe processor thread stopped.")
+
             # Cancel all subscriptions and wait for them to complete
-            for subject, (sub, task) in self._subscriptions.items():
+            for subject, (sub_or_psub, task) in self._subscriptions.items(): # Adjusted to handle psub correctly
                 try:
                     self._logger.info(f"Cleaning up subscription for {subject}")
 
                     # Cancel the task first
-                    if not task.cancelled():
+                    if task and not task.done(): # Check if task exists and is not done
                         task.cancel()
                         try:
                             await task
                         except asyncio.CancelledError:
-                            pass
+                            self._logger.debug(f"Async task for {subject} cancelled.")
+                        except Exception as e_task:
+                            self._logger.warning(f"Error awaiting cancelled task for {subject}: {e_task}")
 
                     # Unsubscribe and drain if it's a subscription object
-                    if hasattr(sub, "unsubscribe"):
-                        await sub.unsubscribe()
-                    elif hasattr(sub, "drain"):
-                        await sub.drain()
+                    # For pull subscriptions (psub), they don't have unsubscribe, but tasks are cancelled.
+                    # For regular NATS subscriptions (sub), they have unsubscribe.
+                    if hasattr(sub_or_psub, "unsubscribe"):
+                        await sub_or_psub.unsubscribe()
+                        self._logger.debug(f"Unsubscribed from {subject}.")
+                    # Pull subscriptions are managed by their fetch tasks, which are cancelled above.
+                    # JetStream pull subscriptions themselves don't have a direct .unsubscribe() or .drain()
+                    # in the same way as core NATS subscriptions or how JetStream push subscriptions might.
+                    # The client library handles cleanup when the connection is closed.
 
                 except Exception as e:
                     self._logger.warning(
@@ -584,18 +690,11 @@ class ThreadletListener:
 
             # Close pipe connections
             try:
-                if self._config_sender and not self._config_sender.closed:
-                    self._config_sender.close()
-                    self._logger.info("Config sender pipe closed")
+                if self._pipe_to_main_process and not self._pipe_to_main_process.closed:
+                    self._pipe_to_main_process.close()
+                    self._logger.info("Pipe to main process closed")
             except Exception as e:
-                self._logger.warning(f"Error closing config sender pipe: {e}")
-
-            try:
-                if self._status_receiver and not self._status_receiver.closed:
-                    self._status_receiver.close()
-                    self._logger.info("Status receiver pipe closed")
-            except Exception as e:
-                self._logger.warning(f"Error closing status receiver pipe: {e}")
+                self._logger.warning(f"Error closing pipe to main process: {e}")
 
             # Close NATS connection more thoroughly
             if self._nc and not self._nc.is_closed:
