@@ -15,7 +15,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from torchLoom.common.constants import torchLoomConstants, TimeConstants
+from torchLoom.common.constants import TimeConstants, torchLoomConstants
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope, UICommand
 
@@ -104,7 +104,7 @@ class WebSocketServer:
                     json.dumps({"type": "status_update", "data": initial_status})
                 )
                 logger.info("Sent initial status to newly connected WebSocket client.")
-                
+
                 while True:
                     data = await websocket.receive_text()
                     await self.handle_websocket_message(data, websocket)
@@ -114,7 +114,7 @@ class WebSocketServer:
                 logger.exception(f"WebSocket error: {e}")
             finally:
                 self.manager.disconnect(websocket)
-        
+
         # All REST API endpoints are removed.
 
     def get_ui_status_dict(self) -> dict:
@@ -125,34 +125,50 @@ class WebSocketServer:
             group_id = replica_id.split("_")[0] if "_" in replica_id else replica_id
             if group_id not in replica_groups:
                 replica_groups[group_id] = {
-                    "id": group_id, "devices": {}, "status": "training",
-                    "stepProgress": 0, "fixedStep": None, "lastActiveStep": None
+                    "id": group_id,
+                    "devices": {},
+                    "status": "training",
+                    "stepProgress": 0,
+                    "fixedStep": None,
+                    "lastActiveStep": None,
                 }
             replica_groups[group_id]["devices"][device_id] = {
-                "id": device_id, "server": device.server_id, "status": device.status,
-                "utilization": round(getattr(device, 'utilization', 0), 1),
-                "temperature": round(getattr(device, 'temperature', 0), 1),
-                "memory_used": round(getattr(device, 'memory_used', 0), 2),
-                "memory_total": round(getattr(device, 'memory_total', 8.0), 2),
+                "id": device_id,
+                "server": device.server_id,
+                "status": device.status,
+                "utilization": round(getattr(device, "utilization", 0), 1),
+                "temperature": round(getattr(device, "temperature", 0), 1),
+                "memory_used": round(getattr(device, "memory_used", 0), 2),
+                "memory_total": round(getattr(device, "memory_total", 8.0), 2),
                 "batch": device.config.get("batch_size", "32"),
                 "lr": device.config.get("learning_rate", "0.001"),
                 "opt": device.config.get("optimizer_type", "Adam"),
-                "last_updated": getattr(device, 'last_updated', time.time())
+                "last_updated": getattr(device, "last_updated", time.time()),
             }
         for replica_id, replica in self.status_tracker.replicas.items():
             group_id = replica_id.split("_")[0] if "_" in replica_id else replica_id
             if group_id in replica_groups:
                 replica_groups[group_id]["status"] = replica.status
-                replica_groups[group_id]["stepProgress"] = round(replica.step_progress, 1)
+                replica_groups[group_id]["stepProgress"] = round(
+                    replica.step_progress, 1
+                )
                 replica_groups[group_id]["lastActiveStep"] = replica.last_active_step
                 if replica.fixed_step is not None:
                     replica_groups[group_id]["fixedStep"] = replica.fixed_step
-        
-        system_summary = self.status_tracker.get_system_summary() if hasattr(self.status_tracker, 'get_system_summary') else {}
+
+        system_summary = (
+            self.status_tracker.get_system_summary()
+            if hasattr(self.status_tracker, "get_system_summary")
+            else {}
+        )
 
         return {
             "replicaGroups": replica_groups,
-            "communicationStatus": self.status_tracker.communication_status if hasattr(self.status_tracker, 'communication_status') else "unknown",
+            "communicationStatus": (
+                self.status_tracker.communication_status
+                if hasattr(self.status_tracker, "communication_status")
+                else "unknown"
+            ),
             "systemSummary": system_summary,
             "timestamp": time.time(),
         }
@@ -196,7 +212,11 @@ class WebSocketServer:
         # self.status_tracker.deactivate_device(device_id) # Example
 
         logger.info(f"Processing device deactivation command for: {device_id}")
-        if self.weaver and self.weaver._subscription_manager and self.weaver._subscription_manager.js:
+        if (
+            self.weaver
+            and self.weaver._subscription_manager
+            and self.weaver._subscription_manager.js
+        ):
             try:
                 env = EventEnvelope()
                 env.ui_command.command_type = "deactivate_device"
@@ -204,11 +224,17 @@ class WebSocketServer:
                 await self.weaver._subscription_manager.js.publish(
                     torchLoomConstants.subjects.UI_COMMANDS, env.SerializeToString()
                 )
-                logger.debug(f"Published UI_COMMAND (deactivate_device) for {device_id} to NATS JetStream.")
+                logger.debug(
+                    f"Published UI_COMMAND (deactivate_device) for {device_id} to NATS JetStream."
+                )
             except Exception as e:
-                logger.exception(f"Failed to publish UI_COMMAND (deactivate_device) to NATS: {e}")
+                logger.exception(
+                    f"Failed to publish UI_COMMAND (deactivate_device) to NATS: {e}"
+                )
         else:
-            logger.warning("Cannot publish deactivate_device: Weaver, SubscriptionManager, or JetStream not available.")
+            logger.warning(
+                "Cannot publish deactivate_device: Weaver, SubscriptionManager, or JetStream not available."
+            )
         # Optional: self.status_tracker.set_communication_status("stable") # Example
 
     async def handle_reactivate_group(self, replica_id: str):
@@ -216,9 +242,13 @@ class WebSocketServer:
         if not replica_id:
             logger.warning("Reactivate group command received with no replica_id.")
             return
-        
+
         logger.info(f"Processing replica group reactivation command for: {replica_id}")
-        if self.weaver and self.weaver._subscription_manager and self.weaver._subscription_manager.js:
+        if (
+            self.weaver
+            and self.weaver._subscription_manager
+            and self.weaver._subscription_manager.js
+        ):
             try:
                 env = EventEnvelope()
                 env.ui_command.command_type = "reactivate_group"
@@ -226,11 +256,17 @@ class WebSocketServer:
                 await self.weaver._subscription_manager.js.publish(
                     torchLoomConstants.subjects.UI_COMMANDS, env.SerializeToString()
                 )
-                logger.debug(f"Published UI_COMMAND (reactivate_group) for {replica_id} to NATS JetStream.")
+                logger.debug(
+                    f"Published UI_COMMAND (reactivate_group) for {replica_id} to NATS JetStream."
+                )
             except Exception as e:
-                logger.exception(f"Failed to publish UI_COMMAND (reactivate_group) to NATS: {e}")
+                logger.exception(
+                    f"Failed to publish UI_COMMAND (reactivate_group) to NATS: {e}"
+                )
         else:
-            logger.warning("Cannot publish reactivate_group: Weaver, SubscriptionManager, or JetStream not available.")
+            logger.warning(
+                "Cannot publish reactivate_group: Weaver, SubscriptionManager, or JetStream not available."
+            )
 
     async def handle_config_update(self, replica_id: str, config_params: dict):
         """Handle config update: update local status (optional) and publish UICommand."""
@@ -238,8 +274,14 @@ class WebSocketServer:
             logger.warning("Update config command received with no replica_id.")
             return
 
-        logger.info(f"Processing config update command for {replica_id}: {config_params}")
-        if self.weaver and self.weaver._subscription_manager and self.weaver._subscription_manager.js:
+        logger.info(
+            f"Processing config update command for {replica_id}: {config_params}"
+        )
+        if (
+            self.weaver
+            and self.weaver._subscription_manager
+            and self.weaver._subscription_manager.js
+        ):
             try:
                 env = EventEnvelope()
                 env.ui_command.command_type = "update_config"
@@ -249,11 +291,17 @@ class WebSocketServer:
                 await self.weaver._subscription_manager.js.publish(
                     torchLoomConstants.subjects.UI_COMMANDS, env.SerializeToString()
                 )
-                logger.debug(f"Published UI_COMMAND (update_config) for {replica_id} to NATS JetStream.")
+                logger.debug(
+                    f"Published UI_COMMAND (update_config) for {replica_id} to NATS JetStream."
+                )
             except Exception as e:
-                logger.exception(f"Failed to publish UI_COMMAND (update_config) to NATS: {e}")
+                logger.exception(
+                    f"Failed to publish UI_COMMAND (update_config) to NATS: {e}"
+                )
         else:
-            logger.warning("Cannot publish update_config: Weaver, SubscriptionManager, or JetStream not available.")
+            logger.warning(
+                "Cannot publish update_config: Weaver, SubscriptionManager, or JetStream not available."
+            )
 
     async def broadcast_status_update(self):
         """Broadcast status update to all connected WebSocket clients."""
@@ -268,7 +316,7 @@ class WebSocketServer:
     async def start_status_broadcaster(self):
         """Start periodic status broadcasts to WebSocket clients."""
         logger.info("Starting WebSocket status broadcaster using StatusTracker.")
-        while True: # Should be controlled by an event or server lifecycle
+        while True:  # Should be controlled by an event or server lifecycle
             try:
                 if self.manager.active_connections:
                     await self.broadcast_status_update()
@@ -278,7 +326,7 @@ class WebSocketServer:
                 break
             except Exception as e:
                 logger.exception(f"Error in status broadcaster: {e}")
-                await asyncio.sleep(5.0) # Wait a bit before retrying if error
+                await asyncio.sleep(5.0)  # Wait a bit before retrying if error
 
     async def start_server(self):
         """Start the WebSocket server."""
@@ -295,7 +343,7 @@ class WebSocketServer:
         broadcaster_task = None
         try:
             broadcaster_task = asyncio.create_task(self.start_status_broadcaster())
-            await self.start_server() # This will block
+            await self.start_server()  # This will block
         except KeyboardInterrupt:
             logger.info("WebSocket server shutting down due to KeyboardInterrupt...")
         except Exception as e:
@@ -306,8 +354,11 @@ class WebSocketServer:
                 try:
                     await broadcaster_task
                 except asyncio.CancelledError:
-                    logger.info("Status broadcaster task successfully cancelled on shutdown.")
+                    logger.info(
+                        "Status broadcaster task successfully cancelled on shutdown."
+                    )
             logger.info("WebSocket server stopped.")
+
 
 # Example of how this might be run (typically in weaver.py or a main script):
 # async def main():

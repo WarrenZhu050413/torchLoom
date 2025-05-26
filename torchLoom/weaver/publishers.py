@@ -88,21 +88,26 @@ class UIUpdatePublisher(Publisher):
             # )
 
             # logger.debug("[WEAVER->UI] Published UI update to clients") # Logged that it was constructed
-            logger.debug("[WEAVER->UI] Constructed UIStatusUpdate envelope. Publishing to NATS is removed.")
-            return envelope # Return the constructed envelope
+            logger.debug(
+                "[WEAVER->UI] Constructed UIStatusUpdate envelope. Publishing to NATS is removed."
+            )
+            return envelope  # Return the constructed envelope
 
         except Exception as e:
-            logger.exception(f"[WEAVER->UI] Failed to construct UIStatusUpdate envelope: {e}")
+            logger.exception(
+                f"[WEAVER->UI] Failed to construct UIStatusUpdate envelope: {e}"
+            )
             return None
 
     async def publish(self) -> None:
         """Implement the abstract publish method."""
-        await self.publish_ui_update() # Now just constructs and logs
+        await self.publish_ui_update()  # Now just constructs and logs
 
 
 # ===========================================
 # WEAVELET PUBLISHERS (Weaver -> Training Processes)
 # ===========================================
+
 
 class ThreadletCommandPublisher(Publisher):
     """Publisher for sending commands FROM the weaver TO threadlets/training processes.
@@ -203,4 +208,6 @@ class ThreadletCommandPublisher(Publisher):
                     "[WEAVER->WEAVELET] Missing config_params for config_update message"
                 )
         else:
-            logger.warning(f"Unknown message type for ThreadletCommandPublisher: {message_type}")
+            logger.warning(
+                f"Unknown message type for ThreadletCommandPublisher: {message_type}"
+            )

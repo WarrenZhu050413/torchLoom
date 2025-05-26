@@ -21,9 +21,13 @@ import lightning as L
 import torch
 import torch.nn as nn
 
-from torchLoom.lightning_wrapper import ThreadletWrapper, make_threadlet, threadlet_handler
+from torchLoom.lightning_wrapper import (
+    ThreadletWrapper,
+    make_threadlet,
+    threadlet_handler,
+)
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope, Heartbeat
-from torchLoom.weaver.handlers import HeartbeatHandler
+from torchLoom.weaver.handlers import ThreadletHandler
 from torchLoom.weaver.status_tracker import StatusTracker
 
 # Mock NATS connection
@@ -98,9 +102,11 @@ async def simulate_weaver_heartbeat_monitor():
     """Simulate a weaver monitoring heartbeats."""
     print("🎯 Starting weaver heartbeat monitor...")
 
-    # Create status tracker and heartbeat handler
+    # Create status tracker and threadlet handler
     status_tracker = StatusTracker()
-    heartbeat_handler = HeartbeatHandler(
+    device_mapper = None  # Mock device mapper for testing
+    threadlet_handler = ThreadletHandler(
+        device_mapper=device_mapper,
         status_tracker=status_tracker,
         heartbeat_timeout=45.0,  # 45 second timeout for testing
     )
@@ -113,17 +119,17 @@ async def simulate_weaver_heartbeat_monitor():
             await asyncio.sleep(10)  # Check every 10 seconds
 
             # Check for dead replicas
-            dead_replicas = heartbeat_handler.check_dead_replicas()
+            dead_replicas = threadlet_handler.check_dead_replicas()
 
             if dead_replicas:
                 print(f"💀 DEAD REPLICAS DETECTED: {list(dead_replicas)}")
                 # In a real weaver, this would trigger recovery actions
 
-            # HeartbeatHandler doesn't have get_live_replicas method,
+            # ThreadletHandler doesn't have get_live_replicas method,
             # so we'll track live replicas differently
-            all_replicas = set(heartbeat_handler._last_heartbeats.keys())
-            live_replicas = all_replicas - heartbeat_handler._dead_replicas
-            total_dead = len(heartbeat_handler._dead_replicas)
+            all_replicas = set(threadlet_handler._last_heartbeats.keys())
+            live_replicas = all_replicas - threadlet_handler._dead_replicas
+            total_dead = len(threadlet_handler._dead_replicas)
 
             if live_replicas or total_dead > 0:
                 print(f"📊 Status - Live: {len(live_replicas)}, Dead: {total_dead}")

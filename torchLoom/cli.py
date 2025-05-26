@@ -42,7 +42,12 @@ class TorchLoomClient:
             raise RuntimeError("Failed to connect to NATS server")
         await self._nc.publish(subject, envelope.SerializeToString())
 
-    async def _publish_ui_command(self, command_type: str, target_id: Optional[str] = None, params: Optional[dict] = None):
+    async def _publish_ui_command(
+        self,
+        command_type: str,
+        target_id: Optional[str] = None,
+        params: Optional[dict] = None,
+    ):
         """Helper to publish a UICommand via EventEnvelope."""
         await self.connect()
         if self._nc is None:
@@ -57,10 +62,11 @@ class TorchLoomClient:
                 envelope.ui_command.params[key] = str(value)
 
         await self._nc.publish(
-            torchLoomConstants.subjects.UI_COMMANDS,
-            envelope.SerializeToString()
+            torchLoomConstants.subjects.UI_COMMANDS, envelope.SerializeToString()
         )
-        logger.info(f"Published UI command: {command_type}, Target: {target_id}, Params: {params}")
+        logger.info(
+            f"Published UI command: {command_type}, Target: {target_id}, Params: {params}"
+        )
 
     async def register_device(self, device_uuid: str, replica_id: str):
         """Register a device with a replica."""
@@ -76,7 +82,9 @@ class TorchLoomClient:
 
     async def fail_device(self, device_uuid: str):
         """Tell the weaver to mark a device as failed."""
-        await self._publish_ui_command(command_type="deactivate_device", target_id=device_uuid)
+        await self._publish_ui_command(
+            command_type="deactivate_device", target_id=device_uuid
+        )
         logger.info(f"Published UI command to fail device {device_uuid}")
 
     async def send_config_info(self, config_params: dict):
@@ -85,9 +93,7 @@ class TorchLoomClient:
         for key, value in config_params.items():
             envelope.config_info.config_params[key] = str(value)
 
-        await self._publish_event(
-            torchLoomConstants.subjects.CONFIG_INFO, envelope
-        )
+        await self._publish_event(torchLoomConstants.subjects.CONFIG_INFO, envelope)
         logger.info(f"Published config info event with parameters: {config_params}")
 
     async def reset_learning_rate(self, learning_rate: str):
@@ -100,13 +106,21 @@ class TorchLoomClient:
 
     async def pause_training(self, target_replica_id: Optional[str] = None):
         """Pause training for a specific replica or all if None."""
-        await self._publish_ui_command(command_type="pause_training", target_id=target_replica_id)
-        logger.info(f"Published UI command to pause training for target: {target_replica_id or 'all'}")
+        await self._publish_ui_command(
+            command_type="pause_training", target_id=target_replica_id
+        )
+        logger.info(
+            f"Published UI command to pause training for target: {target_replica_id or 'all'}"
+        )
 
     async def resume_training(self, target_replica_id: Optional[str] = None):
         """Resume training for a specific replica or all if None."""
-        await self._publish_ui_command(command_type="resume_training", target_id=target_replica_id)
-        logger.info(f"Published UI command to resume training for target: {target_replica_id or 'all'}")
+        await self._publish_ui_command(
+            command_type="resume_training", target_id=target_replica_id
+        )
+        logger.info(
+            f"Published UI command to resume training for target: {target_replica_id or 'all'}"
+        )
 
     async def set_training_params(self, **params):
         """Set multiple training parameters at once via config update."""
@@ -129,7 +143,11 @@ class MyShell(cmd.Cmd):
     intro = "Welcome to torchLoom CLI. Type help or ? to list commands.\nNATS URL: Not connected. Connects on first command."
 
     def __init__(
-        self, nats_url_override: Optional[str] = None, completekey="tab", stdin=None, stdout=None
+        self,
+        nats_url_override: Optional[str] = None,
+        completekey="tab",
+        stdin=None,
+        stdout=None,
     ):
         super().__init__(completekey, stdin, stdout)
         effective_nats_url = nats_url_override or torchLoomConstants.DEFAULT_ADDR
@@ -211,7 +229,9 @@ class MyShell(cmd.Cmd):
             asyncio.run(self.client.set_batch_size(batch_size))
             print(f"Sent config update for batch_size: {batch_size}")
         except ValueError:
-            print("Invalid batch size. Must be an integer. Usage: set_batch_size <value>")
+            print(
+                "Invalid batch size. Must be an integer. Usage: set_batch_size <value>"
+            )
 
     def do_pause_training(self, line):
         """Pause training (sends UICommand pause_training).
@@ -220,7 +240,9 @@ class MyShell(cmd.Cmd):
         """
         target_replica_id = line.strip() or None
         asyncio.run(self.client.pause_training(target_replica_id))
-        print(f"Sent command to pause training for target: {target_replica_id or 'all'}")
+        print(
+            f"Sent command to pause training for target: {target_replica_id or 'all'}"
+        )
 
     def do_resume_training(self, line):
         """Resume training (sends UICommand resume_training).
@@ -229,7 +251,9 @@ class MyShell(cmd.Cmd):
         """
         target_replica_id = line.strip() or None
         asyncio.run(self.client.resume_training(target_replica_id))
-        print(f"Sent command to resume training for target: {target_replica_id or 'all'}")
+        print(
+            f"Sent command to resume training for target: {target_replica_id or 'all'}"
+        )
 
     def do_training_config(self, line):
         """Set multiple training parameters via config update (e.g., learning_rate, batch_size).
@@ -253,7 +277,9 @@ class MyShell(cmd.Cmd):
             asyncio.run(self.client.set_training_params(**config_params))
             print(f"Sent training_config update: {config_params}")
         except ValueError:
-            print("Invalid format or value. Use key=value. Check types for lr (float) and batch_size (int).")
+            print(
+                "Invalid format or value. Use key=value. Check types for lr (float) and batch_size (int)."
+            )
 
     def do_exit(self, line):
         """Exit the CLI and close NATS connection."""
@@ -273,16 +299,20 @@ class MyShell(cmd.Cmd):
     # Legacy commands - keep for now, but point to new ones
     def do_test(self, line):
         """Legacy: Simulates device failure. Use `fail_device` <device_uuid> instead."""
-        print("Warning: 'test' command is deprecated. Use 'fail_device <device_uuid>' instead.")
+        print(
+            "Warning: 'test' command is deprecated. Use 'fail_device <device_uuid>' instead."
+        )
         self.do_fail_device(line)
 
     def do_setlr(self, line):
         """Legacy: Sets learning rate. Use `reset_lr` <learning_rate> instead."""
-        print("Warning: 'setlr' command is deprecated. Use 'reset_lr <learning_rate>' instead.")
+        print(
+            "Warning: 'setlr' command is deprecated. Use 'reset_lr <learning_rate>' instead."
+        )
         self.do_reset_lr(line)
 
     def default(self, line):
-        if line == 'EOF':
+        if line == "EOF":
             print("Exiting...")
             return self.do_exit(line)
         print(f"Unknown command: {line}. Type help or ? for a list of commands.")
@@ -315,29 +345,31 @@ def run_cli_command(command: str, nats_url: Optional[str] = None) -> bool:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="torchLoom CLI - Interactive NATS message publisher")
+    parser = argparse.ArgumentParser(
+        description="torchLoom CLI - Interactive NATS message publisher"
+    )
     parser.add_argument(
         "--host",
         type=str,
         default=None,
-        help=f"NATS server host. Default is from TorchLoom config if not set."
+        help=f"NATS server host. Default is from TorchLoom config if not set.",
     )
     parser.add_argument(
         "--port",
         type=int,
         default=None,
-        help=f"NATS server port. Default is from TorchLoom config if not set."
+        help=f"NATS server port. Default is from TorchLoom config if not set.",
     )
     parser.add_argument(
         "--nats_url",
         type=str,
         default=None,
-        help=f"Full NATS server URL (e.g., nats://localhost:4222). Overrides host/port if set. Default: {torchLoomConstants.DEFAULT_ADDR}"
+        help=f"Full NATS server URL (e.g., nats://localhost:4222). Overrides host/port if set. Default: {torchLoomConstants.DEFAULT_ADDR}",
     )
     parser.add_argument(
         "--command",
         type=str,
-        help="Single command to execute (non-interactive mode). E.g., \"register_device dev1 rep1\""
+        help='Single command to execute (non-interactive mode). E.g., "register_device dev1 rep1"',
     )
     args = parser.parse_args()
 
@@ -349,14 +381,14 @@ if __name__ == "__main__":
     elif args.host:
         default_port = 4222
         try:
-            default_port = int(torchLoomConstants.DEFAULT_ADDR.split(':')[-1])
+            default_port = int(torchLoomConstants.DEFAULT_ADDR.split(":")[-1])
         except (ValueError, IndexError):
             pass
         cli_nats_url = f"nats://{args.host}:{default_port}"
     elif args.port:
         default_host = "localhost"
         try:
-            default_host = torchLoomConstants.DEFAULT_ADDR.split('//')[-1].split(':')[0]
+            default_host = torchLoomConstants.DEFAULT_ADDR.split("//")[-1].split(":")[0]
         except IndexError:
             pass
         cli_nats_url = f"nats://{default_host}:{args.port}"
@@ -366,7 +398,9 @@ if __name__ == "__main__":
         success = run_cli_command(args.command, cli_nats_url)
         exit(0 if success else 1)
     else:
-        logger.info(f"Starting torchLoom CLI (interactive mode) with NATS server at {cli_nats_url}")
+        logger.info(
+            f"Starting torchLoom CLI (interactive mode) with NATS server at {cli_nats_url}"
+        )
         try:
             MyShell(nats_url_override=cli_nats_url).cmdloop()
         except KeyboardInterrupt:

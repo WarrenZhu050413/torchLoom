@@ -20,7 +20,7 @@ from torchLoom.common.constants import JS, NC, torchLoomConstants
 from torchLoom.log.log_utils import log_and_raise_exception
 from torchLoom.log.logger import setup_logger
 
-logger = setup_logger(name="subscription_manager") # Renamed logger
+logger = setup_logger(name="subscription_manager")  # Renamed logger
 
 
 class StreamManager:
@@ -101,7 +101,11 @@ class StreamManager:
 class SubscriptionManager:
     """Manages NATS and JetStream subscriptions, including connection lifecycle."""
 
-    def __init__(self, torchLoom_addr: str = torchLoomConstants.DEFAULT_ADDR, stop_event: asyncio.Event | None = None):
+    def __init__(
+        self,
+        torchLoom_addr: str = torchLoomConstants.DEFAULT_ADDR,
+        stop_event: asyncio.Event | None = None,
+    ):
         self._torchLoom_addr = torchLoom_addr
         self._nc: Client | None = None
         self._js: JetStreamContext | None = None
@@ -109,7 +113,7 @@ class SubscriptionManager:
         # This allows external control over stopping subscriptions if needed.
         self._stop_event = stop_event if stop_event is not None else asyncio.Event()
         self._subscriptions: Dict[str, Tuple[Any, asyncio.Task | None]] = {}
-        self._stream_manager: StreamManager | None = None # Initialize after connection
+        self._stream_manager: StreamManager | None = None  # Initialize after connection
 
         # Configuration from Config
         self._nc_timeout = Config.NC_TIMEOUT or 1
@@ -129,17 +133,21 @@ class SubscriptionManager:
             self._stream_manager = StreamManager(self._js)
             logger.info(f"Connected to NATS server at {self._torchLoom_addr}")
         except Exception as e:
-            logger.exception(f"Failed to connect to NATS at {self._torchLoom_addr}: {e}")
+            logger.exception(
+                f"Failed to connect to NATS at {self._torchLoom_addr}: {e}"
+            )
             # Optionally, re-raise or handle to prevent app from starting without NATS
             raise
 
     async def close(self) -> None:
         """Gracefully close all subscriptions and the NATS connection."""
-        logger.info("Closing SubscriptionManager: stopping subscriptions and NATS connection.")
+        logger.info(
+            "Closing SubscriptionManager: stopping subscriptions and NATS connection."
+        )
         await self.stop_all_subscriptions()
         if self._nc and not self._nc.is_closed:
             try:
-                await self._nc.drain() # Ensure all buffered messages are sent
+                await self._nc.drain()  # Ensure all buffered messages are sent
                 logger.info("NATS connection drained.")
             except Exception as e:
                 logger.warning(f"Error draining NATS connection: {e}")
@@ -158,24 +166,36 @@ class SubscriptionManager:
     def nc(self) -> Client:
         """Get the NATS client. Raises RuntimeError if not initialized or closed."""
         if not self._nc or self._nc.is_closed:
-            log_and_raise_exception(logger, "NATS client is not initialized or has been closed. Call initialize() first.")
+            log_and_raise_exception(
+                logger,
+                "NATS client is not initialized or has been closed. Call initialize() first.",
+            )
         return self._nc
 
     @property
     def js(self) -> JetStreamContext:
         """Get the JetStream context. Raises RuntimeError if not initialized or closed."""
-        if not self._js or not self._nc or self._nc.is_closed: # Check nc as well, as js depends on it
-            log_and_raise_exception(logger, "JetStream context is not initialized or NATS connection is closed. Call initialize() first.")
+        if (
+            not self._js or not self._nc or self._nc.is_closed
+        ):  # Check nc as well, as js depends on it
+            log_and_raise_exception(
+                logger,
+                "JetStream context is not initialized or NATS connection is closed. Call initialize() first.",
+            )
         return self._js
 
     @property
     def stream_manager(self) -> StreamManager:
         """Get the StreamManager. Raises RuntimeError if not initialized."""
-        if not self._stream_manager: # Check nc as well
-            log_and_raise_exception(logger, "StreamManager is not initialized. Call initialize() first.")
+        if not self._stream_manager:  # Check nc as well
+            log_and_raise_exception(
+                logger, "StreamManager is not initialized. Call initialize() first."
+            )
         return self._stream_manager
 
-    def _create_managed_task(self, awaitable: Awaitable, name: str | None = None) -> asyncio.Task:
+    def _create_managed_task(
+        self, awaitable: Awaitable, name: str | None = None
+    ) -> asyncio.Task:
         """Creates an asyncio.Task and adds it to the managed tasks list for cleanup."""
         task = asyncio.create_task(awaitable, name=name)
         self._managed_tasks.append(task)
@@ -197,55 +217,91 @@ class SubscriptionManager:
         )
 
         try:
-            psub = await self.js.pull_subscribe(subject, durable=consumer, stream=stream)
+            psub = await self.js.pull_subscribe(
+                subject, durable=consumer, stream=stream
+            )
             logger.info(
                 f"Pull subscription created for {subject} on stream {stream} with consumer {consumer}"
             )
         except Exception as e:
-            log_and_raise_exception(logger, f"Failed to create pull subscription for {subject} on {stream}: {e}")
-            return # Or raise depending on desired error handling
+            log_and_raise_exception(
+                logger,
+                f"Failed to create pull subscription for {subject} on {stream}: {e}",
+            )
+            return  # Or raise depending on desired error handling
 
         async def listen_to_js_subscription():
-            logger.info(f"Task started: Listening on JS subject '{subject}' (Consumer: '{consumer}')")
+            logger.info(
+                f"Task started: Listening on JS subject '{subject}' (Consumer: '{consumer}')"
+            )
             while not self._stop_event.is_set():
                 if self.nc.is_closed or self.nc.is_draining:
-                    logger.warning(f"NATS connection closed or draining, stopping listener for {subject}.")
+                    logger.warning(
+                        f"NATS connection closed or draining, stopping listener for {subject}."
+                    )
                     break
                 try:
-                    msgs = await psub.fetch(1, timeout=self._nc_timeout) # Batch size 1
-                    if not msgs and self._stop_event.is_set(): # Check stop event after timeout
+                    msgs = await psub.fetch(1, timeout=self._nc_timeout)  # Batch size 1
+                    if (
+                        not msgs and self._stop_event.is_set()
+                    ):  # Check stop event after timeout
                         break
-                    
+
                     for msg in msgs:
-                        if self._stop_event.is_set(): break
+                        if self._stop_event.is_set():
+                            break
                         try:
                             await message_handler(msg)
                             await msg.ack()
                         except Exception as mh_e:
-                            logger.exception(f"Error processing message from {subject} (consumer: {consumer}): {mh_e}. Message: {msg.data[:100]}...")
+                            logger.exception(
+                                f"Error processing message from {subject} (consumer: {consumer}): {mh_e}. Message: {msg.data[:100]}..."
+                            )
                             # Decide on nack, term, or let it timeout based on error
                             # For now, just log and continue, message will be redelivered after ack_wait.
-                            await asyncio.sleep(self._exception_sleep) # Brief pause after error
+                            await asyncio.sleep(
+                                self._exception_sleep
+                            )  # Brief pause after error
 
                 except nats.errors.TimeoutError:
-                    if self._stop_event.is_set(): # Check again after timeout
-                        logger.debug(f"Stop event set, listener for {subject} exiting due to timeout.")
+                    if self._stop_event.is_set():  # Check again after timeout
+                        logger.debug(
+                            f"Stop event set, listener for {subject} exiting due to timeout."
+                        )
                         break
-                    continue # Normal timeout, no messages
-                except nats.errors.JetStreamError as js_e: # More specific NATS/JS errors
-                    logger.error(f"JetStream error on {subject} (consumer: {consumer}): {js_e}")
-                    if self._stop_event.is_set(): break
-                    await asyncio.sleep(self._exception_sleep * 2) # Longer sleep for JS errors
+                    continue  # Normal timeout, no messages
+                except (
+                    nats.errors.JetStreamError
+                ) as js_e:  # More specific NATS/JS errors
+                    logger.error(
+                        f"JetStream error on {subject} (consumer: {consumer}): {js_e}"
+                    )
+                    if self._stop_event.is_set():
+                        break
+                    await asyncio.sleep(
+                        self._exception_sleep * 2
+                    )  # Longer sleep for JS errors
                 except Exception as e:
                     if self._stop_event.is_set():
-                        logger.info(f"Stop event set, listener for {subject} (consumer: {consumer}) exiting: {e}")
+                        logger.info(
+                            f"Stop event set, listener for {subject} (consumer: {consumer}) exiting: {e}"
+                        )
                         break
-                    logger.exception(f"Unexpected error fetching/processing messages from {subject} (consumer: {consumer}): {e}")
+                    logger.exception(
+                        f"Unexpected error fetching/processing messages from {subject} (consumer: {consumer}): {e}"
+                    )
                     await asyncio.sleep(self._exception_sleep)
-            logger.info(f"Task finished: Listening on JS subject '{subject}' (Consumer: '{consumer}')")
+            logger.info(
+                f"Task finished: Listening on JS subject '{subject}' (Consumer: '{consumer}')"
+            )
 
-        task = self._create_managed_task(listen_to_js_subscription(), name=f"js_listener_{subject}_{consumer}")
-        self._subscriptions[f"js:{subject}:{consumer}"] = (psub, task) # Store with a more unique key
+        task = self._create_managed_task(
+            listen_to_js_subscription(), name=f"js_listener_{subject}_{consumer}"
+        )
+        self._subscriptions[f"js:{subject}:{consumer}"] = (
+            psub,
+            task,
+        )  # Store with a more unique key
 
     async def subscribe_nc(
         self, subject: str, message_handler: Callable[[Msg], Awaitable[None]]
@@ -268,9 +324,13 @@ class SubscriptionManager:
 
         try:
             sub = await self.nc.subscribe(subject, cb=callback_wrapper)
-            logger.info(f"Successfully subscribed to NATS subject '{subject}' with callback.")
+            logger.info(
+                f"Successfully subscribed to NATS subject '{subject}' with callback."
+            )
         except Exception as e:
-            log_and_raise_exception(logger, f"Failed to subscribe to NATS subject {subject}: {e}")
+            log_and_raise_exception(
+                logger, f"Failed to subscribe to NATS subject {subject}: {e}"
+            )
             return
 
         # For NATS core subscriptions, the library handles the listening loop.
@@ -279,21 +339,36 @@ class SubscriptionManager:
         # It doesn't actively listen itself but represents the active subscription.
         async def monitor_subscription_health():
             logger.debug(f"Task started: Monitoring NATS subscription for '{subject}'")
-            while not self._stop_event.is_set() and not self.nc.is_closed and sub.is_active:
-                await asyncio.sleep(1) # Check periodically
-            logger.info(f"Task finished: Monitoring NATS subscription for '{subject}' (active: {sub.is_active})")
+            while (
+                not self._stop_event.is_set()
+                and not self.nc.is_closed
+                and sub.is_active
+            ):
+                await asyncio.sleep(1)  # Check periodically
+            logger.info(
+                f"Task finished: Monitoring NATS subscription for '{subject}' (active: {sub.is_active})"
+            )
 
-        task = self._create_managed_task(monitor_subscription_health(), name=f"nc_monitor_{subject}")
-        self._subscriptions[f"nc:{subject}"] = (sub, task) # Store with a more unique key
+        task = self._create_managed_task(
+            monitor_subscription_health(), name=f"nc_monitor_{subject}"
+        )
+        self._subscriptions[f"nc:{subject}"] = (
+            sub,
+            task,
+        )  # Store with a more unique key
 
     async def stop_all_subscriptions(self) -> None:
         """Unsubscribe from all subjects and cancel all listening/monitoring tasks."""
-        logger.info(f"Stopping all {len(self._subscriptions)} subscriptions and {len(self._managed_tasks)} tasks.")
-        self._stop_event.set() # Signal all listening loops to stop
+        logger.info(
+            f"Stopping all {len(self._subscriptions)} subscriptions and {len(self._managed_tasks)} tasks."
+        )
+        self._stop_event.set()  # Signal all listening loops to stop
 
         # First, unsubscribe NATS core subscriptions if they have an unsubscribe method
-        for key, (sub_obj, _) in list(self._subscriptions.items()): # Iterate over a copy
-            if hasattr(sub_obj, 'unsubscribe'):
+        for key, (sub_obj, _) in list(
+            self._subscriptions.items()
+        ):  # Iterate over a copy
+            if hasattr(sub_obj, "unsubscribe"):
                 try:
                     logger.debug(f"Unsubscribing from {key}...")
                     await sub_obj.unsubscribe()
@@ -311,18 +386,24 @@ class SubscriptionManager:
             for task in self._managed_tasks:
                 if not task.done():
                     task.cancel()
-            
+
             # Wait for tasks to complete cancellation
             results = await asyncio.gather(*self._managed_tasks, return_exceptions=True)
             for i, result in enumerate(results):
-                task_name = self._managed_tasks[i].get_name() if hasattr(self._managed_tasks[i], 'get_name') else f"task_{i}"
+                task_name = (
+                    self._managed_tasks[i].get_name()
+                    if hasattr(self._managed_tasks[i], "get_name")
+                    else f"task_{i}"
+                )
                 if isinstance(result, asyncio.CancelledError):
                     logger.debug(f"Task '{task_name}' was cancelled successfully.")
                 elif isinstance(result, Exception):
-                    logger.warning(f"Task '{task_name}' raised an exception during cancellation or execution: {result}")
+                    logger.warning(
+                        f"Task '{task_name}' raised an exception during cancellation or execution: {result}"
+                    )
                 else:
-                     logger.debug(f"Task '{task_name}' completed.")
-        
+                    logger.debug(f"Task '{task_name}' completed.")
+
         self._managed_tasks.clear()
         self._subscriptions.clear()
         logger.info("All subscriptions stopped and tasks cancelled.")
@@ -331,13 +412,14 @@ class SubscriptionManager:
         """Validate that NATS connection is available and not closed."""
         if not self._nc or self._nc.is_closed:
             log_and_raise_exception(
-                logger, "NATS connection is not initialized or is closed. Call initialize() first."
+                logger,
+                "NATS connection is not initialized or is closed. Call initialize() first.",
             )
 
     def _validate_js_connection(self) -> None:
         """Validate that JetStream context is available (implies NATS connection is also up)."""
-        self._validate_nc_connection() # JS relies on NC
+        self._validate_nc_connection()  # JS relies on NC
         if not self._js:
             log_and_raise_exception(
                 logger, "JetStream context is not initialized. Call initialize() first."
-            ) 
+            )

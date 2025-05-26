@@ -14,7 +14,7 @@ from typing import Dict, Optional, Set
 
 from torchLoom.common.constants import torchLoomConstants
 from torchLoom.log.logger import setup_logger
-from torchLoom.proto.torchLoom_pb2 import EventEnvelope, MonitoredFailEvent
+from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
 logger = setup_logger(name="handlers")
 
@@ -64,12 +64,16 @@ class ThreadletHandler(MessageHandler):
             elif env.HasField("drain"):
                 await self._handle_drain_event(env)
             else:
-                logger.warning(f"ThreadletHandler: Unknown event type in envelope: {env.WhichOneof('payload')}")
+                logger.warning(
+                    f"ThreadletHandler: Unknown event type in envelope: {env.WhichOneof('payload')}"
+                )
         except Exception as e:
             logger.exception(f"Error in ThreadletHandler.handle: {e}")
 
     async def _handle_device_registration(self, env: EventEnvelope) -> None:
-        logger.info(f"[ThreadletHandler] Handling device registration for {env.register_device.device_uuid}")
+        logger.info(
+            f"[ThreadletHandler] Handling device registration for {env.register_device.device_uuid}"
+        )
         # Minimal logic:
         # Update mappings using the device mapper
         self.device_mapper.add_device_replica_mapping(
@@ -86,25 +90,30 @@ class ThreadletHandler(MessageHandler):
         self.status_tracker.update_device_status(
             device_id=env.register_device.device_uuid,
             replica_id=env.register_device.replica_id,
-            server_id=env.register_device.device_uuid, # Assuming server_id is device_uuid for simplicity here
+            server_id=env.register_device.device_uuid,  # Assuming server_id is device_uuid for simplicity here
             status="active",
         )
         pass
 
     async def _handle_heartbeat(self, env: EventEnvelope) -> None:
-        logger.info(f"[ThreadletHandler] Handling heartbeat for {env.heartbeat.replica_id}")
+        logger.info(
+            f"[ThreadletHandler] Handling heartbeat for {env.heartbeat.replica_id}"
+        )
         # Minimal logic:
         replica_id = env.heartbeat.replica_id
         self._last_heartbeats[replica_id] = time.time()
         if replica_id in self._dead_replicas:
             self._dead_replicas.remove(replica_id)
             self.status_tracker.update_training_progress(
-                replica_id=replica_id, status="active" # Or "training" if that's the typical post-heartbeat state
+                replica_id=replica_id,
+                status="active",  # Or "training" if that's the typical post-heartbeat state
             )
         pass
 
     async def _handle_training_status(self, env: EventEnvelope) -> None:
-        logger.info(f"[ThreadletHandler] Handling training status for {env.training_status.replica_id}")
+        logger.info(
+            f"[ThreadletHandler] Handling training status for {env.training_status.replica_id}"
+        )
         # Minimal logic:
         ts = env.training_status
         self.status_tracker.update_training_progress(
@@ -117,7 +126,9 @@ class ThreadletHandler(MessageHandler):
         pass
 
     async def _handle_device_status(self, env: EventEnvelope) -> None:
-        logger.info(f"[ThreadletHandler] Handling device status for {env.device_status.device_id}")
+        logger.info(
+            f"[ThreadletHandler] Handling device status for {env.device_status.device_id}"
+        )
         # Minimal logic:
         ds = env.device_status
         self.status_tracker.update_device_status(
@@ -129,12 +140,14 @@ class ThreadletHandler(MessageHandler):
             temperature=ds.temperature,
             memory_used=ds.memory_used,
             memory_total=ds.memory_total,
-            config=dict(ds.config)
+            config=dict(ds.config),
         )
         pass
 
     async def _handle_drain_event(self, env: EventEnvelope) -> None:
-        logger.info(f"[ThreadletHandler] Handling drain event for {env.drain.device_uuid}")
+        logger.info(
+            f"[ThreadletHandler] Handling drain event for {env.drain.device_uuid}"
+        )
         # Minimal logic:
         replicas = self.device_mapper.get_replicas_for_device(env.drain.device_uuid)
         for replica_id in replicas:
@@ -150,14 +163,16 @@ class ThreadletHandler(MessageHandler):
         # The status_tracker update should happen in the caller (Weaver) if a replica is newly dead.
         current_time = time.time()
         newly_dead = set()
-        for replica_id, last_heartbeat in list(self._last_heartbeats.items()): # list() for safe iteration if modifying
+        for replica_id, last_heartbeat in list(
+            self._last_heartbeats.items()
+        ):  # list() for safe iteration if modifying
             time_since_heartbeat = current_time - last_heartbeat
             if (
                 time_since_heartbeat > self.heartbeat_timeout
                 and replica_id not in self._dead_replicas
             ):
                 newly_dead.add(replica_id)
-                self._dead_replicas.add(replica_id) # Mark as dead internally
+                self._dead_replicas.add(replica_id)  # Mark as dead internally
                 logger.warning(
                     f"[ThreadletHandler] Replica {replica_id} detected as dead (no heartbeat for {time_since_heartbeat:.1f}s)"
                 )
@@ -191,17 +206,23 @@ class ExternalHandler(MessageHandler):
             elif env.HasField("config_info"):
                 await self._handle_configuration_change(env)
             else:
-                logger.warning(f"ExternalHandler: Unknown event type in envelope: {env.WhichOneof('payload')}")
+                logger.warning(
+                    f"ExternalHandler: Unknown event type in envelope: {env.WhichOneof('payload')}"
+                )
         except Exception as e:
             logger.exception(f"Error in ExternalHandler.handle: {e}")
 
     async def _handle_failure_event(self, env: EventEnvelope) -> None:
-        logger.info(f"[ExternalHandler] Handling failure event for {env.monitored_fail.device_uuid}")
+        logger.info(
+            f"[ExternalHandler] Handling failure event for {env.monitored_fail.device_uuid}"
+        )
         # Minimal logic:
         device_uuid = env.monitored_fail.device_uuid
         replica_ids = self.device_mapper.get_replicas_for_device(device_uuid)
         if replica_ids:
-            for device_status in list(self.status_tracker.devices.values()): # Iterate over a copy
+            for device_status in list(
+                self.status_tracker.devices.values()
+            ):  # Iterate over a copy
                 if device_status.server_id == device_uuid:
                     self.status_tracker.update_device_status(
                         device_id=device_status.device_id, status="failed"
@@ -214,11 +235,17 @@ class ExternalHandler(MessageHandler):
         pass
 
     async def _handle_configuration_change(self, env: EventEnvelope) -> None:
-        logger.info(f"[ExternalHandler] Handling configuration change: {env.config_info.config_params}")
+        logger.info(
+            f"[ExternalHandler] Handling configuration change: {env.config_info.config_params}"
+        )
         # Minimal logic:
         config_params = dict(env.config_info.config_params)
-        for device_id in list(self.status_tracker.devices.keys()): # Iterate over a copy
-            self.status_tracker.update_device_config(device_id, config_params) # Assumes a method like this exists or update device status
+        for device_id in list(
+            self.status_tracker.devices.keys()
+        ):  # Iterate over a copy
+            self.status_tracker.update_device_config(
+                device_id, config_params
+            )  # Assumes a method like this exists or update device status
         # Publishing to CONFIG_INFO NATS subject is removed from here. Weaver would do it if necessary.
         pass
 
@@ -233,9 +260,13 @@ class ExternalHandler(MessageHandler):
 class UIHandler(MessageHandler):
     """Simplified handler for commands from the UI."""
 
-    def __init__(self, status_tracker, weaver_publish_command_func): # Removed nats_client, added callback for publishing
+    def __init__(
+        self, status_tracker, weaver_publish_command_func
+    ):  # Removed nats_client, added callback for publishing
         self.status_tracker = status_tracker
-        self.publish_weaver_command = weaver_publish_command_func # Callback to Weaver's publisher
+        self.publish_weaver_command = (
+            weaver_publish_command_func  # Callback to Weaver's publisher
+        )
         logger.info("UIHandler initialized (simplified)")
 
     async def handle(self, env: EventEnvelope) -> None:
@@ -245,7 +276,9 @@ class UIHandler(MessageHandler):
             if env.HasField("ui_command"):
                 await self._handle_ui_command(env)
             else:
-                logger.warning(f"UIHandler: Unknown event type in envelope: {env.WhichOneof('payload')}")
+                logger.warning(
+                    f"UIHandler: Unknown event type in envelope: {env.WhichOneof('payload')}"
+                )
         except Exception as e:
             logger.exception(f"Error in UIHandler.handle: {e}")
 
@@ -256,7 +289,9 @@ class UIHandler(MessageHandler):
         target_id = ui_command.target_id
         params = dict(ui_command.params)
 
-        logger.info(f"[UIHandler] Processing command: {command_type} for {target_id} with params: {params}")
+        logger.info(
+            f"[UIHandler] Processing command: {command_type} for {target_id} with params: {params}"
+        )
 
         if command_type == "deactivate_device":
             await self._handle_deactivate_device(target_id)
@@ -280,8 +315,12 @@ class UIHandler(MessageHandler):
         # Actual command publishing done via callback
         if device_id in self.status_tracker.devices:
             replica_id = self.status_tracker.devices[device_id].replica_id
-            self.status_tracker.update_training_progress(replica_id, status="deactivating")
-            self.status_tracker.deactivate_device(device_id) # This method should exist in StatusTracker
+            self.status_tracker.update_training_progress(
+                replica_id, status="deactivating"
+            )
+            self.status_tracker.deactivate_device(
+                device_id
+            )  # This method should exist in StatusTracker
             await self.publish_weaver_command("pause", replica_id)
         pass
 
@@ -294,16 +333,20 @@ class UIHandler(MessageHandler):
         pass
 
     async def _handle_update_config(self, replica_id: str, params: Dict[str, str]):
-        logger.info(f"[UIHandler] Handling update_config for {replica_id} with {params}")
+        logger.info(
+            f"[UIHandler] Handling update_config for {replica_id} with {params}"
+        )
         # Minimal status update (config is usually part of device status or a specific config store)
         # For devices in this replica_id, update their config in status_tracker
         for device_id, device_status in self.status_tracker.devices.items():
             if device_status.replica_id == replica_id:
                 # Assuming device_status.config is a dict and can be updated
-                if hasattr(device_status, 'config') and isinstance(device_status.config, dict):
+                if hasattr(device_status, "config") and isinstance(
+                    device_status.config, dict
+                ):
                     device_status.config.update(params)
-                else: # Or set it if it doesn't exist or not a dict
-                    setattr(device_status, 'config', params)
+                else:  # Or set it if it doesn't exist or not a dict
+                    setattr(device_status, "config", params)
 
         await self.publish_weaver_command("update_config", replica_id, params)
         pass
@@ -316,7 +359,9 @@ class UIHandler(MessageHandler):
 
     async def _handle_resume_training(self, replica_id: str):
         logger.info(f"[UIHandler] Handling resume_training for {replica_id}")
-        self.status_tracker.update_training_progress(replica_id, status="training") # Or "active"
+        self.status_tracker.update_training_progress(
+            replica_id, status="training"
+        )  # Or "active"
         await self.publish_weaver_command("resume", replica_id)
         pass
 
@@ -335,13 +380,17 @@ class DeviceReplicaMapper:
         logger.info("DeviceReplicaMapper initialized")
 
     def add_device_replica_mapping(self, device_uuid: str, replica_id: str) -> bool:
-        is_new = replica_id not in self.device_to_replicas.setdefault(device_uuid, set())
+        is_new = replica_id not in self.device_to_replicas.setdefault(
+            device_uuid, set()
+        )
         if is_new:
             self.device_to_replicas[device_uuid].add(replica_id)
         return is_new
 
     def add_replica_device_mapping(self, replica_id: str, device_uuid: str) -> bool:
-        is_new = device_uuid not in self.replica_to_devices.setdefault(replica_id, set())
+        is_new = device_uuid not in self.replica_to_devices.setdefault(
+            replica_id, set()
+        )
         if is_new:
             self.replica_to_devices[replica_id].add(device_uuid)
         return is_new

@@ -11,9 +11,11 @@ NC = "nc"
 JS = "js"
 NATS_SERVER_PATH = "./nats/nats-server"
 
+
 class TimeConstants:
     STATUS_BROADCAST_IN: float = 1.0
     HEARTBEAT_MONITOR_INTERVAL: float = 30.0
+
 
 class torchLoomSubjects:
     CONFIG_INFO: str = "torchLoom.config.info"
@@ -26,7 +28,9 @@ class torchLoomSubjects:
 
     # New consolidated subjects for Weaver ingress
     THREADLET_EVENTS: str = "torchLoom.threadlet.events"  # All events from threadlets
-    EXTERNAL_EVENTS: str = "torchLoom.external.events"    # All events from external systems
+    EXTERNAL_EVENTS: str = (
+        "torchLoom.external.events"  # All events from external systems
+    )
 
 
 class WeaverSubjects:
@@ -63,13 +67,14 @@ class WeaverIngressSubjects:
     EXTERNAL_EVENTS: str = torchLoomSubjects.EXTERNAL_EVENTS
     CONFIG_INFO: str = torchLoomSubjects.CONFIG_INFO
 
+
 class WeaverIngressStream(StreamSpec):
     STREAM: str = "WEAVER_INGRESS_STREAM"
     CONSUMER: str = "weaver-ingress-consumer"
     subjects = [
-        torchLoomConstants.subjects.THREADLET_EVENTS, 
-        torchLoomConstants.subjects.EXTERNAL_EVENTS,
-        torchLoomConstants.subjects.CONFIG_INFO
+        torchLoomSubjects.THREADLET_EVENTS,
+        torchLoomSubjects.EXTERNAL_EVENTS,
+        torchLoomSubjects.CONFIG_INFO,
     ]
 
 
