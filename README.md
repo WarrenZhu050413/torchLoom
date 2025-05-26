@@ -139,6 +139,10 @@ graph TD
     class NATS nats;
 ```
 
+## Environment setup
+
+See the [setup_mac.md](setup_mac.md) for a guide on how to setup torchLoom on a Mac, [setup_linux_cpu.md](setup_linux_cpu.md) for a guide on how to setup torchLoom on a Linux CPU machine, and [setup_linux_gpu.md](setup_linux_gpu.md) for a guide on how to setup torchLoom on a Linux machine with GPUs.
+
 ## Agents
 
 We aim to be an AI agent friendly library. In [AGENTS.md](AGENTS.md) are some instructions for AI Agents, and [onboarding.md](onboarding.md) are initial context for an agent to explore the repo. Feel free to contribute to them to improve the agentic workflow on torchLoom!
