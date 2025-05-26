@@ -148,7 +148,7 @@ Run [preamble.sh](scripts/preamble.sh) to kill any existing processes and clear 
 
 ## Agents
 
-We aim to be an AI agent friendly library. In [AGENTS.md](AGENTS.md) are some instructions for AI Agents, [onboarding.md](onboarding.md) are initial context for an agent to explore the repo, and we include useful cursor rules for agents to follow in [.cursor/rules](.cursor/rules). Feel free to contribute to them to improve the agentic workflow on torchLoom!
+We aim to be an AI agent friendly library. In [AGENTS.md](AGENTS.md) are some instructions for AI Agents, [AGENTS_onboarding.md](AGENTS_onboarding.md) are initial context for an agent to explore the repo, and we include useful cursor rules for agents to follow in [.cursor/rules](.cursor/rules). Feel free to contribute to them to improve the agentic workflow on torchLoom!
 
 ## Explore More
 
