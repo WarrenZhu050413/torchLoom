@@ -1,6 +1,7 @@
 *.log
 
 jetstream
+lightning_logs
 
 # Python
 __pycache__

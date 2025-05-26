@@ -139,6 +139,10 @@ graph TD
     class NATS nats;
 ```
 
+## Agents
+
+We aim to be an AI agent friendly library. In [AGENTS.md](AGENTS.md) are some instructions for AI Agents, and [onboarding.md](onboarding.md) are initial context for an agent to explore the repo. Feel free to contribute to them to improve the agentic workflow on torchLoom!
+
 ## Explore More
 
 - Check out the [examples](examples) for more details on how to use torchLoom.
