@@ -17,10 +17,6 @@ from torchLoom.proto.torchLoom_pb2 import PipeCommandType as CommandType
 logger = setup_logger(name="threadlet_handlers")
 
 
-# ===========================================
-# COMMAND HANDLERS
-# ===========================================
-
 # Command dispatch table
 COMMAND_HANDLERS = {
     CommandType.KILL: "handle_kill_command",
@@ -129,11 +125,6 @@ def handle_status_command(params: Dict[str, Any], **kwargs) -> None:
     logger.info(f"Received status command: {params}")
     # Status updates can be handled here if needed
     # For now, just log them
-
-
-# ===========================================
-# HELPER FUNCTIONS
-# ===========================================
 
 
 def create_threadlet_command_registry() -> HandlerRegistry:

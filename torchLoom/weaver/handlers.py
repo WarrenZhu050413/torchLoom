@@ -112,6 +112,8 @@ async def handle_monitored_fail(env: EventEnvelope, status_tracker, **kwargs) ->
 UI_COMMAND_HANDLERS = {
     "deactivate_device": "handle_deactivate_device",
     "update_config": "handle_update_config",
+    "pause_training": "handle_pause_training",
+    "resume_training": "handle_resume_training",
 }
 
 async def handle_ui_command(
@@ -154,6 +156,42 @@ async def handle_update_config(
     logger.info(f"Handling update_config for {device_uuid} with params: {params}")
     await weaver_publish_command_func("update_config", device_uuid, params)
 
+async def handle_pause_training(
+    device_uuid: str, params: Dict, status_tracker, weaver_publish_command_func
+):
+    """Handle pause training UI command."""
+    logger.info(f"Handling pause_training for {device_uuid}")
+    # Find the process_id(s) associated with this device_uuid
+    process_ids_for_device = status_tracker.get_pid_for_device(device_uuid)
+    if process_ids_for_device:
+        for process_id in process_ids_for_device:
+            training_update_kwargs = {
+                "process_id": process_id,
+                "status": "pausing"
+            }
+            status_tracker.update_training_progress(**training_update_kwargs)
+            await weaver_publish_command_func("pause", process_id, params)
+    else:
+        logger.warning(f"No process_id found for device_uuid {device_uuid} during pause.")
+
+async def handle_resume_training(
+    device_uuid: str, params: Dict, status_tracker, weaver_publish_command_func
+):
+    """Handle resume training UI command."""
+    logger.info(f"Handling resume_training for {device_uuid}")
+    # Find the process_id(s) associated with this device_uuid
+    process_ids_for_device = status_tracker.get_pid_for_device(device_uuid)
+    if process_ids_for_device:
+        for process_id in process_ids_for_device:
+            training_update_kwargs = {
+                "process_id": process_id,
+                "status": "resuming"
+            }
+            status_tracker.update_training_progress(**training_update_kwargs)
+            await weaver_publish_command_func("resume", process_id, params)
+    else:
+        logger.warning(f"No process_id found for device_uuid {device_uuid} during resume.")
+
 async def handle_deactivate_device(
     device_uuid: str, params: Dict, status_tracker, weaver_publish_command_func
 ):
@@ -169,6 +207,6 @@ async def handle_deactivate_device(
                 "status": "deactivating" # Conceptual status
             }
             status_tracker.update_training_progress(**training_update_kwargs)
-            await weaver_publish_command_func("pause", process_id)
+            await weaver_publish_command_func("pause", process_id, params)
     else:
         logger.warning(f"No process_id found for device_uuid {device_uuid} during deactivation.")

@@ -101,10 +101,10 @@ class ThreadletListener:
             await self._register_device()
 
             self._threadlet_publisher = ThreadletEventPublisher(
+                nats_client=self._subscription_manager.nc,
+                js_client=self._subscription_manager.js,
                 process_id=self._process_id,
                 device_uuid=self._device_uuid,
-                server_id=self._server_id,
-                event_publisher=self._event_publisher,
             )
             self._logger.info("Threadlet publisher initialized.")
 
@@ -379,18 +379,25 @@ class ThreadletListener:
             
             if event_type == 'training_status':
                 status_data = event_data.get('status_data', {})
+                process_id = event_data.get('process_id', self._process_id)
                 await self._threadlet_publisher.publish_training_status(status_data)
                 
             elif event_type == 'device_status':
                 status_data = event_data.get('status_data', {})
+                device_uuid = event_data.get('device_uuid', self._device_uuid)
+                process_id = event_data.get('process_id', self._process_id)
                 await self._threadlet_publisher.publish_device_status(status_data)
                 
             elif event_type == 'heartbeat':
                 status = event_data.get('status', 'active')
                 metadata = event_data.get('metadata')
-                await self._threadlet_publisher.publish_heartbeat(status=status, metadata=metadata)
+                process_id = event_data.get('process_id', self._process_id)
+                device_uuid = event_data.get('device_uuid', self._device_uuid)
+                await self._threadlet_publisher.publish_heartbeat(status, metadata)
                 
             elif event_type == 'device_registration':
+                device_uuid = event_data.get('device_uuid', self._device_uuid)
+                process_id = event_data.get('process_id', self._process_id)
                 await self._threadlet_publisher.publish_device_registration()
                 
             else:
