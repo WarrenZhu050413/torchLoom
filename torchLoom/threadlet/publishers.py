@@ -4,79 +4,170 @@ Publishers for the torchLoom Threadlet.
 This module contains publishers for sending messages FROM the threadlet to other components,
 using the common EventPublisher for maximum code reuse.
 """
-
+import time # Added for heartbeat timestamp
 from typing import Any, Dict, Optional
 
-from torchLoom.common.publishers import BasePublisher, EventPublisher
+from torchLoom.common.constants import NatsConstants # Added
+from torchLoom.proto import torchLoom_pb2 # Added for EventEnvelope
+from torchLoom.common.publishers import EventPublisher # Base class still
 from torchLoom.log.logger import setup_logger
 
 logger = setup_logger(name="threadlet_publishers")
 
 
-class ThreadletEventPublisher(BasePublisher):
-    """Publisher for threadlet events using the common EventPublisher."""
+class ThreadletEventPublisher(EventPublisher):
+    """Publisher for sending events FROM the threadlet TO NATS (e.g., weaver).
+    Implements specific event publishing logic.
+    """
 
-    def __init__(
-        self, process_id: str, device_uuid: str, event_publisher: EventPublisher
-    ):
-        self.process_id = process_id
-        self.device_uuid = device_uuid
-        self.event_publisher = event_publisher
+    def __init__(self, nats_client=None, js_client=None):
+        super().__init__(nats_client=nats_client, js_client=js_client)
+        logger.info("ThreadletEventPublisher initialized with its own publishing methods.")
 
-    async def publish_device_registration(self) -> None:
+    async def publish_device_registration(
+        self, device_uuid: str, process_id: str
+    ) -> None:
         """Publish device registration event."""
-        await self.event_publisher.publish_device_registration(
-            device_uuid=self.device_uuid,
-            process_id=self.process_id,
-        )
+        try:
+            if not self.js_client:
+                logger.warning(
+                    "Cannot publish device registration - no JetStream client provided to ThreadletEventPublisher"
+                )
+                return
+
+            envelope = torchLoom_pb2.EventEnvelope()
+            envelope.register_device.device_uuid = device_uuid
+            envelope.register_device.process_id = process_id
+
+            await self.js_client.publish(
+                NatsConstants.subjects.THREADLET_EVENTS,
+                envelope.SerializeToString(),
+            )
+            logger.info(f"ThreadletEventPublisher published device registration: {device_uuid} -> {process_id}")
+        except Exception as e:
+            logger.exception(f"ThreadletEventPublisher failed to publish device registration: {e}")
 
     async def publish_heartbeat(
-        self, status: str = "active", metadata: Optional[Dict[str, str]] = None
+        self,
+        process_id: str,
+        device_uuid: str,
+        status: str = "active",
+        metadata: Optional[Dict[str, str]] = None,
     ) -> None:
         """Publish heartbeat event."""
-        await self.event_publisher.publish_heartbeat(
-            process_id=self.process_id,
-            device_uuid=self.device_uuid,
-            status=status,
-            metadata=metadata,
-        )
+        try:
+            if not self.nats_client:
+                logger.warning("Cannot publish heartbeat - no NATS client provided to ThreadletEventPublisher")
+                return
 
-    async def publish_training_status(self, status_data: Dict[str, Any]) -> None:
+            envelope = torchLoom_pb2.EventEnvelope()
+            heartbeat = envelope.heartbeat
+            heartbeat.process_id = process_id
+            heartbeat.device_uuid = device_uuid
+            heartbeat.timestamp = int(time.time())
+            heartbeat.status = status
+
+            if metadata:
+                for key, value in metadata.items():
+                    heartbeat.metadata[key] = str(value)
+
+            await self.nats_client.publish(
+                NatsConstants.subjects.THREADLET_EVENTS,
+                envelope.SerializeToString(),
+            )
+            logger.debug(f"ThreadletEventPublisher published heartbeat for replica {process_id}")
+        except Exception as e:
+            logger.exception(f"ThreadletEventPublisher failed to publish heartbeat: {e}")
+
+    async def publish_training_status(
+        self, process_id: str, status_data: Dict[str, Any]
+    ) -> None:
         """Publish training status event."""
-        await self.event_publisher.publish_training_status(
-            process_id=self.process_id,
-            status_data=status_data,
-        )
+        try:
+            if not self.nats_client:
+                logger.warning("Cannot publish training status - no NATS client provided to ThreadletEventPublisher")
+                return
 
-    async def publish_device_status(self, status_data: Dict[str, Any]) -> None:
+            envelope = torchLoom_pb2.EventEnvelope()
+            training_status = envelope.training_status
+            training_status.process_id = process_id
+            training_status.current_step = status_data.get("current_step", 0)
+            training_status.epoch = status_data.get("epoch", 0)
+            training_status.training_time = status_data.get("training_time", 0.0)
+            training_status.max_step = status_data.get("max_step", 0)
+            training_status.max_epoch = status_data.get("max_epoch", 0)
+
+            metrics = status_data.get("metrics", {})
+            for key, value in metrics.items():
+                training_status.metrics[key] = str(value)
+            config = status_data.get("config", {})
+            for key, value in config.items():
+                training_status.config[key] = str(value)
+
+            await self.nats_client.publish(
+                NatsConstants.subjects.THREADLET_EVENTS,
+                envelope.SerializeToString(),
+            )
+            logger.debug(f"ThreadletEventPublisher published training status for replica {process_id}")
+        except Exception as e:
+            logger.exception(f"ThreadletEventPublisher failed to publish training status: {e}")
+
+    async def publish_device_status(
+        self, device_uuid: str, process_id: str, status_data: Dict[str, Any]
+    ) -> None:
         """Publish device status event."""
-        await self.event_publisher.publish_device_status(
-            device_uuid=self.device_uuid,
-            process_id=self.process_id,
-            status_data=status_data,
-        )
+        try:
+            if not self.nats_client:
+                logger.warning("Cannot publish device status - no NATS client provided to ThreadletEventPublisher")
+                return
+
+            envelope = torchLoom_pb2.EventEnvelope()
+            device_status = envelope.device_status
+            device_status.device_uuid = device_uuid
+            device_status.process_id = process_id
+            device_status.server_id = status_data.get("server_id", device_uuid) # Consider if server_id is available
+            device_status.utilization = status_data.get("utilization", 0.0)
+            device_status.temperature = status_data.get("temperature", 0.0)
+            device_status.memory_used = status_data.get("memory_used", 0.0)
+            device_status.memory_total = status_data.get("memory_total", 0.0)
+
+            config = status_data.get("config", {})
+            for key, value in config.items():
+                device_status.config[key] = str(value)
+
+            await self.nats_client.publish(
+                NatsConstants.subjects.THREADLET_EVENTS,
+                envelope.SerializeToString(),
+            )
+            logger.debug(f"ThreadletEventPublisher published device status for device {device_uuid}")
+        except Exception as e:
+            logger.exception(f"ThreadletEventPublisher failed to publish device status: {e}")
 
     async def publish_metrics(
         self,
-        step: int = 0,
+        process_id: str,
+        current_step: int = 0,
         epoch: int = 0,
         loss: Optional[float] = None,
         accuracy: Optional[float] = None,
         gradient_norm: Optional[float] = None,
-        **kwargs,
+        max_step: int = 0,
+        max_epoch: int = 0,
+        training_time: float = 0.0,
+        config: Optional[Dict[str, str]] = None,
+        metrics: Optional[Dict[str, str]] = None,
     ) -> None:
-        """Publish training metrics as a training status event."""
+        """Publish training metrics by formatting them into a training status event."""
         status_data = {
-            "status_type": "batch_update",
-            "current_step": step,
+            "current_step": current_step,
             "epoch": epoch,
-            "status": "training",
-            "metrics": {
-                **kwargs,
-            },
+            "max_step": max_step,
+            "max_epoch": max_epoch,
+            "training_time": training_time,
+            "metrics": metrics or {},
+            "config": config or {},
         }
 
-        # Add metrics if provided
         if loss is not None:
             status_data["metrics"]["loss"] = str(loss)
         if accuracy is not None:
@@ -84,33 +175,59 @@ class ThreadletEventPublisher(BasePublisher):
         if gradient_norm is not None:
             status_data["metrics"]["gradient_norm"] = str(gradient_norm)
 
-        await self.publish_training_status(status_data)
+        # Calls the local publish_training_status method
+        await self.publish_training_status(
+            process_id=process_id,
+            status_data=status_data
+        )
+        logger.debug(f"Published metrics for process {process_id} via training_status call in ThreadletEventPublisher.")
 
     async def publish(self, message_type: str, **kwargs) -> None:
-        """Generic publish method for different message types."""
+        """Generic publish method, expecting necessary IDs (e.g., process_id, device_uuid) in kwargs."""
         if message_type == "device_registration":
-            await self.publish_device_registration()
+            if "device_uuid" not in kwargs or "process_id" not in kwargs:
+                logger.error("device_uuid and process_id missing for publishing device_registration")
+                return
+            await self.publish_device_registration(
+                device_uuid=kwargs["device_uuid"], process_id=kwargs["process_id"]
+            )
         elif message_type == "heartbeat":
+            if "device_uuid" not in kwargs or "process_id" not in kwargs:
+                logger.error("device_uuid and process_id missing for publishing heartbeat")
+                return
             await self.publish_heartbeat(
-                kwargs.get("status", "active"),
-                kwargs.get("metadata"),
+                process_id=kwargs["process_id"],
+                device_uuid=kwargs["device_uuid"],
+                status=kwargs.get("status", "active"),
+                metadata=kwargs.get("metadata"),
             )
         elif message_type == "training_status":
-            await self.publish_training_status(kwargs.get("status_data", {}))
-        elif message_type == "device_status":
-            await self.publish_device_status(kwargs.get("status_data", {}))
-        elif message_type == "metrics":
-            await self.publish_metrics(
-                kwargs.get("step", 0),
-                kwargs.get("epoch", 0),
-                kwargs.get("loss"),
-                kwargs.get("accuracy"),
-                kwargs.get("gradient_norm"),
-                **{
-                    k: v
-                    for k, v in kwargs.items()
-                    if k not in ["step", "epoch", "loss", "accuracy", "gradient_norm"]
-                },
+            if "process_id" not in kwargs or "status_data" not in kwargs:
+                logger.error("process_id or status_data missing for publishing training_status")
+                return
+            await self.publish_training_status(
+                process_id=kwargs["process_id"], status_data=kwargs["status_data"]
             )
+        elif message_type == "device_status":
+            if "device_uuid" not in kwargs or "process_id" not in kwargs or "status_data" not in kwargs:
+                logger.error("device_uuid, process_id, or status_data missing for publishing device_status")
+                return
+            await self.publish_device_status(
+                device_uuid=kwargs["device_uuid"],
+                process_id=kwargs["process_id"],
+                status_data=kwargs["status_data"],
+            )
+        elif message_type == "metrics":
+            if "process_id" not in kwargs: # process_id is the main one checked by publish_metrics itself
+                logger.error("process_id missing for publishing metrics")
+                return
+            # publish_metrics will extract other args from kwargs or use defaults
+            await self.publish_metrics(**kwargs)
         else:
-            logger.warning(f"Unknown message type: {message_type}")
+            # If EventPublisher base class is intended to have other publish types, call super.
+            # Otherwise, this indicates an unknown type for ThreadletEventPublisher.
+            logger.warning(f"Unknown message type for ThreadletEventPublisher: {message_type}. Falling back to super.publish if implemented.")
+            try:
+                await super().publish(message_type, **kwargs)
+            except AttributeError: # If super().publish is not implemented or abstract
+                 logger.error(f"super().publish not available or message type {message_type} not handled.")

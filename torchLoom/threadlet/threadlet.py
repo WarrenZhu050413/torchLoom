@@ -5,6 +5,7 @@ Core Threadlet class for process-based configuration management.
 import asyncio
 import logging
 import multiprocessing
+import os
 import threading
 import time
 import uuid
@@ -16,15 +17,8 @@ from torchLoom.common.handlers import *
 from torchLoom.proto import torchLoom_pb2
 from torchLoom.common.utils import get_device_uuid
 
-from . import handlers
 from .listener import ThreadletListener
-from .message import (
-    CommandType,
-    MessageFactory,
-    MessageType,
-    deserialize_message,
-    serialize_message,
-)
+from .publishers import ThreadletEventPublisher
 
 class Threadlet:
     """Process-based Threadlet for torchLoom training processes.
@@ -65,146 +59,10 @@ class Threadlet:
 
         # Handler registry for configuration updates
         self._handler_registry = HandlerRegistry("threadlet_config")
-        self._auto_dispatch = True
-
-        self._target_object = None  # Will be set when using with Lightning wrapper
 
         # Logger for this class
         self._logger = logging.getLogger(__name__)
-
-    def publish(self, message_type: str, **kwargs: Any) -> None:
-        """Publishes a message to the ThreadletListener based on the message type.
-
-        Args:
-            message_type: The type of message to send (e.g., "training_status", "device_status").
-            **kwargs: Arguments specific to the message type. 
-                      For "device_status", 'device_uuid' must be provided in kwargs.
-        """
-        try:
-            message_to_send = None
-            log_identifier = ""
-
-            if message_type == "training_status":
-                self._logger.debug(f"publish: type='training_status', process_id={self._process_id}, args: {kwargs}")
-                message_to_send = MessageFactory.create_training_status(
-                    process_id=self._process_id,
-                    **kwargs
-                )
-                log_identifier = f"process_id: {self._process_id}, step: {kwargs.get('current_step')}"
-            elif message_type == "device_status":
-                self._logger.debug(f"publish: type='device_status', device_uuid={self._device_uuid}, process_id={self._process_id}, args: {kwargs}")
-                message_to_send = MessageFactory.create_device_status(
-                    device_uuid=self._device_uuid,
-                    process_id=self._process_id,
-                    server_id=self._server_id,
-                    **kwargs
-                )
-                log_identifier = f"device_uuid: {self._device_uuid} (process: {self._process_id})"
-            else:
-                self._logger.error(f"publish: Unknown message type '{message_type}'.")
-                return
-
-            if message_to_send:
-                self._send_message_to_listener(message_to_send)
-                self._logger.debug(f"publish: Sent {message_type} message for {log_identifier}")
-
-        except Exception as e:
-            self._logger.exception(f"publish: Error for message_type '{message_type}': {e}")
-
-    def publish_training_status(
-        self,
-        **kwargs: Any
-    ) -> None:
-        """Send status message to ThreadletListener."""
-        self.publish(message_type="training_status", **kwargs)
-
-    def publish_device_status(
-        self,
-        device_uuid: str,
-        **kwargs: Any
-    ) -> None:
-        """Send device status message to ThreadletListener."""
-        self.publish(message_type="device_status", device_uuid=device_uuid, **kwargs)
-
-    def register_handler(self, config_key: str, handler, expected_type=None) -> None:
-        """Register a handler for a specific configuration parameter.
-
-        Args:
-            config_key: The configuration parameter name (e.g., 'optimizer_type')
-            handler: Function to call when this parameter changes
-            expected_type: Expected type for the parameter value (ignored - no type checking)
-        """
-        self._handler_registry.register_handler(config_key, handler, expected_type)
-
-    def _pipe_message_processor_loop(self) -> None:
-        """Continuously listens for messages on the pipe from ThreadletListener."""
-        self._logger.info("Pipe message processor loop started.")
-        try:
-            while not self._pipe_listener_stop_event.is_set():
-                if self._main_pipe_conn.poll(TimeConstants.PIPE_POLL_INTERVAL):
-                    received_data = self._main_pipe_conn.recv()
-                    self._logger.debug(
-                        f"Received raw data from listener process: {type(received_data)}"
-                    )
-
-                    message = None
-                    if isinstance(received_data, tuple) and len(received_data) == 2:
-                        message_type_str, serialized_bytes = received_data
-                        if isinstance(serialized_bytes, bytes) and isinstance(message_type_str, str):
-                            message = deserialize_message(serialized_bytes, message_type_str)
-                        else:
-                            self._logger.warning(f"Received malformed tuple from pipe: types were {type(message_type_str)}, {type(serialized_bytes)}")
-                    else:
-                        self._logger.warning(f"Received unexpected data type from pipe: {type(received_data)}")
-
-                    if message:
-                        if message.message_type == MessageType.COMMAND.value:
-                            handlers.handle_command_message(
-                                message=message,
-                                handler_registry=self._handler_registry,
-                                auto_dispatch=self._auto_dispatch,
-                                stop_callback=self.stop,
-                            )
-                        else:
-                            self._logger.warning(f"Received unexpected message type {message.message_type} from listener. Expected COMMAND.")
-        except EOFError:
-            self._logger.info("Pipe closed, listener process likely terminated.")
-        except Exception as e:
-            if (
-                not self._pipe_listener_stop_event.is_set()
-            ):  # Log only if not intentionally stopping
-                self._logger.exception(f"Error in pipe message processor loop: {e}")
-        finally:
-            self._logger.info("Pipe message processor loop stopped.")
-
-    def _send_message_to_listener(self, message) -> None:
-        """Send a structured message to the ThreadletListener process."""
-        try:
-            if self._main_pipe_conn and not self._main_pipe_conn.closed:
-                # Determine the message_type_str for the listener's deserialize_message
-                message_type_str = ""
-                # The 'message' object here is a protobuf message instance
-                if isinstance(message, torchLoom_pb2.PipeTrainingStatusMessage):
-                    message_type_str = "TRAINING_STATUS"
-                elif isinstance(message, torchLoom_pb2.PipeDeviceStatusMessage):
-                    message_type_str = "DEVICE_STATUS"
-                elif isinstance(message, torchLoom_pb2.PipeCommandMessage):
-                    message_type_str = "COMMAND"
-                else:
-                    self._logger.error(f"Attempting to send unknown protobuf message type: {type(message)}")
-                    return
-
-                serialized_bytes = message.SerializeToString()
-                payload = (message_type_str, serialized_bytes)
-                self._main_pipe_conn.send(payload)
-                self._logger.debug(
-                    f"Sent message to ThreadletListener: type_str='{message_type_str}', content_bytes_len={len(serialized_bytes)}"
-                )
-        except (BrokenPipeError, OSError):
-            self._logger.warning("Pipe to listener process is broken, dropping message")
-        except Exception as e:
-            self._logger.warning(f"Error sending message via pipe: {e}")
-
+        
     def start(self) -> None:
         """Start the threadlet in a separate process."""
         try:
@@ -222,6 +80,8 @@ class Threadlet:
                 target=self._run_threadlet_listener_process,
                 args=(
                     self._process_id,
+                    self._device_uuid,
+                    self._server_id,
                     self._torchLoom_addr,
                     self._listener_pipe_conn,  # Pass one end of the duplex pipe
                     self._stop_event,
@@ -253,6 +113,204 @@ class Threadlet:
             Dictionary mapping config keys to their expected types
         """
         return self._handler_registry.list_handlers()
+
+    def publish(self, message_type: str, **kwargs: Any) -> None:
+        """Queues a message to be published by the ThreadletListener via NATS.
+
+        Args:
+            message_type: The type of event to publish (e.g., "training_status", "device_status", "heartbeat").
+            **kwargs: Arguments specific to the message type.
+                      For "device_status", 'device_uuid' (if not self._device_uuid) and 'status_data' are needed.
+                      For "training_status", 'status_data' is needed.
+                      process_id and device_uuid (for heartbeat) are added automatically if not overridden.
+        """
+        try:
+            # Add default identifiers if not provided, allowing overrides
+            if 'process_id' not in kwargs:
+                kwargs['process_id'] = self._process_id
+            if 'device_uuid' not in kwargs and message_type in ["heartbeat", "device_status", "device_registration"]:
+                kwargs['device_uuid'] = self._device_uuid
+
+            # Prepare a dictionary payload for the listener
+            # The listener will use ThreadletEventPublisher with this data
+            payload_for_listener = {
+                "action": "publish_event",
+                "event_type": message_type,
+                "event_data": kwargs,
+            }
+
+            self._send_internal_message_to_listener(payload_for_listener)
+            self._logger.debug(f"Queued '{message_type}' event for publishing by listener. Data: {kwargs}")
+
+        except Exception as e:
+            self._logger.exception(f"publish: Error queueing event '{message_type}': {e}")
+
+    def _send_internal_message_to_listener(self, payload: Dict[str, Any]) -> None:
+        """Sends a dictionary payload to the ThreadletListener process.
+        
+        All pipe communication now uses dictionary format for consistency.
+        """
+        try:
+            if self._main_pipe_conn and not self._main_pipe_conn.closed:
+                self._main_pipe_conn.send(payload)
+                self._logger.debug(
+                    f"Sent internal message to ThreadletListener: {payload.get('action', 'N/A')}"
+                )
+        except (BrokenPipeError, OSError):
+            self._logger.warning("Pipe to listener process is broken, dropping internal message.")
+        except Exception as e:
+            self._logger.exception(f"Error sending internal message via pipe: {e}")
+
+    def publish_device_registration(self) -> None:
+        """Requests publishing of device registration event."""
+        # process_id and device_uuid will be added by self.publish()
+        self.publish(message_type="device_registration")
+
+    def publish_heartbeat(self, status: str = "active", metadata: Optional[Dict[str, str]] = None) -> None:
+        """Requests publishing of heartbeat event."""
+        # process_id and device_uuid will be added by self.publish()
+        kwargs = {"status": status}
+        if metadata:
+            kwargs["metadata"] = metadata
+        self.publish(message_type="heartbeat", **kwargs)
+
+    def publish_training_status(
+        self,
+        **kwargs: Any # Should contain status_data dictionary
+    ) -> None:
+        """Send status message to ThreadletListener to be published."""
+        # process_id will be added by self.publish()
+        # kwargs should contain 'status_data': {...}
+        self.publish(message_type="training_status", **kwargs)
+
+    def publish_device_status(
+        self,
+        # device_uuid: str, # This will be self._device_uuid by default from publish method
+        **kwargs: Any # Should contain status_data dictionary
+    ) -> None:
+        """Send device status message to ThreadletListener to be published."""
+        # process_id and device_uuid will be added by self.publish()
+        # kwargs should contain 'status_data': {...}
+        self.publish(message_type="device_status", **kwargs)
+
+    def _pipe_message_processor_loop(self) -> None:
+        """Continuously listens for dictionary messages on the bidirectional pipe.
+        
+        All communication through the pipe uses dictionary format for consistency.
+        Messages from the listener process are expected to have a 'message_type' field
+        to indicate what kind of message it is (e.g., 'command', 'status', etc.).
+        """
+        self._logger.info("Pipe message processor loop started.")
+        try:
+            while not self._pipe_listener_stop_event.is_set():
+                if self._main_pipe_conn.poll(TimeConstants.PIPE_POLL_INTERVAL):
+                    received_data = self._main_pipe_conn.recv()
+                    self._logger.debug(
+                        f"Received data from listener process: {type(received_data)}"
+                    )
+
+                    if isinstance(received_data, dict):
+                        message_type = received_data.get('message_type')
+                        if message_type == 'command':
+                            self._handle_command_dict(received_data)
+                    else:
+                        self._logger.warning(f"Received unexpected data type from pipe: {type(received_data)}. Expected dict.")
+
+        except EOFError:
+            self._logger.info("Pipe closed, listener process likely terminated.")
+        except Exception as e:
+            if (
+                not self._pipe_listener_stop_event.is_set()
+            ):  # Log only if not intentionally stopping
+                self._logger.exception(f"Error in pipe message processor loop: {e}")
+        finally:
+            self._logger.info("Pipe message processor loop stopped.")
+
+    def _handle_command_dict(self, command_dict: Dict[str, Any]) -> None:
+        """Handle a command message received as a dictionary from the listener.
+        
+        Args:
+            command_dict: Dictionary containing command information with structure:
+                - message_type: 'command'
+                - command_type: The type of command (e.g., 'update_config', 'pause', 'resume', 'stop')
+                - payload: The command data
+        """
+        try:
+            command_type = command_dict.get('command_type')
+            payload = command_dict.get('payload', {})
+            
+            if command_type == 'update_config':
+                # Handle configuration updates from weaver
+                for config_key, config_value in payload.items():
+                    if self._handler_registry.has_handler(config_key):
+                        try:
+                            handler = self._handler_registry.get_handler(config_key)
+                            if handler:
+                                handler(config_value)
+                                self._logger.debug(f"Applied config update: {config_key} = {config_value}")
+                        except Exception as e:
+                            self._logger.error(f"Error applying config update for {config_key}: {e}")
+                    else:
+                        self._logger.debug(f"No handler for config key: {config_key}")
+                        
+            elif command_type == 'pause':
+                self._logger.info("Received pause command from listener")
+                # Add pause handling logic here if needed
+                
+            elif command_type == 'resume':
+                self._logger.info("Received resume command from listener")
+                # Add resume handling logic here if needed
+                
+            elif command_type == 'stop':
+                self._logger.info("Received stop command from listener")
+                self.stop()
+            else:
+                self._logger.warning(f"Unknown command type: {command_type}")
+                
+        except Exception as e:
+            self._logger.exception(f"Error handling command dict: {e}")
+
+    @staticmethod
+    def _run_threadlet_listener_process(
+        process_id: str,
+        device_uuid: str,
+        server_id: str,
+        torchLoom_addr: str,
+        pipe_to_main_process: Connection, # This pipe is bidirectional
+        stop_event: multiprocessing.Event,
+    ) -> None:
+        """Main function that runs in the separate threadlet listener process."""
+        # This is static method context. Logger here will be for the listener process.
+        listener_logger = logging.getLogger(__name__ + ".listener_process") # Separate logger
+        try:
+            # Create event loop for this process
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            # NATS connection will be established by ThreadletListener's init or run.
+            # ThreadletEventPublisher will be instantiated within ThreadletListener
+            # or passed the NATS clients from it.
+
+            # Create the async threadlet listener instance
+            # It will need to instantiate ThreadletEventPublisher internally
+            threadlet_listener = ThreadletListener(
+                process_id=process_id,
+                device_uuid=device_uuid,
+                server_id=server_id,
+                torchLoom_addr=torchLoom_addr,
+                pipe_to_main_process=pipe_to_main_process,
+                stop_event=stop_event,
+            )
+
+            loop.run_until_complete(threadlet_listener.run())
+        except Exception as e:
+            listener_logger.exception(f"Error in threadlet listener process: {e}")
+        finally:
+            try:
+                if loop and not loop.is_closed():
+                    loop.close()
+            except Exception as loop_close_exc:
+                listener_logger.error(f"Error closing event loop in listener process: {loop_close_exc}")
 
     def stop(self) -> None:
         """Stop the threadlet process and clean up resources."""
@@ -310,34 +368,12 @@ class Threadlet:
         
         self._logger.info("Threadlet stopped and resources cleaned up.")
 
-    @staticmethod
-    def _run_threadlet_listener_process(
-        process_id: str,
-        torchLoom_addr: str,
-        pipe_to_main_process: Connection,
-        stop_event: multiprocessing.Event,
-    ) -> None:
-        """Main function that runs in the separate threadlet listener process."""
-        try:
-            # Create event loop for this process
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+    def register_handler(self, config_key: str, handler, expected_type=None) -> None:
+        """Register a handler for a specific configuration parameter.
 
-            # Create the async threadlet listener instance
-            threadlet_listener = ThreadletListener(
-                process_id=process_id,
-                torchLoom_addr=torchLoom_addr,
-                pipe_to_main_process=pipe_to_main_process,
-                stop_event=stop_event,
-            )
-
-            # Run the async main loop
-            loop.run_until_complete(threadlet_listener.run())
-        except Exception as e:
-            print(f"Error in threadlet listener process: {e}")
-        finally:
-            # Clean up
-            try:
-                loop.close()
-            except:
-                pass
+        Args:
+            config_key: The configuration parameter name (e.g., 'optimizer_type')
+            handler: Function to call when this parameter changes
+            expected_type: Expected type for the parameter value (ignored - no type checking)
+        """
+        self._handler_registry.register_handler(config_key, handler, expected_type)

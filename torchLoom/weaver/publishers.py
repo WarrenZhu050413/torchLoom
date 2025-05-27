@@ -10,7 +10,7 @@ import time
 from typing import Dict, Optional
 
 from torchLoom.common.constants import NatsConstants
-from torchLoom.common.publishers import BasePublisher, EventPublisher
+from torchLoom.common.publishers import EventPublisher
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
@@ -18,7 +18,7 @@ logger = setup_logger(name="publishers")
 
 
 # Re-export the base publisher for compatibility
-Publisher = BasePublisher
+Publisher = EventPublisher
 
 
 # ===========================================
@@ -26,21 +26,15 @@ Publisher = BasePublisher
 # ===========================================
 
 
-class ThreadletCommandPublisher(BasePublisher):
-    """Publisher for sending commands FROM the weaver TO threadlets/training processes."""
+class ThreadletCommandPublisher(EventPublisher):
+    """Publisher for sending commands FROM the weaver TO threadlets/training processes.
+    Implements specific weaver command publishing logic.
+    """
 
-    def __init__(self, nats_client=None):
-        self.nats_client = nats_client
-
-        # Initialize the common event publisher
-        try:
-            self._event_publisher = EventPublisher(
-                nats_client=nats_client,
-                js_client=nats_client.jetstream() if nats_client else None,
-            )
-        except Exception as e:
-            logger.error(f"Failed to initialize event publisher: {e}")
-            self._event_publisher = None
+    def __init__(self, nats_client=None, js_client=None):
+        # Pass js_client explicitly as it's needed for weaver_command
+        super().__init__(nats_client=nats_client, js_client=js_client)
+        logger.info("ThreadletCommandPublisher initialized with its own publishing method.")
 
     async def publish_weaver_command(
         self,
@@ -48,27 +42,41 @@ class ThreadletCommandPublisher(BasePublisher):
         target_process_id: str,
         params: Optional[Dict[str, str]] = None,
     ) -> bool:
-        """Publish a weaver command to training processes using the common publisher."""
+        """Publish a weaver command to training processes.
+        This method now contains the actual publishing logic.
+        """
         try:
-            if not self._event_publisher:
-                logger.error("Event publisher not available for weaver command")
+            if not self.js_client:
+                logger.error("Cannot publish weaver command - no JetStream client provided to ThreadletCommandPublisher")
                 return False
 
-            await self._event_publisher.publish_weaver_command(
-                command_type=command_type,
-                target_process_id=target_process_id,
-                params=params,
+            envelope = EventEnvelope()
+            weaver_command = envelope.weaver_command
+            weaver_command.command_type = command_type
+            weaver_command.target_process_id = target_process_id
+
+            if params:
+                for key, value in params.items():
+                    weaver_command.params[key] = str(value)
+
+            await self.js_client.publish(
+                NatsConstants.subjects.WEAVER_COMMANDS,
+                envelope.SerializeToString(),
             )
 
-            logger.info(f"Published command: {command_type} to {target_process_id}")
+            logger.info(f"ThreadletCommandPublisher published weaver command: {command_type} to {target_process_id}")
             return True
 
         except Exception as e:
-            logger.error(f"Failed to publish weaver command: {e}")
+            logger.error(f"ThreadletCommandPublisher failed to publish weaver command: {e}")
             return False
 
     async def publish(self, message_type: str, **kwargs) -> bool:
-        """Generic publish method for different message types."""
+        """Generic publish method for different message types.
+        Currently only handles 'weaver_command'.
+        """
+        # Return value defaults to False if not handled or error occurs
+        result = False 
         try:
             if message_type == "weaver_command":
                 command_type = kwargs.get("command_type")
@@ -76,25 +84,17 @@ class ThreadletCommandPublisher(BasePublisher):
                 params = kwargs.get("params")
 
                 if command_type and target_process_id:
-                    return await self.publish_weaver_command(
+                    # Calls the local publish_weaver_command method
+                    result = await self.publish_weaver_command(
                         command_type, target_process_id, params
                     )
                 else:
-                    logger.error("Missing required parameters for weaver_command")
-                    return False
-
-            elif message_type == "config_update":
-                config_params = kwargs.get("config_params")
-                if config_params:
-                    return await self.publish_config_update(config_params)
-                else:
-                    logger.error("Missing config_params for config_update")
-                    return False
-
+                    logger.error("Missing required parameters (command_type or target_process_id) for weaver_command")
             else:
-                logger.error(f"Unknown message type: {message_type}")
-                return False
+                logger.error(f"Unknown message type for ThreadletCommandPublisher: {message_type}")
 
         except Exception as e:
-            logger.error(f"Failed to publish message type {message_type}: {e}")
-            return False
+            logger.error(f"ThreadletCommandPublisher failed to publish message type {message_type}: {e}")
+            # result remains False
+        
+        return result
