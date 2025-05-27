@@ -21,7 +21,7 @@ from nats.js.client import JetStreamContext
 import nats
 from torchLoom.common import TrainingStatus, deviceStatus
 from torchLoom.common.config import Config
-from torchLoom.common.constants import WeaverStream, torchLoomConstants
+from torchLoom.common.constants import TimeConstants, WeaverStream, torchLoomConstants
 from torchLoom.common.subscription import SubscriptionManager
 from torchLoom.common.utils import get_device_uuid
 from torchLoom.log.logger import setup_logger
@@ -76,9 +76,11 @@ class ThreadletListener:
         self._pipe_to_main_process = pipe_to_main_process
         self._stop_event = stop_event
 
-        # Configuration
-        self._nc_timeout = Config.NC_TIMEOUT or 1
-        self._exception_sleep = Config.EXCEPTION_RETRY_TIME or 1
+        # Configuration from constants
+        self._nc_timeout = Config.NC_TIMEOUT or TimeConstants.PIPE_POLL_INTERVAL
+        self._exception_sleep = (
+            Config.EXCEPTION_RETRY_TIME or TimeConstants.ERROR_RETRY_SLEEP
+        )
 
         self._logger.info(
             f"ThreadletListener initialized with replica_id: {self._replica_id}"
@@ -135,7 +137,7 @@ class ThreadletListener:
         """Monitors the multiprocessing.Event and sets the asyncio.Event."""
         self._logger.debug("Started monitoring multiprocessing stop_event.")
         while not self._stop_event.is_set():  # self._stop_event is the mp.Event
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(TimeConstants.MONITOR_STOP_EVENT_SLEEP)
         self._logger.info(
             "Multiprocessing stop_event detected, setting asyncio stop_event."
         )
@@ -248,15 +250,14 @@ class ThreadletListener:
     async def _heartbeat_loop(self) -> None:
         """Background task to send periodic heartbeat messages to the weaver."""
         self._logger.info("Started heartbeat loop")
-        heartbeat_interval = 30.0  # Send heartbeat every 30 seconds
 
         while not self._async_stop_event.is_set():  # Use asyncio stop event
             try:
                 await self._send_heartbeat()
-                await asyncio.sleep(heartbeat_interval)
+                await asyncio.sleep(TimeConstants.HEARTBEAT_SEND_INTERVAL)
             except Exception as e:
                 self._logger.exception(f"Error in heartbeat loop: {e}")
-                await asyncio.sleep(5.0)  # Wait a bit before retrying
+                await asyncio.sleep(TimeConstants.ERROR_RETRY_SLEEP)
 
     async def _send_heartbeat(self) -> None:
         """Send a heartbeat message to the weaver."""
@@ -310,7 +311,8 @@ class ThreadletListener:
                 try:
                     # Use asyncio.to_thread to run the blocking poll operation
                     has_data = await asyncio.to_thread(
-                        self._pipe_to_main_process.poll, 0.1
+                        self._pipe_to_main_process.poll,
+                        TimeConstants.PIPE_POLL_INTERVAL,
                     )
 
                     if has_data:
@@ -325,7 +327,7 @@ class ThreadletListener:
                         await self._process_pipe_message(raw_message)
 
                     # Small sleep to prevent busy waiting and allow other tasks to run
-                    await asyncio.sleep(0.01)
+                    await asyncio.sleep(TimeConstants.ASYNC_TASK_SLEEP)
 
                 except EOFError:
                     self._logger.info(
@@ -338,7 +340,7 @@ class ThreadletListener:
                         self._logger.exception(
                             f"Error in async pipe message processor: {e}"
                         )
-                        await asyncio.sleep(0.1)  # Brief pause before retrying
+                        await asyncio.sleep(TimeConstants.BRIEF_PAUSE)
 
         except asyncio.CancelledError:
             self._logger.info("Async pipe message processor cancelled.")

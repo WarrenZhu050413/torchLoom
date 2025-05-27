@@ -16,11 +16,11 @@ logger = setup_logger(name="weaver_ui_state")
 class StatusTracker:
     """
     Manages and encapsulates UI-related information for the Weaver.
-    
+
     This class maintains two primary states:
     1. Device State: Physical device information, status, and configurations
     2. Replica State: Training replica progress, status, and device-replica mappings
-    
+
     The device-replica mappings that were previously handled by DeviceReplicaMapper
     are now integrated into the replica state management.
     """
@@ -28,7 +28,7 @@ class StatusTracker:
     # UI State (protobuf message for UI updates)
     _ui_state_proto: UIStatusUpdate = field(default_factory=UIStatusUpdate)
     communication_status: str = field(default="stable")
-    
+
     # === REPLICA STATE ===
     # Device-replica mapping functionality (moved from DeviceReplicaMapper)
     device_to_replicas: Dict[str, Set[str]] = field(default_factory=dict)
@@ -67,9 +67,18 @@ class StatusTracker:
 
         self._ui_state_proto.timestamp = now_ts
 
-    def update_device_status(self, device_id: str, replica_id: str = None, server_id: str = None, 
-                           status: str = None, utilization: float = None, temperature: float = None,
-                           memory_used: float = None, memory_total: float = None, config: Dict[str, Any] = None):
+    def update_device_status(
+        self,
+        device_id: str,
+        replica_id: str = None,
+        server_id: str = None,
+        status: str = None,
+        utilization: float = None,
+        temperature: float = None,
+        memory_used: float = None,
+        memory_total: float = None,
+        config: Dict[str, Any] = None,
+    ):
         """Update device status with individual parameters."""
         # Create a deviceStatus proto
         device_status = deviceStatus()
@@ -187,18 +196,26 @@ class StatusTracker:
     # Device-replica mapping methods (moved from DeviceReplicaMapper)
     def add_device_replica_mapping(self, device_uuid: str, replica_id: str) -> bool:
         """Add a mapping from device to replica. Returns True if this is a new mapping."""
-        is_new = replica_id not in self.device_to_replicas.setdefault(device_uuid, set())
+        is_new = replica_id not in self.device_to_replicas.setdefault(
+            device_uuid, set()
+        )
         if is_new:
             self.device_to_replicas[device_uuid].add(replica_id)
-            logger.debug(f"Added device->replica mapping: {device_uuid} -> {replica_id}")
+            logger.debug(
+                f"Added device->replica mapping: {device_uuid} -> {replica_id}"
+            )
         return is_new
 
     def add_replica_device_mapping(self, replica_id: str, device_uuid: str) -> bool:
         """Add a mapping from replica to device. Returns True if this is a new mapping."""
-        is_new = device_uuid not in self.replica_to_devices.setdefault(replica_id, set())
+        is_new = device_uuid not in self.replica_to_devices.setdefault(
+            replica_id, set()
+        )
         if is_new:
             self.replica_to_devices[replica_id].add(device_uuid)
-            logger.debug(f"Added replica->device mapping: {replica_id} -> {device_uuid}")
+            logger.debug(
+                f"Added replica->device mapping: {replica_id} -> {device_uuid}"
+            )
         return is_new
 
     def get_replicas_for_device(self, device_uuid: str) -> Set[str]:
@@ -228,76 +245,3 @@ class StatusTracker:
         self.communication_status = status
         self._ui_state_proto.timestamp = int(time.time())  # Update timestamp on change
         logger.info(f"Communication status set to: {status}")
-
-
-# Example usage (optional, for demonstration or testing within this file):
-if __name__ == "__main__":
-    # This example assumes torchLoom_pb2.py is generated and in PYTHONPATH
-    logger.info("Starting StatusTracker example...")
-    ui_state_manager = StatusTracker()
-
-    # Simulate receiving a device status update
-    sample_device_proto = deviceStatus(
-        device_id="gpu-001",
-        replica_id="rep-a",
-        server_id="server-alpha",
-        status="active",
-        utilization=75.5,
-        temperature=65.2,
-        memory_used=4.5,
-        memory_total=16.0,
-        config={"batch_size": "32", "lr": "0.001"},
-    )
-    ui_state_manager.update_device_status_from_proto(sample_device_proto)
-    logger.info(f"Device gpu-001 added/updated.")
-
-    # Simulate receiving a training progress update
-    sample_training_proto = TrainingStatus(
-        replica_id="rep-a",
-        status_type="batch_update",
-        current_step=100,
-        epoch=1,
-        status="training",
-        metrics={"loss": "0.123", "accuracy": "0.95"},
-        training_time=3600.0,
-        max_step=10000,
-        max_epoch=10,
-    )
-    ui_state_manager.update_training_progress_from_proto(sample_training_proto)
-    logger.info(f"Training status for rep-a added/updated.")
-
-    current_snapshot = ui_state_manager.get_ui_status_snapshot()
-    logger.info(f"Current UI Snapshot Timestamp: {current_snapshot.timestamp}")
-    for dev in current_snapshot.devices:
-        logger.info(
-            f"Device: {dev.device_id}, Status: {dev.status}, Util: {dev.utilization}%"
-        )
-    for ts in current_snapshot.training_status:
-        logger.info(
-            f"Replica: {ts.replica_id}, Step: {ts.current_step}, Metrics: {ts.metrics}"
-        )
-
-    time.sleep(1)
-    sample_device_proto_updated = deviceStatus(
-        device_id="gpu-001",
-        replica_id="rep-a",
-        server_id="server-alpha",
-        status="active",
-        utilization=80.0,
-        temperature=68.0,
-        memory_used=5.0,
-        memory_total=16.0,
-        config={"batch_size": "32", "lr": "0.001"},
-    )
-    ui_state_manager.update_device_status_from_proto(sample_device_proto_updated)
-    logger.info(f"Device gpu-001 updated again.")
-
-    updated_snapshot = ui_state_manager.get_ui_status_snapshot()
-    logger.info(f"Updated UI Snapshot Timestamp: {updated_snapshot.timestamp}")
-    for dev in updated_snapshot.devices:
-        if dev.device_id == "gpu-001":
-            logger.info(f"Updated Device: {dev.device_id}, Util: {dev.utilization}%")
-
-    active_devs = ui_state_manager.get_active_devices()
-    logger.info(f"Number of active devices: {len(active_devs)}")
-    logger.info("StatusTracker example finished.")

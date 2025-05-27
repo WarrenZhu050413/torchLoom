@@ -13,7 +13,6 @@ from torchLoom.common.subscription import SubscriptionManager
 
 # Message handlers (messages TO the weaver)
 from .handlers import (  # Consolidated handlers and utility classes
-    DeviceReplicaMapper,
     ExternalHandler,
     MessageHandler,
     ThreadletHandler,
@@ -36,7 +35,6 @@ __all__ = [
     "ThreadletHandler",
     "ExternalHandler",
     "UIHandler",
-    "DeviceReplicaMapper",
     # Publishers (FROM weaver)
     "Publisher",
     "UIUpdatePublisher",

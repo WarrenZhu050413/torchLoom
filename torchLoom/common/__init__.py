@@ -8,6 +8,7 @@ from torchLoom.proto.torchLoom_pb2 import (
     deviceStatus as _deviceStatus,
 )
 
+
 # Add from_dict methods to protobuf classes
 def _training_status_from_dict(cls, data):
     """Create TrainingStatus from dictionary."""

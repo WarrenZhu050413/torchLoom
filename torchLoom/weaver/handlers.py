@@ -12,7 +12,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, Set
 
-from torchLoom.common.constants import torchLoomConstants
+from torchLoom.common.constants import TimeConstants, torchLoomConstants
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
@@ -39,7 +39,7 @@ class ThreadletHandler(MessageHandler):
     def __init__(
         self,
         status_tracker,
-        heartbeat_timeout: float = 90.0,
+        heartbeat_timeout: float = TimeConstants.HEARTBEAT_TIMEOUT,
     ):
         self.status_tracker = status_tracker
         self.heartbeat_timeout = heartbeat_timeout
@@ -353,7 +353,7 @@ class UIHandler(MessageHandler):
         config_params = dict(env.config_info.config_params)
         for device_id in list(self.status_tracker.devices.keys()):
             self.status_tracker.update_device_config(device_id, config_params)
-        
+
         # Optionally publish configuration updates to threadlets
         # This could be done via the weaver command publisher if needed
         logger.info(f"Applied configuration changes to all devices: {config_params}")

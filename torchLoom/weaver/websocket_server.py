@@ -15,7 +15,11 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from torchLoom.common.constants import TimeConstants, torchLoomConstants
+from torchLoom.common.constants import (
+    NetworkConstants,
+    TimeConstants,
+    torchLoomConstants,
+)
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope, UICommand
 
@@ -66,7 +70,13 @@ class ConnectionManager:
 class WebSocketServer:
     """Simplified WebSocket server for torchLoom UI, using direct broadcast."""
 
-    def __init__(self, status_tracker, weaver, host="0.0.0.0", port=8080):
+    def __init__(
+        self,
+        status_tracker,
+        weaver,
+        host=NetworkConstants.DEFAULT_UI_HOST,
+        port=NetworkConstants.DEFAULT_UI_PORT,
+    ):
         self.app = FastAPI(title="torchLoom UI WebSocket API", version="1.0.0")
         self.status_tracker = status_tracker
         self.weaver = weaver
@@ -74,15 +84,10 @@ class WebSocketServer:
         self.port = port
         self.manager = ConnectionManager()
 
-        # CORS might still be needed for WebSocket connections from a different origin (e.g., localhost:5173 to localhost:8080)
-        # Re-adding CORSMiddleware.
+        # CORS might still be needed for WebSocket connections from a different origin
         self.app.add_middleware(
             CORSMiddleware,
-            allow_origins=[
-                "http://localhost:5173",
-                "http://localhost:3000",
-                "http://127.0.0.1:5173",
-            ],
+            allow_origins=NetworkConstants.CORS_ORIGINS,
             allow_credentials=True,
             allow_methods=["*"],  # Allow all methods for WebSocket
             allow_headers=["*"],  # Allow all headers
@@ -326,7 +331,7 @@ class WebSocketServer:
                 break
             except Exception as e:
                 logger.exception(f"Error in status broadcaster: {e}")
-                await asyncio.sleep(5.0)  # Wait a bit before retrying if error
+                await asyncio.sleep(TimeConstants.ERROR_RETRY_SLEEP)
 
     async def start_server(self):
         """Start the WebSocket server."""

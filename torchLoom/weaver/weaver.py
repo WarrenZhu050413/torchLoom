@@ -11,17 +11,16 @@ from typing import Dict, Optional, Set
 from nats.aio.msg import Msg
 
 from torchLoom.common.config import Config
-from torchLoom.common.constants import TimeConstants, torchLoomConstants
+from torchLoom.common.constants import (
+    NetworkConstants,
+    TimeConstants,
+    torchLoomConstants,
+)
 from torchLoom.common.subscription import SubscriptionManager
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
-from .handlers import (
-    ExternalHandler,
-    MessageHandler,
-    ThreadletHandler,
-    UIHandler,
-)
+from .handlers import ExternalHandler, MessageHandler, ThreadletHandler, UIHandler
 from .publishers import ThreadletCommandPublisher, UIUpdatePublisher
 from .status_tracker import StatusTracker
 from .websocket_server import WebSocketServer
@@ -98,8 +97,8 @@ class Weaver:
         self,
         torchLoom_addr: str = torchLoomConstants.DEFAULT_ADDR,
         enable_ui: bool = True,
-        ui_host: str = "0.0.0.0",
-        ui_port: int = 8080,
+        ui_host: str = NetworkConstants.DEFAULT_UI_HOST,
+        ui_port: int = NetworkConstants.DEFAULT_UI_PORT,
     ) -> None:
         self._stop_nats = asyncio.Event()
         self.seq = 0
@@ -143,7 +142,7 @@ class Weaver:
         self._handlers = {
             "threadlet": ThreadletHandler(
                 self.status_tracker,
-                heartbeat_timeout=TimeConstants.HEARTBEAT_MONITOR_INTERVAL * 3,
+                heartbeat_timeout=TimeConstants.HEARTBEAT_TIMEOUT,
             ),
             "external": ExternalHandler(self.status_tracker),
             "ui": UIHandler(
@@ -180,7 +179,7 @@ class Weaver:
         )
 
         # WEAVELET_STREAM: Now primarily for outbound Weaver -> Threadlet commands
-        weaver_commands_stream_name = "WEAVER_COMMANDS_STREAM"
+        weaver_commands_stream_name = torchLoomConstants.weaver_stream.STREAM
         weaver_commands_subjects = [torchLoomConstants.subjects.WEAVER_COMMANDS]
         await sm.maybe_create_stream(
             stream=weaver_commands_stream_name, subjects=weaver_commands_subjects
@@ -302,13 +301,13 @@ class Weaver:
                         logger.debug(
                             "UIStatusUpdate envelope constructed by publisher for potential internal use/logging."
                         )
-                await asyncio.sleep(2.0)
+                await asyncio.sleep(TimeConstants.UI_UPDATE_INTERVAL)
             except asyncio.CancelledError:
                 logger.info("UI update publisher task cancelled.")
                 break
             except Exception as e:
                 logger.exception(f"Error in UI update publisher task: {e}")
-                await asyncio.sleep(5.0)
+                await asyncio.sleep(TimeConstants.ERROR_RETRY_SLEEP)
 
     async def start_heartbeat_monitor(self) -> None:
         """Start the background task to monitor dead replicas and publish failure events."""
@@ -351,7 +350,7 @@ class Weaver:
             except Exception as e:
                 logger.exception(f"Error stopping WebSocket server: {e}")
 
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(TimeConstants.CLEANUP_SLEEP)
 
         if self._subscription_manager:
             await self._subscription_manager.close()

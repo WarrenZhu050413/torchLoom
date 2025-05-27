@@ -45,7 +45,7 @@ class UIUpdatePublisher(Publisher):
             # Create consolidated UIStatusUpdate
             envelope = EventEnvelope()
             ui_update = envelope.ui_status_update
-            # ui_update.communication_status = self.status_tracker.communication_status # This field is not in UIStatusUpdate proto
+            ui_update.communication_status = self.status_tracker.communication_status
             ui_update.timestamp = int(time.time())
 
             # Add all device statuses
@@ -70,15 +70,6 @@ class UIUpdatePublisher(Publisher):
                 training_status = ui_update.training_status.add()
                 training_status.CopyFrom(existing_training_status)
 
-            # Note: Topology information is not currently tracked in the reorganized StatusTracker
-            # If topology is needed, it would need to be added to the StatusTracker or derived from device-replica mappings
-
-            # Publish to UI - This part is removed as UI_UPDATE NATS subject is removed.
-            # await self.nats_client.publish(
-            #     torchLoomConstants.subjects.UI_UPDATE, envelope.SerializeToString()
-            # )
-
-            # logger.debug("[WEAVER->UI] Published UI update to clients") # Logged that it was constructed
             logger.debug(
                 "[WEAVER->UI] Constructed UIStatusUpdate envelope. Publishing to NATS is removed."
             )
@@ -172,7 +163,9 @@ class ThreadletCommandPublisher(Publisher):
                 torchLoomConstants.subjects.UI_COMMANDS, envelope.SerializeToString()
             )
 
-            logger.info(f"[WEAVER->WEAVELET] Published config update via UI_COMMANDS: {config_params}")
+            logger.info(
+                f"[WEAVER->WEAVELET] Published config update via UI_COMMANDS: {config_params}"
+            )
 
         except Exception as e:
             logger.exception(f"[WEAVER->WEAVELET] Failed to publish config update: {e}")

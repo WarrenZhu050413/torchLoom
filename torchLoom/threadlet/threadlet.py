@@ -12,7 +12,7 @@ from multiprocessing.connection import Connection
 from typing import Any, Dict, Optional, Tuple, Type
 
 from torchLoom.common.config import Config
-from torchLoom.common.constants import torchLoomConstants
+from torchLoom.common.constants import TimeConstants, torchLoomConstants
 
 from .handlers import HandlerRegistry
 from .listener import ThreadletListener
@@ -57,9 +57,11 @@ class Threadlet:
         self._threadlet_listener_process: Optional[multiprocessing.Process] = None
         self._pipe_listener_thread: Optional[threading.Thread] = None
 
-        # Configuration
-        self._nc_timeout = Config.NC_TIMEOUT or 1
-        self._exception_sleep = Config.EXCEPTION_RETRY_TIME or 1
+        # Configuration from constants
+        self._nc_timeout = Config.NC_TIMEOUT or TimeConstants.PIPE_POLL_INTERVAL
+        self._exception_sleep = (
+            Config.EXCEPTION_RETRY_TIME or TimeConstants.ERROR_RETRY_SLEEP
+        )
 
         # Can register handler using the handler decorator in the registry
         self._handler_registry = HandlerRegistry()
@@ -111,7 +113,7 @@ class Threadlet:
         self._logger.info("Pipe message processor loop started.")
         try:
             while not self._pipe_listener_stop_event.is_set():
-                if self._main_pipe_conn.poll(0.1):  # Poll with a timeout
+                if self._main_pipe_conn.poll(TimeConstants.PIPE_POLL_INTERVAL):
                     received_data = self._main_pipe_conn.recv()
                     self._logger.debug(
                         f"Received raw data from listener process: {type(received_data)}"
@@ -272,7 +274,7 @@ class Threadlet:
             self._threadlet_listener_process.start()
 
             # Give the process a moment to start
-            time.sleep(0.1)
+            time.sleep(TimeConstants.BRIEF_PAUSE)
 
             self._logger.info(
                 f"ThreadletListener process started with PID: {self._threadlet_listener_process.pid}"
@@ -288,13 +290,17 @@ class Threadlet:
             # Ensure cleanup if start fails partially
             if self._pipe_listener_thread and self._pipe_listener_thread.is_alive():
                 self._pipe_listener_stop_event.set()
-                self._pipe_listener_thread.join(timeout=1)
+                self._pipe_listener_thread.join(
+                    timeout=TimeConstants.PIPE_LISTENER_TIMEOUT
+                )
             if (
                 self._threadlet_listener_process
                 and self._threadlet_listener_process.is_alive()
             ):
                 self._stop_event.set()
-                self._threadlet_listener_process.join(timeout=1)
+                self._threadlet_listener_process.join(
+                    timeout=TimeConstants.PIPE_LISTENER_TIMEOUT
+                )
                 if self._threadlet_listener_process.is_alive():
                     self._threadlet_listener_process.terminate()
             raise
@@ -307,7 +313,9 @@ class Threadlet:
             if self._pipe_listener_thread and self._pipe_listener_thread.is_alive():
                 self._logger.info("Stopping pipe listener thread...")
                 self._pipe_listener_stop_event.set()
-                self._pipe_listener_thread.join(timeout=2)
+                self._pipe_listener_thread.join(
+                    timeout=TimeConstants.PIPE_LISTENER_STOP_TIMEOUT
+                )
                 if self._pipe_listener_thread.is_alive():
                     self._logger.warning("Pipe listener thread did not stop in time.")
                 else:
@@ -320,14 +328,18 @@ class Threadlet:
             ):
                 self._logger.info("Stopping ThreadletListener process...")
                 self._stop_event.set()
-                self._threadlet_listener_process.join(timeout=5)
+                self._threadlet_listener_process.join(
+                    timeout=TimeConstants.THREADLET_PROCESS_TIMEOUT
+                )
 
                 if self._threadlet_listener_process.is_alive():
                     self._logger.warning(
                         "ThreadletListener process did not stop gracefully, terminating."
                     )
                     self._threadlet_listener_process.terminate()
-                    self._threadlet_listener_process.join(timeout=2)
+                    self._threadlet_listener_process.join(
+                        timeout=TimeConstants.THREADLET_PROCESS_TERMINATE_TIMEOUT
+                    )
 
                     if self._threadlet_listener_process.is_alive():
                         self._logger.error(

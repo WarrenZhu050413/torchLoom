@@ -13,8 +13,44 @@ NATS_SERVER_PATH = "./nats/nats-server"
 
 
 class TimeConstants:
+    """All timing-related constants for torchLoom."""
+
+    # Broadcast and monitoring intervals
     STATUS_BROADCAST_IN: float = 1.0
     HEARTBEAT_MONITOR_INTERVAL: float = 30.0
+    HEARTBEAT_SEND_INTERVAL: float = 30.0
+    HEARTBEAT_TIMEOUT: float = 90.0  # 3x monitor interval
+
+    # Sleep intervals for various operations
+    PIPE_POLL_INTERVAL: float = 0.1
+    ASYNC_TASK_SLEEP: float = 0.01
+    ERROR_RETRY_SLEEP: float = 5.0
+    UI_UPDATE_INTERVAL: float = 2.0
+    CLEANUP_SLEEP: float = 1.0
+
+    # Process management timeouts
+    PIPE_LISTENER_TIMEOUT: float = 1.0
+    PIPE_LISTENER_STOP_TIMEOUT: float = 2.0
+    THREADLET_PROCESS_TIMEOUT: float = 5.0
+    THREADLET_PROCESS_TERMINATE_TIMEOUT: float = 2.0
+
+    # Async operation timeouts
+    MONITOR_STOP_EVENT_SLEEP: float = 0.1
+    BRIEF_PAUSE: float = 0.1
+
+
+class NetworkConstants:
+    """Network-related constants for torchLoom."""
+
+    DEFAULT_UI_HOST: str = "0.0.0.0"
+    DEFAULT_UI_PORT: int = 8080
+
+    # CORS origins for WebSocket connections
+    CORS_ORIGINS = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+    ]
 
 
 class torchLoomSubjects:
@@ -48,6 +84,13 @@ class UIStream(StreamSpec):
     subjects = [torchLoomSubjects.UI_COMMANDS]
 
 
+# Weaver commands stream (Weaver -> Threadlets)
+class WeaverStream(StreamSpec):
+    STREAM: str = "WEAVER_COMMANDS_STREAM"
+    CONSUMER: str = "weaver-commands-consumer"
+    subjects = [torchLoomSubjects.WEAVER_COMMANDS]
+
+
 # New stream for consolidated Weaver ingress
 class WeaverIngressSubjects:
     THREADLET_EVENTS: str = torchLoomSubjects.THREADLET_EVENTS
@@ -69,6 +112,7 @@ class torchLoomConstantsClass:
 
     subjects: torchLoomSubjects = torchLoomSubjects()
     ui_stream: UIStream = UIStream()
+    weaver_stream: WeaverStream = WeaverStream()
     weaver_ingress_stream: WeaverIngressStream = WeaverIngressStream()
     DEFAULT_ADDR: str = Config.DEFAULT_ADDR
 
