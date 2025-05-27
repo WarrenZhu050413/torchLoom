@@ -8,7 +8,6 @@ enum PipeMessageType {
   PIPE_MESSAGE_TYPE_UNSPECIFIED = 0; // Default value
   PIPE_HEARTBEAT = 1;
   PIPE_METRICS = 2;
-  PIPE_CONFIG = 3;
   PIPE_COMMAND = 4;
 }
 
@@ -93,6 +92,13 @@ message deviceStatus {
   map<string, string> config = 9; // Training config (lr, batch_size, optimizer, etc.)
 }
 
+// Weaver -> UI messages
+message UIStatusUpdate {
+  repeated deviceStatus devices = 2;
+  repeated TrainingStatus training_status = 3;
+  int64 timestamp = 7;
+}
+
 // UI -> Weaver messages
 message UICommand {
   string command_type = 1;  // "deactivate_device", "reactivate_group", "update_config", "pause_training", "resume_training"
@@ -107,12 +113,44 @@ message WeaverCommand {
   map<string, string> params = 3;
 }
 
-// Weaver -> UI messages
-message UIStatusUpdate {
-  repeated deviceStatus devices = 2;
-  repeated TrainingStatus training_status = 3;
-  int64 timestamp = 7;
+// UI Data Structures (for schema definition only - not for protobuf transmission)
+message UIDeviceInfo {
+  string id = 1;
+  string server = 2;
+  string status = 3;
+  float utilization = 4;
+  float temperature = 5;
+  float memory_used = 6;
+  float memory_total = 7;
+  string batch = 8;
+  string lr = 9;
+  string opt = 10;
+  int64 last_updated = 11;
 }
+
+message UIReplicaGroup {
+  string id = 1;
+  map<string, UIDeviceInfo> devices = 2;
+  string status = 3;
+  float step_progress = 4;
+  optional int32 fixed_step = 5;
+  optional int32 last_active_step = 6;
+}
+
+message UISystemSummary {
+  int32 total_devices = 1;
+  int32 active_devices = 2;
+  float avg_utilization = 3;
+  string overall_status = 4;
+}
+
+message UIStatusSnapshot {
+  map<string, UIReplicaGroup> replica_groups = 1;
+  string communication_status = 2;
+  UISystemSummary system_summary = 3;
+  int64 timestamp = 4;
+}
+
 
 message EventEnvelope {
   uint64  seq      = 1;
@@ -130,7 +168,6 @@ message EventEnvelope {
     
     // UI <-> Weaver
     UICommand           ui_command         = 21;
-    UIStatusUpdate      ui_status_update   = 22;
     
     // Weaver -> Training Process
     WeaverCommand       weaver_command     = 23;
@@ -141,9 +178,4 @@ message EventEnvelope {
     PipeConfigMessage    pipe_config        = 26;
     PipeCommandMessage   pipe_command       = 27;
   }
-}
-
-message DeviceReplicaMapEntry {
-  string device_uuid = 1;
-  int32  replica_id   = 2;
 }

@@ -1,42 +1,42 @@
 import argparse
+import os
 import time
 import uuid
-import os
-import numpy as np
 
+import numpy as np
 import torch
+import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
-import torch.multiprocessing as mp
 
 from torchLoom.common import (
-    deviceStatus,
     TrainingStatus,
     create_batch_update_status,
     create_epoch_complete_status,
     create_epoch_start_status,
     create_training_complete_status,
     create_training_start_status,
+    deviceStatus,
 )
 
 # torchLoom imports
-from torchLoom.threadlet import Threadlet, threadlet_handler
+from torchLoom.threadlet import Threadlet
 
 
 def simulate_device_status(
-    replica_id: str, 
-    batch_idx: int, 
+    replica_id: str,
+    batch_idx: int,
     base_utilization: float = 60.0,
-    base_temperature: float = 50.0
+    base_temperature: float = 50.0,
 ) -> deviceStatus:
     """Simulate realistic device status based on training progress."""
     # Simulate varying device metrics
     utilization = base_utilization + (batch_idx % 30)  # 60-90%
-    temperature = base_temperature + (batch_idx % 25)   # 50-75°C
+    temperature = base_temperature + (batch_idx % 25)  # 50-75°C
     memory_used = 2.0 + (batch_idx % 6) * 0.5  # 2-5 GB
-    
+
     return deviceStatus(
         device_id=f"device_{replica_id}",
         replica_id=replica_id,
@@ -45,8 +45,9 @@ def simulate_device_status(
         utilization=utilization,
         temperature=temperature,
         memory_used=memory_used,
-        memory_total=8.0
-    ) 
+        memory_total=8.0,
+    )
+
 
 # Simple random dataset for testing
 class RandomDataset(Dataset):
@@ -96,7 +97,7 @@ class IntegratedTrainer:
     def __init__(self, args, replica_id=None):
         self.args = args
 
-        self.sync_frequency = getattr(args, 'sync_frequency', 5)
+        self.sync_frequency = getattr(args, "sync_frequency", 5)
 
         self.replica_id = replica_id or f"train_integrated_{uuid.uuid4().hex[:8]}"
 
@@ -104,7 +105,7 @@ class IntegratedTrainer:
         self.learning_rate = args.lr
         self.batch_size = args.batch_size
         self.training_enabled = True
-        self.verbose = getattr(args, 'verbose', False)  # Initialize from args
+        self.verbose = getattr(args, "verbose", False)  # Initialize from args
 
         # Training tracking
         self.start_time = time.time()
@@ -157,41 +158,37 @@ class IntegratedTrainer:
     def _register_handlers(self):
         """Register threadlet handlers for dynamic configuration."""
 
-        @threadlet_handler("learning_rate", float)
         def update_learning_rate(new_lr: float):
             print(f"📈 Learning rate updated: {self.learning_rate} → {new_lr}")
             self.learning_rate = new_lr
             for param_group in self.optimizer.param_groups:
                 param_group["lr"] = new_lr
 
-        @threadlet_handler("batch_size", int)
         def update_batch_size(new_batch_size: int):
             print(f"📦 Batch size updated: {self.batch_size} → {new_batch_size}")
             self.batch_size = new_batch_size
             # Note: Would need to recreate DataLoader for this to take effect
 
-        @threadlet_handler("training_enabled", bool)
         def toggle_training(enabled: bool):
             print(f"⏯️ Training {'enabled' if enabled else 'paused'}")
             self.training_enabled = enabled
 
-        @threadlet_handler("verbose", bool)
         def toggle_verbose(enabled: bool):
             print(f"🗣️ Verbose mode {'enabled' if enabled else 'disabled'}")
             self.verbose = enabled
-        
-        @threadlet_handler("sync_frequency", int)
+
         def update_sync_frequency(new_freq: int):
             print(f"🔁 Sync frequency updated: {self.sync_frequency} → {new_freq}")
             self.sync_frequency = new_freq
 
-        # Register all handlers with the threadlet
-        for local_var in locals().values():
-            if callable(local_var) and hasattr(local_var, "_threadlet_config_key"):
-                config_key = local_var._threadlet_config_key
-                expected_type = getattr(local_var, "_threadlet_expected_type", None)
-                self.threadlet.register_handler(config_key, local_var, expected_type)
-                print(f"✅ Registered handler: {config_key}")
+        # Register all handlers directly with the threadlet
+        self.threadlet.register_handler("learning_rate", update_learning_rate, float)
+        self.threadlet.register_handler("batch_size", update_batch_size, int)
+        self.threadlet.register_handler("training_enabled", toggle_training, bool)
+        self.threadlet.register_handler("verbose", toggle_verbose, bool)
+        self.threadlet.register_handler("sync_frequency", update_sync_frequency, int)
+
+        print(f"✅ Registered 5 configuration handlers with threadlet")
 
     def train_epoch(self, epoch):
         """Train for one epoch with comprehensive status reporting."""
@@ -210,8 +207,7 @@ class IntegratedTrainer:
         self.publish_status(epoch_start_status)
         for batch_idx, (data, target) in enumerate(self.train_loader):
             time.sleep(0.1)
-            # Check for configuration updates
-            self.threadlet.check_and_apply_updates()
+            # Configuration updates are handled automatically by the threadlet
             # Skip training if disabled
             if not self.training_enabled:
                 print("⏸️ Training paused - skipping batch")
@@ -378,31 +374,34 @@ class IntegratedTrainer:
     def publish_status(self, status):
         """Publish any type of status (TrainingStatus, deviceStatus)."""
         try:
-            # Convert status to dictionary if needed
-            if hasattr(status, "to_dict"):
-                status_dict = status.to_dict()
-            else:
-                status_dict = status
-
-            # # Check if threadlet is available and not stopping
-            if hasattr(self.threadlet, '_status_sender') and self.threadlet._status_sender:
-                # Use non-blocking send to prevent hanging
-                if hasattr(self.threadlet._status_sender, 'poll'):
-                    # Check if pipe is ready for writing (not full)
-                    if self.threadlet._status_sender.poll(0):
-                        # Pipe might be ready for reading, but we want to write
-                        # Fall back to normal send with error handling
-                        pass
-                    
-                # Try to publish with error handling
-                self.threadlet.publish_status(status_dict)
-            else:
+            # For protobuf objects, publish directly
+            if hasattr(status, "replica_id"):
+                # This is likely a TrainingStatus
+                self.threadlet.publish_metrics(
+                    step=getattr(status, "current_step", 0),
+                    epoch=getattr(status, "epoch", 0),
+                    loss=(
+                        float(status.metrics.get("loss", 0))
+                        if hasattr(status, "metrics")
+                        else None
+                    ),
+                    **(
+                        {k: v for k, v in status.metrics.items() if k != "loss"}
+                        if hasattr(status, "metrics")
+                        else {}
+                    ),
+                )
+            elif hasattr(status, "device_id"):
+                # This is likely a deviceStatus - for now just log it
                 if self.verbose:
-                    print("Warning: Threadlet not available for status publishing")
+                    print(f"📱 Device status: {status.device_id} - {status.status}")
+            else:
+                # Fallback for other status types
+                if self.verbose:
+                    print(f"📊 Status update: {status}")
 
         except Exception as e:
             print(f"Warning: Failed to publish status: {e}")
-
 
     def run_training(self):
         """Main training loop with comprehensive status reporting."""
@@ -445,7 +444,9 @@ class IntegratedTrainer:
             self.publish_status(training_complete_status)
 
             # Final device status
-            final_device_status = simulate_device_status(self.replica_id, self.global_step)
+            final_device_status = simulate_device_status(
+                self.replica_id, self.global_step
+            )
             final_device_status.status = "completed"
             self.publish_status(final_device_status)
 
@@ -556,16 +557,10 @@ def parse_args():
         help="Replica ID for torchLoom (auto-generated if not provided)",
     )
     parser.add_argument(
-        "--world-size", 
-        type=int, 
-        default=1, 
-        help="Number of processes (default: 1)"
+        "--world-size", type=int, default=1, help="Number of processes (default: 1)"
     )
     parser.add_argument(
-        "--replica-group-id",
-        type=int,
-        default=0,
-        help="Replica group ID (default: 0)"
+        "--replica-group-id", type=int, default=0, help="Replica group ID (default: 0)"
     )
     parser.add_argument(
         "--num-groups",
@@ -576,17 +571,23 @@ def parse_args():
     return parser.parse_args()
 
 
-def get_device_for_rank(rank: int, group_id: int, gpus_per_group: int = 8) -> torch.device:
-        """
-        Map rank within a replica group to a physical device index.
-        """
-        base_gpu_index = group_id * gpus_per_group
-        assigned_gpu = base_gpu_index + (rank % gpus_per_group) 
-        return torch.device(f"cuda:{assigned_gpu}")
+def get_device_for_rank(
+    rank: int, group_id: int, gpus_per_group: int = 8
+) -> torch.device:
+    """
+    Map rank within a replica group to a physical device index.
+    """
+    base_gpu_index = group_id * gpus_per_group
+    assigned_gpu = base_gpu_index + (rank % gpus_per_group)
+    return torch.device(f"cuda:{assigned_gpu}")
 
-def _get_device_for_rank(rank: int, group_id: int, gpus_per_group: int = 1) -> torch.device:
+
+def _get_device_for_rank(
+    rank: int, group_id: int, gpus_per_group: int = 1
+) -> torch.device:
     """Always return cuda:0 for simulated multi-GPU on single GPU machine."""
     return torch.device("cuda:0")
+
 
 def init_distributed(rank: int, world_size: int, group_id: int):
     if torch.cuda.is_available():
@@ -600,7 +601,9 @@ def init_distributed(rank: int, world_size: int, group_id: int):
     master_port = 23456 + group_id
     init_method = f"tcp://{master_addr}:{master_port}"
 
-    print(f"[group {group_id}][rank {rank}] Initializing process group on {init_method}")
+    print(
+        f"[group {group_id}][rank {rank}] Initializing process group on {init_method}"
+    )
     time.sleep(3)
     torch.distributed.init_process_group(
         backend=backend,
@@ -610,22 +613,23 @@ def init_distributed(rank: int, world_size: int, group_id: int):
     )
 
 
-
 def main_worker(rank: int, args: argparse.Namespace):
     torch.manual_seed(args.seed)
 
     args.rank = rank
     args.replica_id = args.replica_id or f"group{args.replica_group_id}-rank{rank}"
-    
+
     init_distributed(rank, args.world_size, args.replica_group_id)
-    
+
     trainer = IntegratedTrainer(args, replica_id=args.replica_id)
     trainer.run_training()
 
     if torch.distributed.is_initialized():
         for param in trainer.model.parameters():
             if param.requires_grad:
-                torch.distributed.all_reduce(param.data, op=torch.distributed.ReduceOp.SUM)
+                torch.distributed.all_reduce(
+                    param.data, op=torch.distributed.ReduceOp.SUM
+                )
                 param.data /= args.world_size
 
 
@@ -634,11 +638,13 @@ if __name__ == "__main__":
     os.environ["NCCL_SHM_DISABLE"] = "1"
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
-    mp.set_start_method('spawn', force=True)
-    
+    mp.set_start_method("spawn", force=True)
+
     args = parse_args()
-    
-    num_gpus_in_each_group = np.round(np.linspace(0, args.world_size, args.num_groups + 1))
+
+    num_gpus_in_each_group = np.round(
+        np.linspace(0, args.world_size, args.num_groups + 1)
+    )
     num_gpus_in_each_group = num_gpus_in_each_group[1:] - num_gpus_in_each_group[:-1]
     num_gpus_in_each_group = num_gpus_in_each_group.astype(int)
 
@@ -653,7 +659,9 @@ if __name__ == "__main__":
             group_args.local_rank_in_group = local_rank
             group_args.world_size = args.world_size
 
-            print(f"🚀 Launching rank {global_rank} in group {group_id} (local rank: {local_rank})")
+            print(
+                f"🚀 Launching rank {global_rank} in group {group_id} (local rank: {local_rank})"
+            )
             p = mp.Process(target=main_worker, args=(global_rank, group_args))
             p.start()
             procs.append(p)

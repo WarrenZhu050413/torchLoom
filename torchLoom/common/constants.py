@@ -26,14 +26,13 @@ class HandlerConstants:
         "heartbeat",
         "training_status",
         "device_status",
-        "drain",
     ]
 
     # External handler event types
     EXTERNAL_EVENTS = ["monitored_fail"]
 
-    # UI handler event types
-    UI_EVENTS = ["ui_command", "config_info"]
+    # UI handler event types (merged into single handler)
+    UI_EVENTS = ["ui_command"]
 
     # Common configuration parameters for threadlet handlers
     COMMON_CONFIG_PARAMS = [
@@ -61,8 +60,10 @@ class HandlerConstants:
         "deactivate_device",
         "reactivate_group",
         "update_config",
+        "global_config",
         "pause_training",
         "resume_training",
+        "drain",
     ]
 
 

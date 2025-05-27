@@ -28,7 +28,9 @@ class HandlerRegistry:
         self._handlers: Dict[str, Callable] = {}
         self._handler_types: Dict[str, Optional[Type]] = {}
         self._handler_metadata: Dict[str, Dict[str, Any]] = {}
-        self._event_type_mapping: Dict[str, str] = {}  # For message handler functionality
+        self._event_type_mapping: Dict[str, str] = (
+            {}
+        )  # For message handler functionality
         self._logger = logging.getLogger(f"HandlerRegistry.{name}")
 
     def register_handler(
@@ -75,7 +77,7 @@ class HandlerRegistry:
                           If None, only logging handlers are registered.
         """
         from torchLoom.common.constants import HandlerConstants
-        
+
         registered_count = 0
         for param in HandlerConstants.COMMON_CONFIG_PARAMS:
             if not self.has_handler(param):
@@ -185,7 +187,7 @@ class HandlerRegistry:
 def create_weaver_message_registry() -> HandlerRegistry:
     """Create and configure the main message handler registry for Weaver."""
     from torchLoom.common.constants import HandlerConstants
-    
+
     registry = HandlerRegistry("weaver_main")
 
     # Register event type mappings

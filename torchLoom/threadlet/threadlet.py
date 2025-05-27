@@ -15,6 +15,7 @@ from torchLoom.common.config import Config
 from torchLoom.common.constants import TimeConstants, torchLoomConstants
 from torchLoom.common.handlers import *
 
+from . import handlers
 from .listener import ThreadletListener
 from .message import (
     CommandType,
@@ -31,7 +32,7 @@ class Threadlet:
     This class manages all communication between training processes and the weaver,
     including receiving configuration updates and sending training status updates.
     It runs in a separate process using multiprocessing.Process and supports
-    decorator-based handler registration for automatic configuration management.
+    handler registration for automatic configuration management.
     """
 
     def __init__(
@@ -63,7 +64,7 @@ class Threadlet:
             Config.EXCEPTION_RETRY_TIME or TimeConstants.ERROR_RETRY_SLEEP
         )
 
-        # Can register handler using the handler decorator in the registry
+        # Handler registry for configuration updates
         self._handler_registry = HandlerRegistry("threadlet_config")
         self._auto_dispatch = True
 
@@ -118,11 +119,16 @@ class Threadlet:
                         )
 
                     if message:
-                        # Only COMMAND messages are expected from Listener to Threadlet now
                         if (
                             message.message_type == MessageType.COMMAND.value
                         ):  # Compare with protobuf enum value
-                            self._handle_command_message(message)
+                            # Use the handler from handlers module
+                            handlers.handle_command_message(
+                                message=message,
+                                handler_registry=self._handler_registry,
+                                auto_dispatch=self._auto_dispatch,
+                                stop_callback=self.stop,
+                            )
                         else:
                             self._logger.warning(
                                 f"Received unexpected message type {message.message_type} from listener. Expected COMMAND."
@@ -136,61 +142,6 @@ class Threadlet:
                 self._logger.exception(f"Error in pipe message processor loop: {e}")
         finally:
             self._logger.info("Pipe message processor loop stopped.")
-
-    def _handle_command_message(self, message) -> None:
-        """Handle command message from ThreadletListener (includes config updates)."""
-        try:
-            command_type = (
-                message.command_type.value
-                if hasattr(message.command_type, "value")
-                else message.command_type
-            )
-            params = dict(message.params) if message.params else {}
-
-            # Check for custom command type in params
-            actual_command_type = params.pop("_command_type", None) or command_type
-
-            self._logger.info(
-                f"Received command: {actual_command_type} with params: {params}"
-            )
-
-            # Handle specific commands
-            if (
-                message.command_type == CommandType.KILL
-                or actual_command_type == "KILL"
-            ):
-                self._logger.warning("Received KILL command from weaver")
-                self.stop()
-            elif (
-                message.command_type == CommandType.PAUSE
-                or actual_command_type == "PAUSE"
-            ):
-                self._logger.info("Received PAUSE command from weaver")
-                if self._auto_dispatch:
-                    self._dispatch_handlers({"pause_training": True})
-            elif (
-                message.command_type == CommandType.RESUME
-                or actual_command_type == "RESUME"
-            ):
-                self._logger.info("Received RESUME command from weaver")
-                if self._auto_dispatch:
-                    self._dispatch_handlers({"resume_training": True})
-            elif (
-                message.command_type == CommandType.UPDATE_CONFIG
-                or actual_command_type in ["UPDATE_CONFIG", "CONFIG"]
-            ):
-                self._logger.info(
-                    f"Received config update command with params: {params}"
-                )
-                if self._auto_dispatch and params:
-                    self._dispatch_handlers(params)
-            elif actual_command_type == "STATUS":
-                self._logger.info(f"Received status command: {params}")
-                # Handle status updates if needed
-            else:
-                self._logger.warning(f"Unknown command type: {actual_command_type}")
-        except Exception as e:
-            self._logger.exception(f"Error handling command message: {e}")
 
     def _send_message_to_listener(self, message) -> None:
         """Send a structured message to the ThreadletListener process."""

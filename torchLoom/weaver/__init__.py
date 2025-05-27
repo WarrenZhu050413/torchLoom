@@ -2,44 +2,46 @@
 torchLoom Weaver package.
 
 This package contains the refactored Weaver implementation with separated concerns:
-- handlers: Message handling for incoming messages to the weaver
+- handlers: Individual handler functions for incoming messages to the weaver
 - publishers: Message publishing from the weaver to other components  
 - subscription: NATS subscription management
 - core: Main Weaver class
 """
 
-from torchLoom.common.handlers import *
+from torchLoom.common.handlers import BaseHandler, HandlerRegistry
 
 # Core infrastructure
 from torchLoom.common.subscription import SubscriptionManager
 
-# Message handlers (messages TO the weaver)
-from .handlers import (  # Consolidated handlers and utility classes
-    ExternalHandler,
-    ThreadletHandler,
-    UIHandler,
-)
+# Individual handler functions (messages TO the weaver)
+from . import handlers
 
 # Publishers (messages FROM the weaver)
-from .publishers import (  # Weaver -> UI publishers; Weaver -> Threadlet publishers
+from .publishers import (  # Weaver -> Threadlet publishers
     Publisher,
     ThreadletCommandPublisher,
-    UIUpdatePublisher,
+)
+from .status_tracker import StatusTracker
+from .ui_interface import (  # UI interface components
+    UINotificationManager,
+    UIStatusPublisher,
 )
 from .weaver import Weaver
 
 __all__ = [
     # Core
     "Weaver",
-    # Consolidated message handlers (TO weaver)
+    "StatusTracker",
+    # Handler system
     "BaseHandler",
-    "ThreadletHandler",
-    "ExternalHandler",
-    "UIHandler",
+    "HandlerRegistry",
+    "handlers",
     # Publishers (FROM weaver)
     "Publisher",
-    "UIUpdatePublisher",
     "ThreadletCommandPublisher",
+    # UI Interface
+    "UIStatusPublisher",
+    "UINotificationManager",
     # Infrastructure
     "SubscriptionManager",
 ]

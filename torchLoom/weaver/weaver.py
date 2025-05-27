@@ -6,7 +6,7 @@ and subscription management using the extracted components.
 """
 
 import asyncio
-from typing import Dict, Optional, Set
+from typing import Any, Dict, Optional, Set
 
 from nats.aio.msg import Msg
 
@@ -17,23 +17,15 @@ from torchLoom.common.constants import (
     TimeConstants,
     torchLoomConstants,
 )
-from torchLoom.common.handlers import *
+from torchLoom.common.handlers import HandlerRegistry
 from torchLoom.common.subscription import SubscriptionManager
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
-from .handlers import (
-    ExternalHandler,
-    ThreadletHandler,
-    UIHandler,
-    create_weaver_message_registry,
-)
-from .publishers import (
-    StatusTracker,
-    ThreadletCommandPublisher,
-    UIUpdatePublisher,
-    WeaverUIStatusPublisher,
-)
+from . import handlers
+from .publishers import ThreadletCommandPublisher
+from .status_tracker import StatusTracker
+from .ui_interface import UINotificationManager, UIStatusPublisher
 from .websocket_server import WebSocketServer
 
 logger = setup_logger(
@@ -48,60 +40,8 @@ class Weaver:
     handling events and managing resources. It runs in a separate thread to
     avoid blocking the main thread.
 
-    It is the sole producer of events and comes with comprehensive default handlers
-    for all standard torchLoom message types.
-
-    ## Default Handlers
-
-    The Weaver includes the following default handlers out of the box:
-
-    - **DeviceRegistrationHandler**: Handles device registration from threadlets
-    - **HeartbeatHandler**: Monitors threadlet liveness via heartbeat messages
-    - **TrainingStatusHandler**: Processes training progress updates from threadlets
-    - **deviceStatusHandler**: Handles device status and utilization updates
-    - **NetworkStatusHandler**: Processes network connectivity and performance data
-    - **FailureHandler**: Manages device and replica failure scenarios
-    - **DrainEventHandler**: Handles graceful device drain requests
-    - **UICommandHandler**: Processes commands from the UI (pause/resume/config changes)
-    - **WeaverCommandHandler**: Handles command acknowledgments from threadlets
-    - **ConfigurationHandler**: Manages configuration change events
-
-    ## Customizing Handlers
-
-    Users can easily customize or replace any default handler:
-
-    ```python
-    # Create custom handler
-    class MyCustomHeartbeatHandler(BaseHandler):
-        async def handle(self, env: EventEnvelope) -> None:
-            # Custom heartbeat logic
-            pass
-
-    # Initialize weaver with defaults
-    weaver = Weaver()
-    await weaver.initialize()
-
-    # Override specific handler
-    custom_handler = MyCustomHeartbeatHandler()
-    weaver.override_handler("heartbeat", custom_handler)
-
-    # Add completely new handler
-    weaver.add_custom_handler("my_custom_event", my_custom_handler)
-
-    # List all handlers
-    handlers = weaver.list_handlers()
-    print(handlers)  # Shows all registered handlers
-    ```
-
-    ## Zero-Configuration Usage
-
-    For most use cases, no handler configuration is needed:
-
-    ```python
-    weaver = Weaver(enable_ui=True)
-    await weaver.initialize()
-    # All default handlers are ready to use!
-    ```
+    It uses a simplified handler pattern with direct HandlerRegistry dispatch
+    for consistent event handling across all message sources.
     """
 
     def __init__(
@@ -124,10 +64,18 @@ class Weaver:
         self.ui_host = ui_host
         self.ui_port = ui_port
 
-        self._handlers: Dict[str, BaseHandler] = {}
-        self._message_registry: Optional[HandlerRegistry] = None
-        self.ui_update_handler: Optional[UIUpdatePublisher] = None
+        # UI interface components
+        self.ui_notification_manager = UINotificationManager()
+        self.ui_publisher = None
+
+        self._handler_registry: Optional[HandlerRegistry] = None
         self.threadlet_command_handler: Optional[ThreadletCommandPublisher] = None
+
+        # Heartbeat tracking for dead replica detection
+        self._heartbeat_tracker = {
+            "last_heartbeats": {},
+            "dead_replicas": set(),
+        }
 
         logger.info(f"Weaver initialized with NATS address: {torchLoom_addr}")
         if enable_ui:
@@ -138,56 +86,130 @@ class Weaver:
         await self._subscription_manager.initialize()
         await self._setup_all_streams()
 
+        # Set up UI interface components
+        self.ui_publisher = UIStatusPublisher(self.status_tracker)
+
         if self.enable_ui:
             self.websocket_server = WebSocketServer(
-                status_tracker=self.status_tracker,
-                weaver=self,
                 host=self.ui_host,
                 port=self.ui_port,
             )
+            # Set up UI interface connections (unidirectional)
+            self.ui_notification_manager.set_websocket_send_func(
+                self.websocket_server.send_to_all
+            )
+            self.ui_notification_manager.set_status_tracker(self.status_tracker)
 
-        # Create and inject the UI status publisher into the status tracker
-        ui_status_publisher = WeaverUIStatusPublisher(self.status_tracker)
-        self.status_tracker.set_ui_publisher(ui_status_publisher)
+            # Set up websocket server callbacks
+            self.websocket_server.set_ui_command_handler(
+                self._handle_ui_websocket_command
+            )
+            self.websocket_server.set_initial_status_provider(
+                self.ui_notification_manager.get_status_data_for_initial_connection
+            )
 
-        self.ui_update_handler = UIUpdatePublisher(self.status_tracker)
+        # Connect StatusTracker to UI notification system
+        self.status_tracker.set_ui_notification_callback(
+            self.ui_notification_manager.notify_status_change
+        )
+
         self.threadlet_command_handler = ThreadletCommandPublisher(
             nats_client=self._subscription_manager.nc,
         )
 
-        # Initialize the unified message registry
-        self._message_registry = create_weaver_message_registry()
+        # Initialize the handler registry with direct handler registration
+        self._handler_registry = HandlerRegistry("weaver_main")
+        self._register_handlers()
 
-        # Create and register handlers
-        threadlet_handler = ThreadletHandler(
-            self.status_tracker,
-            heartbeat_timeout=TimeConstants.HEARTBEAT_TIMEOUT,
-        )
-        external_handler = ExternalHandler(self.status_tracker)
-        ui_handler = UIHandler(
-            self.status_tracker,
-            weaver_publish_command_func=self.threadlet_command_handler.publish_weaver_command,
-        )
+        logger.info("Weaver fully initialized with simplified handler registry")
 
-        # Register handlers
-        self._handlers = {
-            "threadlet": threadlet_handler,
-            "external": external_handler,
-            "ui": ui_handler,
-        }
-
-        # Register in the message registry with event type mappings
-        self._message_registry.register_message_handler(
-            "threadlet", threadlet_handler, HandlerConstants.THREADLET_EVENTS
+    def _register_handlers(self) -> None:
+        """Register all message handlers directly with the registry."""
+        # Register threadlet event handlers
+        self._handler_registry.register_handler(
+            "register_device", handlers.handle_device_registration
         )
-        self._message_registry.register_message_handler(
-            "external", external_handler, HandlerConstants.EXTERNAL_EVENTS
+        self._handler_registry.register_handler("heartbeat", handlers.handle_heartbeat)
+        self._handler_registry.register_handler(
+            "training_status", handlers.handle_training_status
         )
-        self._message_registry.register_message_handler(
-            "ui", ui_handler, HandlerConstants.UI_EVENTS
+        self._handler_registry.register_handler(
+            "device_status", handlers.handle_device_status
         )
 
-        logger.info("Weaver fully initialized with unified handler registry")
+        # Register external event handlers
+        self._handler_registry.register_handler(
+            "monitored_fail", handlers.handle_monitored_fail
+        )
+
+        # Register unified UI event handler (handles ui_command only)
+        # Note: config_info and drain are now handled as ui_command with specific command_types
+        self._handler_registry.register_handler(
+            "ui_command", handlers.handle_ui_command
+        )
+
+        logger.info("Registered all handlers with simplified registry")
+
+    async def handle_message(self, env: EventEnvelope) -> None:
+        """Main message handler that dispatches to appropriate handlers using the registry."""
+        try:
+            payload_type = env.WhichOneof("body")
+            logger.debug(f"Received message with payload type: {payload_type}")
+
+            if payload_type is None:
+                logger.warning(f"Received message with no body")
+                return
+
+            # Check if we have a handler for this payload type
+            if self._handler_registry and self._handler_registry.has_handler(
+                payload_type
+            ):
+                handler_func = self._handler_registry.get_handler(payload_type)
+
+                # Call the handler with the required context
+                await handler_func(
+                    env=env,
+                    status_tracker=self.status_tracker,
+                    heartbeat_tracker=self._heartbeat_tracker,
+                    weaver_publish_command_func=self.threadlet_command_handler.publish_weaver_command,
+                )
+                logger.debug(f"Successfully dispatched {payload_type} to handler")
+            else:
+                logger.warning(f"No handler found for payload type '{payload_type}'")
+
+        except Exception as e:
+            logger.exception(f"Error in handle_message: {e}")
+
+    async def _handle_ui_websocket_command(self, websocket_data: dict) -> None:
+        """Handle UI commands received via WebSocket by converting to protobuf and using handle_message."""
+        try:
+            command_type = websocket_data.get("type")
+            logger.debug(f"Processing WebSocket UI command: {command_type}")
+
+            # Create EventEnvelope - only handle ui_command type
+            envelope = EventEnvelope()
+
+            if command_type == "ui_command":
+                # Convert WebSocket ui_command to protobuf
+                ui_command_data = websocket_data.get("data", {})
+                ui_command = envelope.ui_command
+                ui_command.command_type = ui_command_data.get("command_type", "")
+                ui_command.target_id = ui_command_data.get("target_id", "")
+
+                # Add parameters
+                params = ui_command_data.get("params", {})
+                for key, value in params.items():
+                    ui_command.params[key] = str(value)
+
+            else:
+                logger.warning(f"Unknown WebSocket command type: {command_type}")
+                return
+
+            # Use the unified message handler
+            await self.handle_message(envelope)
+
+        except Exception as e:
+            logger.exception(f"Error handling WebSocket UI command: {e}")
 
     async def _setup_all_streams(self) -> None:
         """Centralized setup of all JetStream streams with complete subject configurations."""
@@ -214,7 +236,7 @@ class Weaver:
             f"Set up stream: {torchLoomConstants.weaver_ingress_stream.STREAM} with subjects: {weaver_ingress_subjects}"
         )
 
-        # WEAVELET_STREAM: Now primarily for outbound Weaver -> Threadlet commands
+        # WEAVELET_STREAM: Now primarily for utbound Weaver -> Threadlet commands
         weaver_commands_stream_name = torchLoomConstants.weaver_stream.STREAM
         weaver_commands_subjects = [torchLoomConstants.subjects.WEAVER_COMMANDS]
         await sm.maybe_create_stream(
@@ -252,39 +274,18 @@ class Weaver:
         logger.info("All JetStream streams setup completed based on new design")
 
     async def message_handler(self, msg: Msg) -> None:
-        """Main message handler that dispatches to specific handlers using the unified registry."""
+        """NATS message handler that parses the message and delegates to handle_message."""
         try:
             env = EventEnvelope()
             env.ParseFromString(msg.data)
-            payload_type = env.WhichOneof("payload")
-            logger.debug(
-                f"Received message with payload type: {payload_type} on subject {msg.subject}"
-            )
+            logger.debug(f"Received NATS message on subject {msg.subject}")
 
-            if payload_type is None:
-                logger.warning(f"Received message with no payload: {msg.subject}")
-                return
-
-            # Use the unified message registry to find the appropriate handler
-            handler = None
-            if self._message_registry:
-                handler = self._message_registry.get_handler_for_event_type(
-                    payload_type
-                )
-
-            if handler:
-                await handler.handle(env)
-                logger.debug(
-                    f"Successfully dispatched {payload_type} to {handler.__class__.__name__}"
-                )
-            else:
-                logger.warning(
-                    f"No handler found for payload type '{payload_type}' on subject '{msg.subject}'"
-                )
+            # Use the unified message handler
+            await self.handle_message(env)
 
         except Exception as e:
             logger.exception(
-                f"Error in Weaver message_handler: {e} while processing message from subject {msg.subject if msg else 'N/A'}"
+                f"Error in NATS message_handler: {e} while processing message from subject {msg.subject if msg else 'N/A'}"
             )
 
     def get_replicas_for_device(self, device_uuid: str) -> Set[str]:
@@ -296,47 +297,27 @@ class Weaver:
         return self.status_tracker.get_devices_for_replica(replica_id)
 
     async def start_ui_server(self) -> None:
-        """Start the WebSocket UI server."""
-        if self.websocket_server:
-            logger.info("Starting WebSocket UI server")
-            await self.websocket_server.run_with_status_broadcaster()
+        """Start the WebSocket UI server and status broadcaster."""
+        if self.websocket_server and self.ui_notification_manager:
+            logger.info("Starting WebSocket UI server and status broadcaster")
+
+            # Start the status broadcaster task in UINotificationManager
+            self.ui_notification_manager.start_broadcaster_task()
+
+            # Start the WebSocket server (this will block)
+            await self.websocket_server.run_server()
         else:
             logger.info("UI server is not enabled or not initialized.")
 
-    async def start_ui_update_publisher(self) -> None:
-        """Start the background task to publish UI updates periodically."""
-        logger.info("Starting UI update publisher task")
-        while not self._stop_nats.is_set():
-            try:
-                if self.ui_update_handler and self.websocket_server:
-                    constructed_envelope = (
-                        await self.status_tracker.create_ui_status_update()
-                    )
-                    if constructed_envelope:
-                        logger.debug(
-                            "UIStatusUpdate envelope constructed by status tracker for potential internal use/logging."
-                        )
-                await asyncio.sleep(TimeConstants.UI_UPDATE_INTERVAL)
-            except asyncio.CancelledError:
-                logger.info("UI update publisher task cancelled.")
-                break
-            except Exception as e:
-                logger.exception(f"Error in UI update publisher task: {e}")
-                await asyncio.sleep(TimeConstants.ERROR_RETRY_SLEEP)
+    # REMOVED: start_ui_update_publisher() - replaced with event-driven WebSocket notifications
 
     async def start_heartbeat_monitor(self) -> None:
         """Start the background task to monitor dead replicas and publish failure events."""
         logger.info("Starting heartbeat monitor task")
-        threadlet_handler = self._handlers.get("threadlet")
-        if not isinstance(threadlet_handler, ThreadletHandler):
-            logger.error(
-                "ThreadletHandler not found or incorrect type for heartbeat monitor."
-            )
-            return
 
         while not self._stop_nats.is_set():
             try:
-                dead_replicas = threadlet_handler.check_dead_replicas()
+                dead_replicas = handlers.check_dead_replicas(self._heartbeat_tracker)
                 if dead_replicas:
                     logger.warning(
                         f"Heartbeat monitor identified dead replicas: {dead_replicas}"
@@ -358,12 +339,17 @@ class Weaver:
         logger.info("Stopping Weaver...")
         self._stop_nats.set()
 
-        if self.websocket_server and hasattr(self.websocket_server, "stop"):
+        # Stop UI notification manager broadcaster
+        if self.ui_notification_manager:
             try:
-                await self.websocket_server.stop()
-                logger.info("WebSocket server signaled to stop.")
+                await self.ui_notification_manager.stop_broadcaster()
+                logger.info("UI notification manager broadcaster stopped.")
             except Exception as e:
-                logger.exception(f"Error stopping WebSocket server: {e}")
+                logger.exception(f"Error stopping UI notification manager: {e}")
+
+        # WebSocket server doesn't need explicit stop method anymore (it's just connection management)
+        if self.websocket_server:
+            logger.info("WebSocket server will stop when main task ends.")
 
         await asyncio.sleep(TimeConstants.CLEANUP_SLEEP)
 
@@ -382,127 +368,6 @@ class Weaver:
     def replica_to_devices(self) -> Dict[str, Set[str]]:
         """Get replica to devices mapping."""
         return self.status_tracker.replica_to_devices
-
-    def override_handler(self, handler_category: str, handler: BaseHandler) -> None:
-        """Override a consolidated handler with a custom implementation.
-
-        Args:
-            handler_category: The handler category to override ("threadlet", "external", or "ui")
-            handler: The custom handler instance to use
-
-        Example:
-            # Override the threadlet handler with custom logic
-            custom_handler = MyCustomThreadletHandler(...)
-            weaver.override_handler("threadlet", custom_handler)
-        """
-        if not self._handlers:
-            raise RuntimeError("Weaver not initialized. Call initialize() first.")
-
-        valid_categories = ["threadlet", "external", "ui"]
-        if handler_category not in valid_categories:
-            raise ValueError(
-                f"Invalid handler category: {handler_category}. Must be one of {valid_categories}"
-            )
-
-        self._handlers[handler_category] = handler
-
-        # Also update the message registry if it exists
-        if self._message_registry and handler_category in [
-            "threadlet",
-            "external",
-            "ui",
-        ]:
-            event_types = {
-                "threadlet": HandlerConstants.THREADLET_EVENTS,
-                "external": HandlerConstants.EXTERNAL_EVENTS,
-                "ui": HandlerConstants.UI_EVENTS,
-            }.get(handler_category, [])
-
-            self._message_registry.register_message_handler(
-                handler_category, handler, event_types
-            )
-
-        logger.info(
-            f"Overrode {handler_category} handler with {handler.__class__.__name__}"
-        )
-
-    def add_custom_handler(self, handler_category: str, handler: BaseHandler) -> None:
-        """Add a handler for a custom category.
-
-        Args:
-            handler_category: The custom handler category name
-            handler: The handler instance to use
-
-        Note: You'll also need to add the corresponding message routing logic
-        in the message_handler method for custom categories.
-        """
-        if not self._handlers:
-            raise RuntimeError("Weaver not initialized. Call initialize() first.")
-
-        self._handlers[handler_category] = handler
-        logger.info(
-            f"Added custom handler for category: {handler_category} with {handler.__class__.__name__}"
-        )
-
-    def get_handler(self, handler_category: str) -> Optional[BaseHandler]:
-        """Get the current handler for a category.
-
-        Args:
-            handler_category: The handler category to get ("threadlet", "external", or "ui")
-
-        Returns:
-            The handler instance or None if not found
-        """
-        return self._handlers.get(handler_category) if self._handlers else None
-
-    def list_handlers(self) -> Dict[str, str]:
-        """List all currently registered handlers.
-
-        Returns:
-            Dictionary mapping handler categories to handler class names
-        """
-        if not self._handlers:
-            return {}
-        return {
-            category: handler.__class__.__name__
-            for category, handler in self._handlers.items()
-        }
-
-    def get_supported_events(self) -> Dict[str, str]:
-        """Get all supported event types from the unified registry.
-
-        Returns:
-            Dictionary mapping event types to their handler categories
-        """
-        if self._message_registry:
-            return self._message_registry.get_supported_events()
-
-        # Fallback to static mapping if registry not available
-        return {
-            "register_device": "threadlet",
-            "heartbeat": "threadlet",
-            "training_status": "threadlet",
-            "device_status": "threadlet",
-            "drain": "threadlet",
-            "monitored_fail": "external",
-            "config_info": "ui",
-            "ui_command": "ui",
-        }
-
-    def get_registry_info(self) -> Dict[str, any]:
-        """Get information about the unified handler registry.
-
-        Returns:
-            Dictionary with registry information including handlers and event mappings
-        """
-        if not self._message_registry:
-            return {"error": "Message registry not initialized"}
-
-        return {
-            "handlers": self._message_registry.list_handlers(),
-            "event_mappings": self._message_registry.get_supported_events(),
-            "registry_name": self._message_registry.name,
-        }
 
 
 async def main():
