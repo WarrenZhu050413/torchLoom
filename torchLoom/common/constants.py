@@ -12,6 +12,65 @@ JS = "js"
 NATS_SERVER_PATH = "./nats/nats-server"
 
 
+# ===========================================
+# HANDLER CONSTANTS AND CONFIGURATIONS
+# ===========================================
+
+
+class HandlerConstants:
+    """Constants related to handler configurations."""
+
+    # Threadlet handler event types
+    THREADLET_EVENTS = [
+        "register_device",
+        "heartbeat",
+        "training_status",
+        "device_status",
+        "drain",
+    ]
+
+    # External handler event types
+    EXTERNAL_EVENTS = ["monitored_fail"]
+
+    # UI handler event types
+    UI_EVENTS = ["ui_command", "config_info"]
+
+    # Common configuration parameters for threadlet handlers
+    COMMON_CONFIG_PARAMS = [
+        "learning_rate",
+        "lr",
+        "batch_size",
+        "momentum",
+        "weight_decay",
+        "optimizer_type",
+        "optimizer",
+        "training_enabled",
+        "pause_training",
+        "resume_training",
+        "dropout_rate",
+        "dropout",
+        "log_level",
+        "logging_interval",
+        "verbose",
+        "gradient_clip_val",
+        "accumulate_grad_batches",
+    ]
+
+    # UI command types
+    UI_COMMAND_TYPES = [
+        "deactivate_device",
+        "reactivate_group",
+        "update_config",
+        "pause_training",
+        "resume_training",
+    ]
+
+
+# ===========================================
+# TIME AND NETWORK CONSTANTS
+# ===========================================
+
+
 class TimeConstants:
     """All timing-related constants for torchLoom."""
 
@@ -51,6 +110,11 @@ class NetworkConstants:
         "http://localhost:3000",
         "http://127.0.0.1:5173",
     ]
+
+
+# ===========================================
+# NATS SUBJECTS AND STREAMS
+# ===========================================
 
 
 class torchLoomSubjects:

@@ -51,7 +51,7 @@ threadlet.publish_status({
 - **Message Type:** `EventEnvelope.training_status` (defined in `torchLoom/proto/torchLoom.proto`)
 
 **3. Weaver → UI (via WebSocket)**
-- **Publisher:** `UIUpdatePublisher.publish_ui_update()` in `torchLoom/weaver/publishers.py` (sends NATS message to `torchLoom.ui.update`)
+- **Publisher:** `UIUpdatePublisher.publish()` in `torchLoom/weaver/publishers.py` (sends NATS message to `torchLoom.ui.update`)
 - **WebSocket Server:** `WebSocketServer` in `torchLoom/weaver/websocket_server.py` listens to NATS subject `torchLoom.ui.update` and broadcasts to connected UI clients.
 - **Message Type (WebSocket):** `{"type": "status_update", "data": {...}}` or individual types like `{"type": "training_status", "data": {...}}`
 

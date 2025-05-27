@@ -99,13 +99,13 @@ class ThreadletListener:
             mp_event_monitor_task = asyncio.create_task(self._monitor_mp_stop_event())
 
             await self._subscription_manager.initialize()  # Replaces self._connect()
-            
+
             # Initialize the common event publisher
             self._event_publisher = EventPublisher(
                 nats_client=self._subscription_manager.nc,
                 js_client=self._subscription_manager.js,
             )
-            
+
             await self._setup_subscriptions_with_manager()  # New method using SubscriptionManager
             await self._register_device()
 
@@ -278,7 +278,9 @@ class ThreadletListener:
         """Send a heartbeat message to the weaver using the threadlet publisher."""
         try:
             if not self._threadlet_publisher:
-                self._logger.warning("Cannot send heartbeat - threadlet publisher not initialized")
+                self._logger.warning(
+                    "Cannot send heartbeat - threadlet publisher not initialized"
+                )
                 return
 
             # Create metadata
@@ -376,13 +378,17 @@ class ThreadletListener:
         """Handle metrics message from Threadlet using the threadlet publisher."""
         try:
             if not self._threadlet_publisher:
-                self._logger.warning("Cannot publish metrics - threadlet publisher not initialized")
+                self._logger.warning(
+                    "Cannot publish metrics - threadlet publisher not initialized"
+                )
                 return
 
             # Extract metrics from the message
             loss = message.loss if message.HasField("loss") else None
             accuracy = message.accuracy if message.HasField("accuracy") else None
-            gradient_norm = message.gradient_norm if message.HasField("gradient_norm") else None
+            gradient_norm = (
+                message.gradient_norm if message.HasField("gradient_norm") else None
+            )
 
             # Get additional metrics
             additional_metrics = dict(message.metrics)

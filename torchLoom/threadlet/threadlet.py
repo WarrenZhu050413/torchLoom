@@ -13,8 +13,8 @@ from typing import Any, Dict, Optional, Tuple, Type
 
 from torchLoom.common.config import Config
 from torchLoom.common.constants import TimeConstants, torchLoomConstants
+from torchLoom.common.handlers import *
 
-from .handlers import HandlerRegistry
 from .listener import ThreadletListener
 from .message import (
     CommandType,
@@ -64,7 +64,7 @@ class Threadlet:
         )
 
         # Can register handler using the handler decorator in the registry
-        self._handler_registry = HandlerRegistry()
+        self._handler_registry = HandlerRegistry("threadlet_config")
         self._auto_dispatch = True
 
         # Default handlers setup
@@ -83,26 +83,6 @@ class Threadlet:
             expected_type: Expected type for the parameter value (ignored - no type checking)
         """
         self._handler_registry.register_handler(config_key, handler, expected_type)
-
-    def handler(self, config_key: str, expected_type=None):
-        """Decorator for registering configuration handlers.
-
-        Args:
-            config_key: The configuration parameter name
-            expected_type: Expected type for the parameter value (ignored - no type checking)
-
-        Usage:
-            @threadlet.handler("optimizer_type")
-            def update_optimizer(self, new_type: str):
-                # Implementation here
-                pass
-        """
-
-        def decorator(func):
-            self.register_handler(config_key, func, expected_type)
-            return func
-
-        return decorator
 
     def _dispatch_handlers(self, config_updates: Dict[str, Any]) -> None:
         """Automatically dispatch handlers for configuration updates."""

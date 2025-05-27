@@ -8,13 +8,14 @@ This package contains the refactored Weaver implementation with separated concer
 - core: Main Weaver class
 """
 
+from torchLoom.common.handlers import *
+
 # Core infrastructure
 from torchLoom.common.subscription import SubscriptionManager
 
 # Message handlers (messages TO the weaver)
 from .handlers import (  # Consolidated handlers and utility classes
     ExternalHandler,
-    MessageHandler,
     ThreadletHandler,
     UIHandler,
 )
@@ -31,7 +32,7 @@ __all__ = [
     # Core
     "Weaver",
     # Consolidated message handlers (TO weaver)
-    "MessageHandler",
+    "BaseHandler",
     "ThreadletHandler",
     "ExternalHandler",
     "UIHandler",

@@ -16,7 +16,9 @@ logger = setup_logger(name="threadlet_publishers")
 class ThreadletEventPublisher(BasePublisher):
     """Publisher for threadlet events using the common EventPublisher."""
 
-    def __init__(self, replica_id: str, device_uuid: str, event_publisher: EventPublisher):
+    def __init__(
+        self, replica_id: str, device_uuid: str, event_publisher: EventPublisher
+    ):
         self.replica_id = replica_id
         self.device_uuid = device_uuid
         self.event_publisher = event_publisher
@@ -104,7 +106,11 @@ class ThreadletEventPublisher(BasePublisher):
                 kwargs.get("loss"),
                 kwargs.get("accuracy"),
                 kwargs.get("gradient_norm"),
-                **{k: v for k, v in kwargs.items() if k not in ["step", "epoch", "loss", "accuracy", "gradient_norm"]},
+                **{
+                    k: v
+                    for k, v in kwargs.items()
+                    if k not in ["step", "epoch", "loss", "accuracy", "gradient_norm"]
+                },
             )
         else:
-            logger.warning(f"Unknown message type: {message_type}") 
+            logger.warning(f"Unknown message type: {message_type}")

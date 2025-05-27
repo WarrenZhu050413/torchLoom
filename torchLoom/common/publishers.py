@@ -38,7 +38,9 @@ class EventPublisher(BasePublisher):
         """Publish device registration event."""
         try:
             if not self.js_client:
-                logger.warning("Cannot publish device registration - no JetStream client")
+                logger.warning(
+                    "Cannot publish device registration - no JetStream client"
+                )
                 return
 
             envelope = EventEnvelope()
@@ -56,7 +58,11 @@ class EventPublisher(BasePublisher):
             logger.exception(f"Failed to publish device registration: {e}")
 
     async def publish_heartbeat(
-        self, replica_id: str, device_uuid: str, status: str = "active", metadata: Optional[Dict[str, str]] = None
+        self,
+        replica_id: str,
+        device_uuid: str,
+        status: str = "active",
+        metadata: Optional[Dict[str, str]] = None,
     ) -> None:
         """Publish heartbeat event."""
         try:
@@ -96,7 +102,7 @@ class EventPublisher(BasePublisher):
 
             envelope = EventEnvelope()
             training_status = envelope.training_status
-            
+
             # Set basic fields
             training_status.replica_id = replica_id
             training_status.status_type = status_data.get("status_type", "update")
@@ -131,7 +137,7 @@ class EventPublisher(BasePublisher):
 
             envelope = EventEnvelope()
             device_status = envelope.device_status
-            
+
             # Set basic fields
             device_status.device_id = device_id
             device_status.replica_id = replica_id
@@ -183,7 +189,9 @@ class EventPublisher(BasePublisher):
                 envelope.SerializeToString(),
             )
 
-            logger.info(f"Published weaver command: {command_type} to {target_replica_id}")
+            logger.info(
+                f"Published weaver command: {command_type} to {target_replica_id}"
+            )
 
         except Exception as e:
             logger.exception(f"Failed to publish weaver command: {e}")
@@ -308,4 +316,4 @@ class UIStatusPublisher(BasePublisher):
 
     async def publish(self) -> Optional[EventEnvelope]:
         """Implement the abstract publish method."""
-        return await self.create_ui_status_update() 
+        return await self.create_ui_status_update()

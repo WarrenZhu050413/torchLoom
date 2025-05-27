@@ -12,17 +12,28 @@ from nats.aio.msg import Msg
 
 from torchLoom.common.config import Config
 from torchLoom.common.constants import (
+    HandlerConstants,
     NetworkConstants,
     TimeConstants,
     torchLoomConstants,
 )
+from torchLoom.common.handlers import *
 from torchLoom.common.subscription import SubscriptionManager
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
-from .handlers import ExternalHandler, MessageHandler, ThreadletHandler, UIHandler
-from .publishers import ThreadletCommandPublisher, UIUpdatePublisher
-from .status_tracker import StatusTracker
+from .handlers import (
+    ExternalHandler,
+    ThreadletHandler,
+    UIHandler,
+    create_weaver_message_registry,
+)
+from .publishers import (
+    StatusTracker,
+    ThreadletCommandPublisher,
+    UIUpdatePublisher,
+    WeaverUIStatusPublisher,
+)
 from .websocket_server import WebSocketServer
 
 logger = setup_logger(
@@ -61,7 +72,7 @@ class Weaver:
 
     ```python
     # Create custom handler
-    class MyCustomHeartbeatHandler(MessageHandler):
+    class MyCustomHeartbeatHandler(BaseHandler):
         async def handle(self, env: EventEnvelope) -> None:
             # Custom heartbeat logic
             pass
@@ -113,7 +124,8 @@ class Weaver:
         self.ui_host = ui_host
         self.ui_port = ui_port
 
-        self._handlers: Dict[str, MessageHandler] = {}
+        self._handlers: Dict[str, BaseHandler] = {}
+        self._message_registry: Optional[HandlerRegistry] = None
         self.ui_update_handler: Optional[UIUpdatePublisher] = None
         self.threadlet_command_handler: Optional[ThreadletCommandPublisher] = None
 
@@ -134,24 +146,48 @@ class Weaver:
                 port=self.ui_port,
             )
 
+        # Create and inject the UI status publisher into the status tracker
+        ui_status_publisher = WeaverUIStatusPublisher(self.status_tracker)
+        self.status_tracker.set_ui_publisher(ui_status_publisher)
+
         self.ui_update_handler = UIUpdatePublisher(self.status_tracker)
         self.threadlet_command_handler = ThreadletCommandPublisher(
             nats_client=self._subscription_manager.nc,
         )
 
+        # Initialize the unified message registry
+        self._message_registry = create_weaver_message_registry()
+
+        # Create and register handlers
+        threadlet_handler = ThreadletHandler(
+            self.status_tracker,
+            heartbeat_timeout=TimeConstants.HEARTBEAT_TIMEOUT,
+        )
+        external_handler = ExternalHandler(self.status_tracker)
+        ui_handler = UIHandler(
+            self.status_tracker,
+            weaver_publish_command_func=self.threadlet_command_handler.publish_weaver_command,
+        )
+
+        # Register handlers
         self._handlers = {
-            "threadlet": ThreadletHandler(
-                self.status_tracker,
-                heartbeat_timeout=TimeConstants.HEARTBEAT_TIMEOUT,
-            ),
-            "external": ExternalHandler(self.status_tracker),
-            "ui": UIHandler(
-                self.status_tracker,
-                weaver_publish_command_func=self.threadlet_command_handler.publish_weaver_command,
-            ),
+            "threadlet": threadlet_handler,
+            "external": external_handler,
+            "ui": ui_handler,
         }
 
-        logger.info("Weaver fully initialized")
+        # Register in the message registry with event type mappings
+        self._message_registry.register_message_handler(
+            "threadlet", threadlet_handler, HandlerConstants.THREADLET_EVENTS
+        )
+        self._message_registry.register_message_handler(
+            "external", external_handler, HandlerConstants.EXTERNAL_EVENTS
+        )
+        self._message_registry.register_message_handler(
+            "ui", ui_handler, HandlerConstants.UI_EVENTS
+        )
+
+        logger.info("Weaver fully initialized with unified handler registry")
 
     async def _setup_all_streams(self) -> None:
         """Centralized setup of all JetStream streams with complete subject configurations."""
@@ -216,7 +252,7 @@ class Weaver:
         logger.info("All JetStream streams setup completed based on new design")
 
     async def message_handler(self, msg: Msg) -> None:
-        """Main message handler that dispatches to specific handlers based on EventEnvelope content."""
+        """Main message handler that dispatches to specific handlers using the unified registry."""
         try:
             env = EventEnvelope()
             env.ParseFromString(msg.data)
@@ -229,42 +265,21 @@ class Weaver:
                 logger.warning(f"Received message with no payload: {msg.subject}")
                 return
 
-            # Dispatch to THREADLET_EVENTS handler
-            if msg.subject == torchLoomConstants.subjects.THREADLET_EVENTS:
-                if payload_type in [
-                    "register_device",
-                    "heartbeat",
-                    "training_status",
-                    "device_status",
-                    "drain",
-                ]:
-                    await self._handlers["threadlet"].handle(env)
-                else:
-                    logger.warning(
-                        f"Unhandled payload type {payload_type} on THREADLET_EVENTS subject"
-                    )
+            # Use the unified message registry to find the appropriate handler
+            handler = None
+            if self._message_registry:
+                handler = self._message_registry.get_handler_for_event_type(
+                    payload_type
+                )
 
-            # Dispatch to EXTERNAL_EVENTS handler
-            elif msg.subject == torchLoomConstants.subjects.EXTERNAL_EVENTS:
-                if payload_type in ["monitored_fail"]:
-                    await self._handlers["external"].handle(env)
-                else:
-                    logger.warning(
-                        f"Unhandled payload type {payload_type} on EXTERNAL_EVENTS subject"
-                    )
-
-            # Dispatch to UI_COMMANDS handler
-            elif msg.subject == torchLoomConstants.subjects.UI_COMMANDS:
-                if payload_type in ["ui_command", "config_info"]:
-                    await self._handlers["ui"].handle(env)
-                else:
-                    logger.warning(
-                        f"Unhandled payload type {payload_type} on UI_COMMANDS subject"
-                    )
-
+            if handler:
+                await handler.handle(env)
+                logger.debug(
+                    f"Successfully dispatched {payload_type} to {handler.__class__.__name__}"
+                )
             else:
                 logger.warning(
-                    f"Received message on unhandled subject: {msg.subject} with payload: {payload_type}"
+                    f"No handler found for payload type '{payload_type}' on subject '{msg.subject}'"
                 )
 
         except Exception as e:
@@ -294,7 +309,9 @@ class Weaver:
         while not self._stop_nats.is_set():
             try:
                 if self.ui_update_handler and self.websocket_server:
-                    constructed_envelope = await self.status_tracker.create_ui_status_update()
+                    constructed_envelope = (
+                        await self.status_tracker.create_ui_status_update()
+                    )
                     if constructed_envelope:
                         logger.debug(
                             "UIStatusUpdate envelope constructed by status tracker for potential internal use/logging."
@@ -366,7 +383,7 @@ class Weaver:
         """Get replica to devices mapping."""
         return self.status_tracker.replica_to_devices
 
-    def override_handler(self, handler_category: str, handler: MessageHandler) -> None:
+    def override_handler(self, handler_category: str, handler: BaseHandler) -> None:
         """Override a consolidated handler with a custom implementation.
 
         Args:
@@ -388,13 +405,28 @@ class Weaver:
             )
 
         self._handlers[handler_category] = handler
+
+        # Also update the message registry if it exists
+        if self._message_registry and handler_category in [
+            "threadlet",
+            "external",
+            "ui",
+        ]:
+            event_types = {
+                "threadlet": HandlerConstants.THREADLET_EVENTS,
+                "external": HandlerConstants.EXTERNAL_EVENTS,
+                "ui": HandlerConstants.UI_EVENTS,
+            }.get(handler_category, [])
+
+            self._message_registry.register_message_handler(
+                handler_category, handler, event_types
+            )
+
         logger.info(
             f"Overrode {handler_category} handler with {handler.__class__.__name__}"
         )
 
-    def add_custom_handler(
-        self, handler_category: str, handler: MessageHandler
-    ) -> None:
+    def add_custom_handler(self, handler_category: str, handler: BaseHandler) -> None:
         """Add a handler for a custom category.
 
         Args:
@@ -412,7 +444,7 @@ class Weaver:
             f"Added custom handler for category: {handler_category} with {handler.__class__.__name__}"
         )
 
-    def get_handler(self, handler_category: str) -> Optional[MessageHandler]:
+    def get_handler(self, handler_category: str) -> Optional[BaseHandler]:
         """Get the current handler for a category.
 
         Args:
@@ -437,20 +469,39 @@ class Weaver:
         }
 
     def get_supported_events(self) -> Dict[str, str]:
-        """Get all supported event types from the EventEnvelope protobuf.
+        """Get all supported event types from the unified registry.
 
         Returns:
-            Dictionary mapping protobuf field names to their descriptions
+            Dictionary mapping event types to their handler categories
         """
+        if self._message_registry:
+            return self._message_registry.get_supported_events()
+
+        # Fallback to static mapping if registry not available
         return {
-            "register_device": "Device registration from threadlets",
-            "heartbeat": "Threadlet liveness monitoring",
-            "training_status": "Training progress updates",
-            "device_status": "Device status and utilization data",
-            "drain": "Graceful device drain requests",
-            "monitored_fail": "Device failure notifications from external systems",
-            "config_info": "Configuration change events (can be from external or UI)",
-            "ui_command": "Commands from the UI via WebSocket/NATS",
+            "register_device": "threadlet",
+            "heartbeat": "threadlet",
+            "training_status": "threadlet",
+            "device_status": "threadlet",
+            "drain": "threadlet",
+            "monitored_fail": "external",
+            "config_info": "ui",
+            "ui_command": "ui",
+        }
+
+    def get_registry_info(self) -> Dict[str, any]:
+        """Get information about the unified handler registry.
+
+        Returns:
+            Dictionary with registry information including handlers and event mappings
+        """
+        if not self._message_registry:
+            return {"error": "Message registry not initialized"}
+
+        return {
+            "handlers": self._message_registry.list_handlers(),
+            "event_mappings": self._message_registry.get_supported_events(),
+            "registry_name": self._message_registry.name,
         }
 
 
