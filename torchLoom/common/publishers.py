@@ -9,7 +9,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
-from torchLoom.common.constants import torchLoomConstants
+from torchLoom.common.constants import Config, NatsConstants
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
@@ -33,7 +33,7 @@ class EventPublisher(BasePublisher):
         self.js_client = js_client
 
     async def publish_device_registration(
-        self, device_uuid: str, replica_id: str
+        self, device_uuid: str, process_id: str
     ) -> None:
         """Publish device registration event."""
         try:
@@ -45,21 +45,21 @@ class EventPublisher(BasePublisher):
 
             envelope = EventEnvelope()
             envelope.register_device.device_uuid = device_uuid
-            envelope.register_device.replica_id = replica_id
+            envelope.register_device.process_id = process_id
 
             await self.js_client.publish(
-                torchLoomConstants.subjects.THREADLET_EVENTS,
+                NatsConstants.subjects.THREADLET_EVENTS,
                 envelope.SerializeToString(),
             )
 
-            logger.info(f"Published device registration: {device_uuid} -> {replica_id}")
+            logger.info(f"Published device registration: {device_uuid} -> {process_id}")
 
         except Exception as e:
             logger.exception(f"Failed to publish device registration: {e}")
 
     async def publish_heartbeat(
         self,
-        replica_id: str,
+        process_id: str,
         device_uuid: str,
         status: str = "active",
         metadata: Optional[Dict[str, str]] = None,
@@ -72,7 +72,7 @@ class EventPublisher(BasePublisher):
 
             envelope = EventEnvelope()
             heartbeat = envelope.heartbeat
-            heartbeat.replica_id = replica_id
+            heartbeat.process_id = process_id
             heartbeat.device_uuid = device_uuid
             heartbeat.timestamp = int(time.time())
             heartbeat.status = status
@@ -82,17 +82,17 @@ class EventPublisher(BasePublisher):
                     heartbeat.metadata[key] = str(value)
 
             await self.nats_client.publish(
-                torchLoomConstants.subjects.THREADLET_EVENTS,
+                NatsConstants.subjects.THREADLET_EVENTS,
                 envelope.SerializeToString(),
             )
 
-            logger.debug(f"Published heartbeat for replica {replica_id}")
+            logger.debug(f"Published heartbeat for replica {process_id}")
 
         except Exception as e:
             logger.exception(f"Failed to publish heartbeat: {e}")
 
     async def publish_training_status(
-        self, replica_id: str, status_data: Dict[str, Any]
+        self, process_id: str, status_data: Dict[str, Any]
     ) -> None:
         """Publish training status event."""
         try:
@@ -104,7 +104,7 @@ class EventPublisher(BasePublisher):
             training_status = envelope.training_status
 
             # Set basic fields
-            training_status.replica_id = replica_id
+            training_status.process_id = process_id
             training_status.current_step = status_data.get("current_step", 0)
             training_status.epoch = status_data.get("epoch", 0)
             training_status.training_time = status_data.get("training_time", 0.0)
@@ -116,18 +116,23 @@ class EventPublisher(BasePublisher):
             for key, value in metrics.items():
                 training_status.metrics[key] = str(value)
 
+            # Add config
+            config = status_data.get("config", {})
+            for key, value in config.items():
+                training_status.config[key] = str(value)
+
             await self.nats_client.publish(
-                torchLoomConstants.subjects.THREADLET_EVENTS,
+                NatsConstants.subjects.THREADLET_EVENTS,
                 envelope.SerializeToString(),
             )
 
-            logger.debug(f"Published training status for replica {replica_id}")
+            logger.debug(f"Published training status for replica {process_id}")
 
         except Exception as e:
             logger.exception(f"Failed to publish training status: {e}")
 
     async def publish_device_status(
-        self, device_id: str, replica_id: str, status_data: Dict[str, Any]
+        self, device_id: str, process_id: str, status_data: Dict[str, Any]
     ) -> None:
         """Publish device status event."""
         try:
@@ -140,9 +145,8 @@ class EventPublisher(BasePublisher):
 
             # Set basic fields
             device_status.device_id = device_id
-            device_status.replica_id = replica_id
+            device_status.process_id = process_id
             device_status.server_id = status_data.get("server_id", device_id)
-            device_status.status = status_data.get("status", "active")
             device_status.utilization = status_data.get("utilization", 0.0)
             device_status.temperature = status_data.get("temperature", 0.0)
             device_status.memory_used = status_data.get("memory_used", 0.0)
@@ -154,7 +158,7 @@ class EventPublisher(BasePublisher):
                 device_status.config[key] = str(value)
 
             await self.nats_client.publish(
-                torchLoomConstants.subjects.THREADLET_EVENTS,
+                NatsConstants.subjects.THREADLET_EVENTS,
                 envelope.SerializeToString(),
             )
 
@@ -166,7 +170,7 @@ class EventPublisher(BasePublisher):
     async def publish_weaver_command(
         self,
         command_type: str,
-        target_replica_id: str,
+        target_process_id: str,
         params: Optional[Dict[str, str]] = None,
     ) -> None:
         """Publish weaver command to threadlets."""
@@ -178,82 +182,51 @@ class EventPublisher(BasePublisher):
             envelope = EventEnvelope()
             weaver_command = envelope.weaver_command
             weaver_command.command_type = command_type
-            weaver_command.target_replica_id = target_replica_id
+            weaver_command.target_process_id = target_process_id
 
             if params:
                 for key, value in params.items():
                     weaver_command.params[key] = str(value)
 
             await self.js_client.publish(
-                torchLoomConstants.subjects.WEAVER_COMMANDS,
+                NatsConstants.subjects.WEAVER_COMMANDS,
                 envelope.SerializeToString(),
             )
 
             logger.info(
-                f"Published weaver command: {command_type} to {target_replica_id}"
+                f"Published weaver command: {command_type} to {target_process_id}"
             )
 
         except Exception as e:
             logger.exception(f"Failed to publish weaver command: {e}")
 
-    async def publish_ui_command(
-        self,
-        command_type: str,
-        target_id: str,
-        params: Optional[Dict[str, str]] = None,
-    ) -> None:
-        """Publish UI command."""
-        try:
-            if not self.js_client:
-                logger.warning("Cannot publish UI command - no JetStream client")
-                return
-
-            envelope = EventEnvelope()
-            ui_command = envelope.ui_command
-            ui_command.command_type = command_type
-            ui_command.target_id = target_id
-
-            if params:
-                for key, value in params.items():
-                    ui_command.params[key] = str(value)
-
-            await self.js_client.publish(
-                torchLoomConstants.subjects.UI_COMMANDS,
-                envelope.SerializeToString(),
-            )
-
-            logger.info(f"Published UI command: {command_type} to {target_id}")
-
-        except Exception as e:
-            logger.exception(f"Failed to publish UI command: {e}")
-
     async def publish(self, message_type: str, **kwargs) -> None:
         """Generic publish method for different message types."""
         if message_type == "device_registration":
             await self.publish_device_registration(
-                kwargs.get("device_uuid"), kwargs.get("replica_id")
+                kwargs.get("device_uuid"), kwargs.get("process_id")
             )
         elif message_type == "heartbeat":
             await self.publish_heartbeat(
-                kwargs.get("replica_id"),
+                kwargs.get("process_id"),
                 kwargs.get("device_uuid"),
                 kwargs.get("status", "active"),
                 kwargs.get("metadata"),
             )
         elif message_type == "training_status":
             await self.publish_training_status(
-                kwargs.get("replica_id"), kwargs.get("status_data", {})
+                kwargs.get("process_id"), kwargs.get("status_data", {})
             )
         elif message_type == "device_status":
             await self.publish_device_status(
                 kwargs.get("device_id"),
-                kwargs.get("replica_id"),
+                kwargs.get("process_id"),
                 kwargs.get("status_data", {}),
             )
         elif message_type == "weaver_command":
             await self.publish_weaver_command(
                 kwargs.get("command_type"),
-                kwargs.get("target_replica_id"),
+                kwargs.get("target_process_id"),
                 kwargs.get("params"),
             )
         elif message_type == "ui_command":

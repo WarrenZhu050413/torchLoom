@@ -12,9 +12,12 @@ import sys
 import time
 import uuid
 from typing import Any, Dict
+import random
+import platform
+import psutil
 
 from torchLoom.threadlet.threadlet import Threadlet
-from torchLoom.common.constants import torchLoomConstants
+from torchLoom.common.constants import Config, NatsConstants
 
 # Set up logging
 logging.basicConfig(
@@ -35,17 +38,36 @@ class DemoTrainingProcess:
         self.learning_rate = 0.001
         self.batch_size = 32
         self.model_name = "demo_model"
+        self.max_step = 10000  # Total training steps
+        self.max_epoch = 100   # Total epochs
+        self.training_start_time = time.time()
+        
+        # Mock device specifications
+        self.device_id = f"mock-gpu-{uuid.uuid4().hex[:8]}"
+        self.server_id = platform.node()  # System hostname
+        self.mock_gpu_memory_total = 16.0  # 16GB total memory
+        
+        # Training configuration that can be updated
+        self.config = {
+            "learning_rate": str(self.learning_rate),
+            "batch_size": str(self.batch_size),
+            "optimizer": "AdamW",
+            "scheduler": "cosine",
+            "model_name": self.model_name
+        }
         
     def update_learning_rate(self, new_lr: float):
         """Handler for learning rate updates."""
         old_lr = self.learning_rate
         self.learning_rate = float(new_lr)
+        self.config["learning_rate"] = str(self.learning_rate)
         logger.info(f"Learning rate updated: {old_lr} -> {self.learning_rate}")
         
     def update_batch_size(self, new_batch_size: int):
         """Handler for batch size updates."""
         old_batch = self.batch_size
         self.batch_size = int(new_batch_size)
+        self.config["batch_size"] = str(self.batch_size)
         logger.info(f"Batch size updated: {old_batch} -> {self.batch_size}")
         
     def pause_training(self):
@@ -58,8 +80,41 @@ class DemoTrainingProcess:
         self.is_training = True
         logger.info("Training resumed")
         
+    def get_mock_device_status(self):
+        """Generate mock GPU device status metrics."""
+        # Mock GPU utilization (varies based on training state)
+        if self.is_training:
+            base_utilization = 75.0 + random.uniform(-15.0, 20.0)
+        else:
+            base_utilization = 5.0 + random.uniform(-3.0, 10.0)
+        
+        utilization = max(0.0, min(100.0, base_utilization))
+        
+        # Mock GPU temperature (higher when training)
+        if self.is_training:
+            base_temp = 65.0 + random.uniform(-5.0, 15.0)
+        else:
+            base_temp = 35.0 + random.uniform(-5.0, 10.0)
+        
+        temperature = max(30.0, min(85.0, base_temp))
+        
+        # Mock memory usage (increases with batch size and utilization)
+        memory_factor = (utilization / 100.0) * (self.batch_size / 32.0)
+        memory_used = self.mock_gpu_memory_total * (0.3 + 0.5 * memory_factor + random.uniform(-0.1, 0.1))
+        memory_used = max(1.0, min(self.mock_gpu_memory_total, memory_used))
+        
+        # device_id and process_id are handled by Threadlet.publish_device_status
+        # device_id is passed as a named argument, process_id is self._process_id from Threadlet
+        return {
+            "server_id": self.server_id,
+            "utilization": utilization,
+            "temperature": temperature,
+            "memory_used": memory_used,
+            "memory_total": self.mock_gpu_memory_total,
+        }
+        
     def simulate_training_step(self):
-        """Simulate a training step with metrics."""
+        """Simulate a training step with complete metrics."""
         if not self.is_training:
             return
             
@@ -68,35 +123,61 @@ class DemoTrainingProcess:
         if self.current_step % 100 == 0:
             self.current_epoch += 1
             
+        # Calculate training time
+        training_time = time.time() - self.training_start_time
+        
         # Simulate metrics (decreasing loss, improving accuracy)
-        import random
         base_loss = max(0.1, 2.0 - (self.current_step * 0.001))
         loss = base_loss + random.uniform(-0.05, 0.05)
         
         base_accuracy = min(0.95, 0.5 + (self.current_step * 0.0005))
         accuracy = base_accuracy + random.uniform(-0.02, 0.02)
         
-        # Send status update with metrics included
-        logger.info(f"Calling publish_status with step: {self.current_step}")
-        self.threadlet.publish_status(
+        # Additional training metrics
+        gradient_norm = random.uniform(0.5, 2.0)
+        lr_current = self.learning_rate * (0.95 ** (self.current_epoch // 10))  # Decay LR
+        
+        # Prepare complete training status data
+        metrics = {
+            "loss": str(round(loss, 4)),
+            "accuracy": str(round(accuracy, 4)),
+            "learning_rate": str(round(lr_current, 6)),
+            "batch_size": str(self.batch_size),
+            "gradient_norm": str(round(gradient_norm, 3)),
+            "throughput": str(round(self.batch_size / (2.0 + random.uniform(-0.5, 0.5)), 2)),  # samples/sec
+        }
+        
+        status_message = f"Training | LR: {lr_current:.6f}, Batch: {self.batch_size}, Loss: {loss:.4f}, Acc: {accuracy:.4f}"
+        
+        # Send comprehensive training status update
+        logger.info(f"Publishing training status: step={self.current_step}, epoch={self.current_epoch}")
+        self.threadlet.publish_training_status(
             current_step=self.current_step,
             epoch=self.current_epoch,
-            message=f"LR: {self.learning_rate}, Batch: {self.batch_size}, Loss: {loss:.4f}, Accuracy: {accuracy:.4f}",
-            metrics={
-                "loss": loss,
-                "accuracy": accuracy,
-                "learning_rate": self.learning_rate,
-                "batch_size": self.batch_size
-            }
+            message=status_message,
+            metrics=metrics,
+            training_time=training_time,
+            max_step=self.max_step,
+            max_epoch=self.max_epoch,
+            config=self.config,
         )
+        
+        # Send device status update every few steps
+        if self.current_step % 5 == 0:  # Update device status every 5 training steps
+            device_status_metrics = self.get_mock_device_status()
+            logger.info(f"Publishing device status: utilization={device_status_metrics['utilization']:.1f}%, temp={device_status_metrics['temperature']:.1f}°C for device_id={self.device_id}")
+            self.threadlet.publish_device_status(
+                device_id=self.device_id, # Pass device_id explicitly
+                **device_status_metrics   # Pass other metrics as kwargs
+            )
 
 
 class ThreadletRunner:
     """Main runner for the threadlet process."""
     
-    def __init__(self, replica_id: str = None, torchLoom_addr: str = None):
-        self.replica_id = replica_id or f"demo-threadlet-{uuid.uuid4().hex[:8]}"
-        self.torchLoom_addr = torchLoom_addr or torchLoomConstants.DEFAULT_ADDR
+    def __init__(self, process_id: str = None, torchLoom_addr: str = None):
+        self.process_id = process_id or f"demo-threadlet-{uuid.uuid4().hex[:8]}"
+        self.torchLoom_addr = torchLoom_addr or NatsConstants.DEFAULT_ADDR
         self.threadlet = None
         self.training_process = None
         self.running = True
@@ -112,11 +193,11 @@ class ThreadletRunner:
         
     def setup_threadlet(self):
         """Initialize and configure the threadlet."""
-        logger.info(f"Setting up threadlet with replica_id: {self.replica_id}")
+        logger.info(f"Setting up threadlet with process_id: {self.process_id}")
         
         # Create threadlet instance
         self.threadlet = Threadlet(
-            replica_id=self.replica_id,
+            process_id=self.process_id,
             torchLoom_addr=self.torchLoom_addr
         )
         
@@ -179,7 +260,7 @@ class ThreadletRunner:
         """Main run method."""
         try:
             logger.info("=== torchLoom Threadlet Runner ===")
-            logger.info(f"Replica ID: {self.replica_id}")
+            logger.info(f"Replica ID: {self.process_id}")
             logger.info(f"torchLoom Address: {self.torchLoom_addr}")
             logger.info("\nThis script will:")
             logger.info("1. Create and start a threadlet process")
@@ -208,7 +289,7 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description="Spawn a threadlet to listen to weaver commands")
-    parser.add_argument("--replica-id", help="Replica ID for the threadlet")
+    parser.add_argument("--process-id", help="Replica ID for the threadlet")
     parser.add_argument("--torchLoom-addr", help="torchLoom NATS server address")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
                        help="Logging level")
@@ -220,7 +301,7 @@ def main():
     
     # Create and run threadlet
     runner = ThreadletRunner(
-        replica_id=args.replica_id,
+        process_id=args.process_id,
         torchLoom_addr=args.torchLoom_addr
     )
     

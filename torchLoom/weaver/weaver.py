@@ -10,12 +10,11 @@ from typing import Any, Dict, Optional, Set
 
 from nats.aio.msg import Msg
 
-from torchLoom.common.config import Config
-from torchLoom.common.constants import (
+from torchLoom.common.constants import Config, (
     HandlerConstants,
-    NetworkConstants,
+    UINetworkConstants,
     TimeConstants,
-    torchLoomConstants,
+    NatsConstants,
 )
 from torchLoom.common.handlers import HandlerRegistry
 from torchLoom.common.subscription import SubscriptionManager
@@ -29,7 +28,7 @@ from .ui_interface import UINotificationManager, UIStatusPublisher
 from .websocket_server import WebSocketServer
 
 logger = setup_logger(
-    name="torchLoom_weaver", log_file=Config.torchLoom_CONTROLLER_LOG_FILE
+    name="torchLoom_weaver", log_file=LoggerConstants.torchLoom_CONTROLLER_LOG_FILE
 )
 
 
@@ -46,10 +45,10 @@ class Weaver:
 
     def __init__(
         self,
-        torchLoom_addr: str = torchLoomConstants.DEFAULT_ADDR,
+        torchLoom_addr: str = NatsConstants.DEFAULT_ADDR,
         enable_ui: bool = True,
-        ui_host: str = NetworkConstants.DEFAULT_UI_HOST,
-        ui_port: int = NetworkConstants.DEFAULT_UI_PORT,
+        ui_host: str = UINetworkConstants.DEFAULT_UI_HOST,
+        ui_port: int = UINetworkConstants.DEFAULT_UI_PORT,
     ) -> None:
         self._stop_nats = asyncio.Event()
         self.seq = 0
@@ -225,20 +224,20 @@ class Weaver:
         # WEAVER_INGRESS_STREAM: For all incoming messages to the Weaver
         # This stream will handle events from threadlets and external systems.
         weaver_ingress_subjects = [
-            torchLoomConstants.subjects.THREADLET_EVENTS,
-            torchLoomConstants.subjects.EXTERNAL_EVENTS,
+            NatsConstants.subjects.THREADLET_EVENTS,
+            NatsConstants.subjects.EXTERNAL_EVENTS,
         ]
         await sm.maybe_create_stream(
-            stream=torchLoomConstants.weaver_ingress_stream.STREAM,
+            stream=NatsConstants.weaver_ingress_stream.STREAM,
             subjects=list(set(weaver_ingress_subjects)),
         )
         logger.info(
-            f"Set up stream: {torchLoomConstants.weaver_ingress_stream.STREAM} with subjects: {weaver_ingress_subjects}"
+            f"Set up stream: {NatsConstants.weaver_ingress_stream.STREAM} with subjects: {weaver_ingress_subjects}"
         )
 
         # WEAVELET_STREAM: Now primarily for utbound Weaver -> Threadlet commands
-        weaver_commands_stream_name = torchLoomConstants.weaver_stream.STREAM
-        weaver_commands_subjects = [torchLoomConstants.subjects.WEAVER_COMMANDS]
+        weaver_commands_stream_name = NatsConstants.weaver_stream.STREAM
+        weaver_commands_subjects = [NatsConstants.subjects.WEAVER_COMMANDS]
         await sm.maybe_create_stream(
             stream=weaver_commands_stream_name, subjects=weaver_commands_subjects
         )
@@ -246,39 +245,18 @@ class Weaver:
             f"Set up stream: {weaver_commands_stream_name} with subjects: {weaver_commands_subjects}"
         )
 
-        # UI_STREAM (if used and is JetStream based)
-        # Based on original constants, UI_STREAM exists. Assuming it's still needed.
-        if (
-            hasattr(torchLoomConstants, "ui_stream")
-            and torchLoomConstants.ui_stream.STREAM
-        ):
-            ui_stream_subjects = []
-            if hasattr(torchLoomConstants.subjects, "UI_COMMANDS"):
-                ui_stream_subjects.append(torchLoomConstants.subjects.UI_COMMANDS)
-
-            if ui_stream_subjects:
-                await sm.maybe_create_stream(
-                    stream=torchLoomConstants.ui_stream.STREAM,
-                    subjects=list(set(ui_stream_subjects)),
-                )
-                logger.info(
-                    f"Set up stream: {torchLoomConstants.ui_stream.STREAM} with subjects: {ui_stream_subjects}"
-                )
-            else:
-                logger.info(
-                    f"Skipping UI_STREAM setup as no relevant subjects (e.g., UI_COMMANDS) are defined for it."
-                )
-        else:
-            logger.info("UI_STREAM not defined in constants, skipping its setup.")
-
-        logger.info("All JetStream streams setup completed based on new design")
-
     async def message_handler(self, msg: Msg) -> None:
         """NATS message handler that parses the message and delegates to handle_message."""
         try:
             env = EventEnvelope()
             env.ParseFromString(msg.data)
             logger.debug(f"Received NATS message on subject {msg.subject}")
+
+            # Log if the message is a heartbeat
+            if env.HasField("heartbeat"):
+                logger.info(
+                    f"NATS message_handler received heartbeat for replica: {env.heartbeat.process_id} on subject: {msg.subject}"
+                )
 
             # Use the unified message handler
             await self.handle_message(env)
@@ -292,9 +270,9 @@ class Weaver:
         """Get all replicas associated with a device."""
         return self.status_tracker.get_replicas_for_device(device_uuid)
 
-    def get_devices_for_replica(self, replica_id: str) -> Set[str]:
+    def get_devices_for_replica(self, process_id: str) -> Set[str]:
         """Get all devices associated with a replica."""
-        return self.status_tracker.get_devices_for_replica(replica_id)
+        return self.status_tracker.get_devices_for_replica(process_id)
 
     async def start_ui_server(self) -> None:
         """Start the WebSocket UI server and status broadcaster."""
@@ -309,8 +287,6 @@ class Weaver:
         else:
             logger.info("UI server is not enabled or not initialized.")
 
-    # REMOVED: start_ui_update_publisher() - replaced with event-driven WebSocket notifications
-
     async def start_heartbeat_monitor(self) -> None:
         """Start the background task to monitor dead replicas and publish failure events."""
         logger.info("Starting heartbeat monitor task")
@@ -322,9 +298,9 @@ class Weaver:
                     logger.warning(
                         f"Heartbeat monitor identified dead replicas: {dead_replicas}"
                     )
-                    for replica_id in dead_replicas:
+                    for process_id in dead_replicas:
                         self.status_tracker.update_training_progress(
-                            replica_id=replica_id, status="dead"
+                            process_id=process_id, status="dead"
                         )
                 await asyncio.sleep(TimeConstants.HEARTBEAT_MONITOR_INTERVAL)
             except asyncio.CancelledError:
@@ -381,23 +357,22 @@ async def main():
 
         async with asyncio.TaskGroup() as tg:
             ingress_subjects_to_subscribe = [
-                torchLoomConstants.subjects.THREADLET_EVENTS,
-                torchLoomConstants.subjects.EXTERNAL_EVENTS,
-                torchLoomConstants.subjects.UI_COMMANDS,
+                NatsConstants.subjects.THREADLET_EVENTS,
+                NatsConstants.subjects.EXTERNAL_EVENTS,
             ]
 
             for i, subject in enumerate(list(set(ingress_subjects_to_subscribe))):
                 consumer_name = f"weaver-ingress-consumer-{subject.replace('.', '-')}-{weaver.seq+i}"
                 tg.create_task(
                     weaver._subscription_manager.subscribe_js(
-                        stream=torchLoomConstants.weaver_ingress_stream.STREAM,
+                        stream=NatsConstants.weaver_ingress_stream.STREAM,
                         subject=subject,
                         consumer=consumer_name,
                         message_handler=weaver.message_handler,
                     )
                 )
                 logger.info(
-                    f"Subscribed to JS subject: {subject} on stream {torchLoomConstants.weaver_ingress_stream.STREAM} with consumer {consumer_name}"
+                    f"Subscribed to JS subject: {subject} on stream {NatsConstants.weaver_ingress_stream.STREAM} with consumer {consumer_name}"
                 )
 
             if weaver.enable_ui and weaver.websocket_server:

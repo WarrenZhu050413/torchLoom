@@ -69,24 +69,6 @@ class HandlerRegistry:
             for event_type in event_types:
                 self._event_type_mapping[event_type] = handler_key
 
-    def register_default_handlers(self, target_object: Optional[Any] = None) -> None:
-        """Register simple logging handlers for common configuration parameters.
-
-        Args:
-            target_object: The object that will receive configuration updates (e.g., Lightning module)
-                          If None, only logging handlers are registered.
-        """
-        from torchLoom.common.constants import HandlerConstants
-
-        registered_count = 0
-        for param in HandlerConstants.COMMON_CONFIG_PARAMS:
-            if not self.has_handler(param):
-                handler_func = self._create_handler(param, target_object)
-                self.register_handler(param, handler_func)
-                registered_count += 1
-
-        self._logger.info(f"Registered {registered_count} simple logging handlers")
-
     def _create_handler(self, config_key: str, target_object: Optional[Any] = None):
         """Create a simple handler for a specific config key."""
 

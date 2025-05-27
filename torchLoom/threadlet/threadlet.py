@@ -11,8 +11,7 @@ import uuid
 from multiprocessing.connection import Connection
 from typing import Any, Dict, Optional, Tuple, Type
 
-from torchLoom.common.config import Config
-from torchLoom.common.constants import TimeConstants, torchLoomConstants
+from torchLoom.common.constants import Config, TimeConstants, NatsConstants
 from torchLoom.common.handlers import *
 from torchLoom.proto import torchLoom_pb2
 
@@ -40,11 +39,11 @@ class Threadlet:
 
     def __init__(
         self,
-        replica_id: Optional[str] = None,
-        torchLoom_addr: str = torchLoomConstants.DEFAULT_ADDR,
+        process_id: Optional[str] = None,
+        torchLoom_addr: str = NatsConstants.DEFAULT_ADDR,
     ):
         # Core identifiers
-        self._replica_id = replica_id or f"threadlet:{uuid.uuid4()}"
+        self._process_id = process_id or f"threadlet:{uuid.uuid4()}"
         self._device_uuid: Optional[str] = None
 
         # NATS connection setup
@@ -52,19 +51,17 @@ class Threadlet:
         self._stop_event = multiprocessing.Event()
         self._pipe_listener_stop_event = threading.Event()
 
-        # Inter-process communication with the listener process
+        # Process management
+        self._threadlet_listener_process: Optional[multiprocessing.Process] = None
+        self._pipe_listener_thread: Optional[threading.Thread] = None
         self._listener_pipe_conn, self._main_pipe_conn = multiprocessing.Pipe(
             duplex=True
         )
 
-        # Process management
-        self._threadlet_listener_process: Optional[multiprocessing.Process] = None
-        self._pipe_listener_thread: Optional[threading.Thread] = None
-
-        # Configuration from constants
-        self._nc_timeout = Config.NC_TIMEOUT or TimeConstants.PIPE_POLL_INTERVAL
+        # Configuration
+        self._nc_timeout = TimeConstants.PIPE_POLL_INTERVAL
         self._exception_sleep = (
-            Config.EXCEPTION_RETRY_TIME or TimeConstants.ERROR_RETRY_SLEEP
+            TimeConstants.ERROR_RETRY_SLEEP
         )
 
         # Handler registry for configuration updates
@@ -174,16 +171,6 @@ class Threadlet:
         except Exception as e:
             self._logger.warning(f"Error sending message via pipe: {e}")
 
-    def set_target_object(self, target_object: Any) -> None:
-        """Set the target object for configuration updates.
-
-        Args:
-            target_object: The object that will receive configuration updates (e.g., Lightning module)
-        """
-        self._target_object = target_object
-        if self._default_handlers_enabled:
-            self._handler_registry.register_default_handlers(target_object)
-
     def get_registered_handlers(self) -> Dict[str, Type]:
         """Get all currently registered handlers.
 
@@ -195,15 +182,11 @@ class Threadlet:
     def start(self) -> None:
         """Start the threadlet in a separate process."""
         try:
-            # Register default handlers if enabled
-            if self._default_handlers_enabled:
-                self._handler_registry.register_default_handlers(self._target_object)
-
             # Start the pipe listener thread in this main process
             self._pipe_listener_stop_event.clear()
             self._pipe_listener_thread = threading.Thread(
                 target=self._pipe_message_processor_loop,
-                name=f"threadlet-pipe-listener-{self._replica_id}",
+                name=f"threadlet-pipe-listener-{self._process_id}",
                 daemon=True,
             )
             self._pipe_listener_thread.start()
@@ -212,12 +195,12 @@ class Threadlet:
             self._threadlet_listener_process = multiprocessing.Process(
                 target=self._run_threadlet_listener_process,
                 args=(
-                    self._replica_id,
+                    self._process_id,
                     self._torchLoom_addr,
                     self._listener_pipe_conn,  # Pass one end of the duplex pipe
                     self._stop_event,
                 ),
-                name=f"threadlet-listener-proc-{self._replica_id}",
+                name=f"threadlet-listener-proc-{self._process_id}",
             )
             self._threadlet_listener_process.start()
 
@@ -331,37 +314,43 @@ class Threadlet:
         except Exception as e:
             self._logger.exception(f"Error stopping threadlet: {e}")
 
-    def publish_status(
+    def publish_training_status(
         self,
-        current_step: int = 0,
-        epoch: int = 0,
-        message: str = "",
-        metrics: Optional[Dict[str, Any]] = None,
-        training_time: float = 0.0,
-        max_step: int = 0,
-        max_epoch: int = 0,
+        **kwargs: Any
     ) -> None:
         """Send status message to ThreadletListener."""
         try:
-            self._logger.debug(f"publish_status called with: current_step={current_step}, epoch={epoch}")
-            status_message = MessageFactory.create_status(
-                replica_id=self._replica_id,
-                current_step=current_step,
-                epoch=epoch,
-                message=message,
-                metrics=metrics,
-                training_time=training_time,
-                max_step=max_step,
-                max_epoch=max_epoch,
+            self._logger.debug(f"publish_training_status called for process_id={self._process_id} with: {kwargs}")
+            status_message = MessageFactory.create_training_status(
+                process_id=self._process_id, 
+                **kwargs
             )
             self._send_message_to_listener(status_message)
-            self._logger.debug(f"Sent status for step: {current_step}")
+            self._logger.debug(f"Sent status for process_id: {self._process_id}, step: {kwargs.get('current_step')}")
         except Exception as e:
             self._logger.exception(f"Error sending status: {e}")
 
+    def publish_device_status(
+        self,
+        device_id: str,
+        **kwargs: Any
+    ) -> None:
+        """Send device status message to ThreadletListener."""
+        try:
+            self._logger.debug(f"publish_device_status called for device: {device_id} (process: {self._process_id}) with {kwargs}")
+            device_status_message = MessageFactory.create_device_status(
+                device_id=device_id,
+                process_id=self._process_id,
+                **kwargs
+            )
+            self._send_message_to_listener(device_status_message)
+            self._logger.debug(f"Sent device status for device: {device_id} (process: {self._process_id})")
+        except Exception as e:
+            self._logger.exception(f"Error sending device status: {e}")
+
     @staticmethod
     def _run_threadlet_listener_process(
-        replica_id: str,
+        process_id: str,
         torchLoom_addr: str,
         pipe_to_main_process: Connection,
         stop_event: multiprocessing.Event,
@@ -374,7 +363,7 @@ class Threadlet:
 
             # Create the async threadlet listener instance
             threadlet_listener = ThreadletListener(
-                replica_id=replica_id,
+                process_id=process_id,
                 torchLoom_addr=torchLoom_addr,
                 pipe_to_main_process=pipe_to_main_process,
                 stop_event=stop_event,

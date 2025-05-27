@@ -94,7 +94,7 @@ All constants are defined in `torchft/torchLoom/constants.py`.
 
 ### Device-Replica Mapping (DRMap)
 
-The DRMap is the core data structure that enables torchLoom to translate between monitoring system events (device_uuid) and training system events (replica_id).
+The DRMap is the core data structure that enables torchLoom to translate between monitoring system events (device_uuid) and training system events (process_id).
 
 The mapping is implemented as two related maps:
 

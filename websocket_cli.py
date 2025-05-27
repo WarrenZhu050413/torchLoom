@@ -77,53 +77,107 @@ class TorchLoomWebSocketCLI:
             status_data = data.get("data", {})
             print(f"\n[{timestamp}] === STATUS UPDATE ===")
             
-            # Display device information
+            # Display device information with all fields
             devices = status_data.get("devices", [])
             if devices:
-                print(f"Devices ({len(devices)}):")
+                print(f"\n🖥️  DEVICES ({len(devices)}):")
                 for device in devices:
-                    device_uuid = device.get('device_uuid') or device.get('device_id', 'unknown')
-                    # Status is removed from deviceStatus, log other available info
-                    replica_id = device.get('replica_id', 'unknown')
+                    device_id = device.get('device_id') or device.get('device_uuid', 'unknown')
+                    process_id = device.get('process_id', 'unknown')
+                    server_id = device.get('server_id', 'unknown')
                     utilization = device.get('utilization', 'N/A')
                     temperature = device.get('temperature', 'N/A')
-                    print(f"  - {device_uuid} | Replica: {replica_id} | Util: {utilization}% | Temp: {temperature}°C")
+                    memory_used = device.get('memory_used', 'N/A')
+                    memory_total = device.get('memory_total', 'N/A')
+                    
+                    print(f"  🔸 Device: {device_id}")
+                    print(f"     Replica: {process_id}")
+                    print(f"     Server: {server_id}")
+                    print(f"     Utilization: {utilization}%")
+                    print(f"     Temperature: {temperature}°C")
+                    print(f"     Memory: {memory_used}/{memory_total} GB")
+                    
+                    # Display device config if available
+                    config = device.get('config', {})
+                    if config:
+                        print(f"     Config: {config}")
+                    print()
             
-            # Display training status
+            # Display training status with all fields
             training_status = status_data.get("training_status", [])
             if training_status:
-                print(f"\nTraining Status ({len(training_status)} replicas):")
+                print(f"🚀 TRAINING STATUS ({len(training_status)} replicas):")
                 for status in training_status:
-                    replica_id = status.get("replica_id", "unknown")
+                    process_id = status.get("process_id", "unknown")
                     state = status.get("status", "unknown")
-                    step = status.get("current_step", 0)
+                    current_step = status.get("current_step", 0)
                     epoch = status.get("epoch", 0)
-                    print(f"  - Replica: {replica_id}")
-                    print(f"    Status: {state} | Step: {step} | Epoch: {epoch}")
+                    max_step = status.get("max_step", 0)
+                    max_epoch = status.get("max_epoch", 0)
+                    training_time = status.get("training_time", 0.0)
                     
-                    # Show metrics if available
+                    print(f"  🔸 Replica: {process_id}")
+                    print(f"     Status: {state}")
+                    print(f"     Progress: Step {current_step}/{max_step} | Epoch {epoch}/{max_epoch}")
+                    
+                    # Calculate and display progress percentages
+                    if max_step > 0:
+                        step_progress = (current_step / max_step) * 100
+                        print(f"     Step Progress: {step_progress:.1f}%")
+                    if max_epoch > 0:
+                        epoch_progress = (epoch / max_epoch) * 100
+                        print(f"     Epoch Progress: {epoch_progress:.1f}%")
+                    
+                    if training_time > 0:
+                        hours = int(training_time // 3600)
+                        minutes = int((training_time % 3600) // 60)
+                        seconds = int(training_time % 60)
+                        print(f"     Training Time: {hours:02d}:{minutes:02d}:{seconds:02d}")
+                    
+                    # Show detailed metrics if available
                     metrics = status.get("metrics", {})
                     if metrics:
-                        loss = metrics.get("loss", "N/A")
-                        accuracy = metrics.get("accuracy", "N/A")
-                        print(f"    Metrics: Loss={loss}, Accuracy={accuracy}")
+                        print(f"     📊 Metrics:")
+                        # Primary metrics
+                        if "loss" in metrics:
+                            print(f"        Loss: {metrics['loss']}")
+                        if "accuracy" in metrics:
+                            print(f"        Accuracy: {metrics['accuracy']}")
+                        if "learning_rate" in metrics:
+                            print(f"        Learning Rate: {metrics['learning_rate']}")
+                        if "batch_size" in metrics:
+                            print(f"        Batch Size: {metrics['batch_size']}")
+                        if "gradient_norm" in metrics:
+                            print(f"        Gradient Norm: {metrics['gradient_norm']}")
+                        if "throughput" in metrics:
+                            print(f"        Throughput: {metrics['throughput']} samples/sec")
+                        
+                        # Additional metrics
+                        additional_metrics = {k: v for k, v in metrics.items() 
+                                           if k not in ["loss", "accuracy", "learning_rate", "batch_size", "gradient_norm", "throughput", "message"]}
+                        if additional_metrics:
+                            print(f"        Other: {additional_metrics}")
                     
                     # Show config if available
                     config = status.get("config", {})
                     if config:
-                        print(f"    Config: {config}")
+                        print(f"     ⚙️  Config: {config}")
+                    
+                    # Show message if available
+                    if status.get("message"):
+                        print(f"     💬 Message: {status['message']}")
                     
                     # Show additional status info if available
-                    if status.get("training_time"):
-                        print(f"    Training Time: {status['training_time']:.2f}s")
                     if status.get("status_type"):
-                        print(f"    Type: {status['status_type']}")
+                        print(f"     Type: {status['status_type']}")
                         
+                    print()
+                    
         elif msg_type == "pong":
             logger.debug(f"Received pong at {timestamp}")
             
         elif msg_type == "error":
-            print(f"\n[{timestamp}] ERROR: {data.get('message', 'Unknown error')}")
+            print(f"\n[{timestamp}] ❌ ERROR: {data.get('message', 'Unknown error')}")
             if 'error' in data:
                 print(f"  Details: {data['error']}")
                 
@@ -154,9 +208,9 @@ class TorchLoomWebSocketCLI:
         await asyncio.sleep(2)  # Wait for initial connection
         while self.running:
             
-            logger.info("Starting demo command sequence...")
+            logger.info("Starting enhanced demo command sequence...")
             
-            # Demo sequence of commands
+            # Demo sequence of commands showcasing the comprehensive data
             commands = [
                 {
                     "type": "ui_command",
@@ -164,36 +218,73 @@ class TorchLoomWebSocketCLI:
                         "command_type": "update_config",
                         "target_id": "demo-replica-1",
                         "params": {
-                            "learning_rate": "0.001",
-                            "batch_size": "32"
+                            "learning_rate": "0.0005",
+                            "batch_size": "64",
+                            "optimizer": "Adam"
                         }
                     }
                 },
                 {
-                    "type": "pause_training",
-                    "replica_id": "demo-replica-1"
+                    "type": "ui_command",
+                    "data": {
+                        "command_type": "update_config",
+                        "target_id": "demo-replica-1", 
+                        "params": {
+                            "scheduler": "cosine_annealing",
+                            "weight_decay": "0.01"
+                        }
+                    }
                 },
                 {
-                    "type": "resume_training", 
-                    "replica_id": "demo-replica-1"
+                    "type": "ui_command",
+                    "data": {
+                        "command_type": "pause_training",
+                        "target_id": "demo-replica-1",
+                        "params": {}
+                    }
+                },
+                {
+                    "type": "ui_command",
+                    "data": {
+                        "command_type": "resume_training", 
+                        "target_id": "demo-replica-1",
+                        "params": {}
+                    }
+                },
+                {
+                    "type": "ui_command",
+                    "data": {
+                        "command_type": "update_config",
+                        "target_id": "demo-replica-1",
+                        "params": {
+                            "learning_rate": "0.002",
+                            "batch_size": "128"
+                        }
+                    }
                 },
                 {
                     "type": "ui_command",
                     "data": {
                         "command_type": "deactivate_device",
-                        "target_id": "device-123",
-                        "params": {}
+                        "target_id": "mock-gpu-device",
+                        "params": {"reason": "Demo device deactivation"}
                     }
                 }
             ]
             
             for i, cmd in enumerate(commands):
-                await asyncio.sleep(3)  # Wait between commands
-                print(f"\n[DEMO] Sending command {i+1}/{len(commands)}: {cmd.get('type', cmd.get('data', {}).get('command_type', 'unknown'))}")
+                await asyncio.sleep(4)  # Wait between commands for better visualization
+                cmd_desc = cmd.get('type', 'unknown')
+                if cmd_desc == 'ui_command':
+                    cmd_desc = f"UI: {cmd['data'].get('command_type', 'unknown')}"
+                
+                print(f"\n[DEMO] 🚀 Sending command {i+1}/{len(commands)}: {cmd_desc}")
+                if 'data' in cmd and 'params' in cmd['data']:
+                    print(f"       Parameters: {cmd['data']['params']}")
                 await self.command_queue.put(cmd)
                 
-            logger.info("Demo command sequence completed - continuing to run...")
-            await asyncio.sleep(5)
+            logger.info("Demo command sequence completed - continuing to monitor...")
+            await asyncio.sleep(20)  # Wait longer before next sequence
         
     async def run(self):
         """Main run loop."""

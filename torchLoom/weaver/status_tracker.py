@@ -111,7 +111,7 @@ class StatusTracker:
 
             found_idx = -1
             for idx, r in enumerate(self._ui_state_proto.training_status):
-                if r.replica_id == ts_proto.replica_id:
+                if r.process_id == ts_proto.process_id:
                     found_idx = idx
                     break
 
@@ -119,7 +119,7 @@ class StatusTracker:
                 # Replica exists, update it
                 self._ui_state_proto.training_status[found_idx].CopyFrom(ts_proto)
                 logger.debug(
-                    f"Updated training status for replica: {ts_proto.replica_id}"
+                    f"Updated training status for replica: {ts_proto.process_id}"
                 )
             else:
                 # New replica, add it
@@ -127,7 +127,7 @@ class StatusTracker:
                 new_training_entry.CopyFrom(ts_proto)
                 self._ui_state_proto.training_status.append(new_training_entry)
                 logger.info(
-                    f"Added training status for new replica: {ts_proto.replica_id}"
+                    f"Added training status for new replica: {ts_proto.process_id}"
                 )
 
             self._ui_state_proto.timestamp = now_ts
@@ -140,32 +140,32 @@ class StatusTracker:
     # DEVICE-REPLICA MAPPING
     # ========================================
 
-    def add_device_replica_mapping(self, device_uuid: str, replica_id: str) -> bool:
+    def add_device_replica_mapping(self, device_uuid: str, process_id: str) -> bool:
         """Add a mapping from device to replica. Returns True if this is a new mapping."""
         try:
-            is_new = replica_id not in self.device_to_replicas.setdefault(
+            is_new = process_id not in self.device_to_replicas.setdefault(
                 device_uuid, set()
             )
             if is_new:
-                self.device_to_replicas[device_uuid].add(replica_id)
+                self.device_to_replicas[device_uuid].add(process_id)
                 logger.debug(
-                    f"Added device->replica mapping: {device_uuid} -> {replica_id}"
+                    f"Added device->replica mapping: {device_uuid} -> {process_id}"
                 )
             return is_new
         except Exception as e:
             logger.error(f"Failed to add device-replica mapping: {e}")
             return False
 
-    def add_replica_device_mapping(self, replica_id: str, device_uuid: str) -> bool:
+    def add_replica_device_mapping(self, process_id: str, device_uuid: str) -> bool:
         """Add a mapping from replica to device. Returns True if this is a new mapping."""
         try:
             is_new = device_uuid not in self.replica_to_devices.setdefault(
-                replica_id, set()
+                process_id, set()
             )
             if is_new:
-                self.replica_to_devices[replica_id].add(device_uuid)
+                self.replica_to_devices[process_id].add(device_uuid)
                 logger.debug(
-                    f"Added replica->device mapping: {replica_id} -> {device_uuid}"
+                    f"Added replica->device mapping: {process_id} -> {device_uuid}"
                 )
             return is_new
         except Exception as e:
@@ -180,12 +180,12 @@ class StatusTracker:
             logger.error(f"Failed to get replicas for device {device_uuid}: {e}")
             return set()
 
-    def get_devices_for_replica(self, replica_id: str) -> Set[str]:
+    def get_devices_for_replica(self, process_id: str) -> Set[str]:
         """Get all devices associated with a replica."""
         try:
-            return self.replica_to_devices.get(replica_id, set())
+            return self.replica_to_devices.get(process_id, set())
         except Exception as e:
-            logger.error(f"Failed to get devices for replica {replica_id}: {e}")
+            logger.error(f"Failed to get devices for replica {process_id}: {e}")
             return set()
 
     # ========================================
@@ -200,29 +200,39 @@ class StatusTracker:
     # CONVENIENCE METHODS FOR HANDLERS
     # ========================================
 
-    def update_training_progress(self, replica_id: str, **kwargs):
+    def update_training_progress(self, process_id: str, **kwargs):
         """Convenience method to update training progress with keyword arguments."""
         try:
             # Find or create training status
             training_status = None
             for ts in self._ui_state_proto.training_status:
-                if ts.replica_id == replica_id:
+                if ts.process_id == process_id:
                     training_status = ts
                     break
 
             if training_status is None:
                 training_status = TrainingStatus()
-                training_status.replica_id = replica_id
+                training_status.process_id = process_id
                 self._ui_state_proto.training_status.append(training_status)
 
             # Update fields from kwargs
             for key, value in kwargs.items():
                 if hasattr(training_status, key):
-                    setattr(training_status, key, value)
+                    # Handle protobuf map fields (like config and metrics)
+                    if key == "config" and isinstance(value, dict):
+                        training_status.config.clear()
+                        training_status.config.update({k: str(v) for k, v in value.items()})
+                    elif key == "metrics" and isinstance(value, dict):
+                        training_status.metrics.clear()
+                        training_status.metrics.update({k: str(v) for k, v in value.items()})
+                    else:
+                        setattr(training_status, key, value)
                 # Move config handling to TrainingStatus
-                if key == "config" and isinstance(value, dict):
-                    training_status.config.clear()
-                    training_status.config.update({k: str(v) for k, v in value.items()})
+                # This specific 'if' block for config outside hasattr is now covered by the loop above.
+                # Consider removing if redundant, but it's fine as is if it serves a specific purpose for new configs.
+                # if key == "config" and isinstance(value, dict):
+                #     training_status.config.clear()
+                #     training_status.config.update({k: str(v) for k, v in value.items()})
 
             self._ui_state_proto.timestamp = int(time.time())
             self._notify_change()
@@ -263,5 +273,5 @@ class StatusTracker:
 
     def update_device_config(self, device_id: str, config_params: Dict[str, Any]):
         """Update configuration for a specific device."""
-        # Config is moved to TrainingStatus. This method should target replica_id and update TrainingStatus.
-        logger.warning(f"update_device_config called for {device_id}. Config is now part of TrainingStatus. This method needs to be updated to target a replica_id.")
+        # Config is moved to TrainingStatus. This method should target process_id and update TrainingStatus.
+        logger.warning(f"update_device_config called for {device_id}. Config is now part of TrainingStatus. This method needs to be updated to target a process_id.")

@@ -24,7 +24,7 @@ actions:
       from torchLoom.weaver.handlers import WeaverIngressSubjects  # Circular!
 
       # handlers.py  
-      from torchLoom.common.constants import torchLoomConstants  # Circular!
+      from torchLoom.common.constants import Config, NatsConstants  # Circular!
       ```
 
       ### Solution: Keep Constants Self-Contained
@@ -53,9 +53,9 @@ examples:
   - input: |
       # Circular import issue
       from torchLoom.weaver.handlers import SomeClass
-      from torchLoom.common.constants import torchLoomConstants
+      from torchLoom.common.constants import Config, NatsConstants
     output: |
       # Fixed - define constants locally or restructure
-      from torchLoom.common.constants import torchLoomConstants
+      from torchLoom.common.constants import Config, NatsConstants
       # Define SomeClass locally or import differently
 </rule>

@@ -47,8 +47,8 @@ class MessageFactory:
     """Simple factory for creating messages using Protobuf."""
 
     @staticmethod
-    def create_status(
-        replica_id: str,
+    def create_training_status(
+        process_id: str,
         current_step: int = 0,
         epoch: int = 0,
         message: str = "",
@@ -56,6 +56,7 @@ class MessageFactory:
         training_time: float = 0.0,
         max_step: int = 0,
         max_epoch: int = 0,
+        config: Optional[Dict[str, Any]] = None,
     ) -> torchLoom_pb2.PipeTrainingStatusMessage:
         """Create a protobuf training status message using proper TrainingStatus structure."""
         
@@ -68,15 +69,21 @@ class MessageFactory:
         if message:
             metrics_map["message"] = message
 
+        # Convert config to string map
+        config_map = {}
+        if config:
+            config_map = {k: str(v) for k, v in config.items()}
+
         # Create the TrainingStatus message
         training_status = torchLoom_pb2.TrainingStatus(
-            replica_id=replica_id,
+            process_id=process_id,
             current_step=current_step,
             epoch=epoch,
             metrics=metrics_map,
             training_time=training_time,
             max_step=max_step,
             max_epoch=max_epoch,
+            config=config_map,
         )
 
         # Create the pipe message wrapper
@@ -91,7 +98,7 @@ class MessageFactory:
     @staticmethod
     def create_device_status(
         device_id: str,
-        replica_id: str,
+        process_id: str,
         server_id: str = "",
         utilization: float = 0.0,
         temperature: float = 0.0,
@@ -103,7 +110,7 @@ class MessageFactory:
         # Create the deviceStatus message
         device_status = torchLoom_pb2.deviceStatus(
             device_id=device_id,
-            replica_id=replica_id,
+            process_id=process_id,
             server_id=server_id,
             utilization=utilization,
             temperature=temperature,
@@ -122,7 +129,7 @@ class MessageFactory:
 
     @staticmethod
     def create_config(
-        replica_id: str, config_params: Dict[str, Any]
+        process_id: str, config_params: Dict[str, Any]
     ) -> torchLoom_pb2.PipeCommandMessage:
         """Create a command message for config updates (replaces separate config message)."""
         # Convert all config_params values to string
@@ -130,14 +137,14 @@ class MessageFactory:
         return torchLoom_pb2.PipeCommandMessage(
             message_type=torchLoom_pb2.PIPE_COMMAND,
             timestamp=int(time.time()),
-            replica_id=replica_id,
+            process_id=process_id,
             command_type=torchLoom_pb2.UPDATE_CONFIG,  # Use UPDATE_CONFIG for config updates
             params=string_config_params,
         )
 
     @staticmethod
     def create_command(
-        replica_id: str,
+        process_id: str,
         command_type: Union[
             torchLoom_pb2.PipeCommandType, str
         ],  # Allow string for custom commands
@@ -159,7 +166,7 @@ class MessageFactory:
         return torchLoom_pb2.PipeCommandMessage(
             message_type=torchLoom_pb2.PIPE_COMMAND,
             timestamp=int(time.time()),
-            replica_id=replica_id,
+            process_id=process_id,
             command_type=pb_command_type,
             params=string_params,
         )

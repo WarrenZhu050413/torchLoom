@@ -14,7 +14,7 @@ import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from torchLoom.common.constants import NetworkConstants
+from torchLoom.common.constants import Config, UINetworkConstants
 from torchLoom.log.logger import setup_logger
 
 logger = setup_logger(name="websocket_server")
@@ -66,8 +66,8 @@ class WebSocketServer:
 
     def __init__(
         self,
-        host=NetworkConstants.DEFAULT_UI_HOST,
-        port=NetworkConstants.DEFAULT_UI_PORT,
+        host=UINetworkConstants.DEFAULT_UI_HOST,
+        port=UINetworkConstants.DEFAULT_UI_PORT,
     ):
         self.app = FastAPI(title="torchLoom UI WebSocket API", version="1.0.0")
         self.host = host
@@ -83,7 +83,7 @@ class WebSocketServer:
         # CORS for WebSocket connections
         self.app.add_middleware(
             CORSMiddleware,
-            allow_origins=NetworkConstants.CORS_ORIGINS,
+            allow_origins=UINetworkConstants.CORS_ORIGINS,
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
@@ -197,11 +197,11 @@ class WebSocketServer:
                 # Convert simple UI messages to ui_command format
                 ui_command_mapping = {
                     "deactivate_device": ("deactivate_device", "device_id"),
-                    "reactivate_group": ("reactivate_group", "replica_id"),
-                    "update_config": ("update_config", "replica_id"),
-                    "pause_training": ("pause_training", "replica_id"),
-                    "resume_training": ("resume_training", "replica_id"),
-                    "stop_training": ("stop_training", "replica_id"),
+                    "reactivate_group": ("reactivate_group", "process_id"),
+                    "update_config": ("update_config", "process_id"),
+                    "pause_training": ("pause_training", "process_id"),
+                    "resume_training": ("resume_training", "process_id"),
+                    "stop_training": ("stop_training", "process_id"),
                     "drain_device": ("drain", "device_id"),
                 }
                 

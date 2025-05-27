@@ -20,8 +20,7 @@ from nats.js.client import JetStreamContext
 
 import nats
 from torchLoom.common import TrainingStatus, deviceStatus
-from torchLoom.common.config import Config
-from torchLoom.common.constants import TimeConstants, WeaverStream, torchLoomConstants
+from torchLoom.common.constants import Config, TimeConstants, WeaverOutgressStream, NatsConstants
 from torchLoom.common.publishers import EventPublisher
 from torchLoom.common.subscription import SubscriptionManager
 from torchLoom.common.utils import get_device_uuid
@@ -51,7 +50,7 @@ class ThreadletListener:
 
     def __init__(
         self,
-        replica_id: str,
+        process_id: str,
         torchLoom_addr: str,
         pipe_to_main_process: "Connection",
         stop_event: "Event",
@@ -59,13 +58,13 @@ class ThreadletListener:
         # Setup logging
         self._logger = setup_logger(
             name="threadlet_logger",
-            log_file=Config.MANAGER_torchLoom_LOG_FILE,
+            log_file=LoggerConstants.MANAGER_torchLoom_LOG_FILE,
             format_log=True,
             print_to_console=True,
         )
 
         # Core identifiers
-        self._replica_id = replica_id
+        self._process_id = process_id
         self._device_uuid: Optional[str] = None
 
         # NATS connection setup via SubscriptionManager
@@ -88,13 +87,13 @@ class ThreadletListener:
         self._stop_event = stop_event
 
         # Configuration from constants
-        self._nc_timeout = Config.NC_TIMEOUT or TimeConstants.PIPE_POLL_INTERVAL
+        self._nc_timeout = TimeConstants.PIPE_POLL_INTERVAL
         self._exception_sleep = (
-            Config.EXCEPTION_RETRY_TIME or TimeConstants.ERROR_RETRY_SLEEP
+            TimeConstants.ERROR_RETRY_SLEEP
         )
 
         self._logger.info(
-            f"ThreadletListener initialized with replica_id: {self._replica_id}"
+            f"ThreadletListener initialized with process_id: {self._process_id}"
         )
 
     async def run(self) -> None:
@@ -122,7 +121,7 @@ class ThreadletListener:
             # Initialize the threadlet-specific publisher after device registration
             if self._device_uuid:
                 self._threadlet_publisher = ThreadletEventPublisher(
-                    replica_id=self._replica_id,
+                    process_id=self._process_id,
                     device_uuid=self._device_uuid,
                     event_publisher=self._event_publisher,
                 )
@@ -194,14 +193,14 @@ class ThreadletListener:
             # The weaver should have already created the WEAVELET_STREAM with all necessary subjects
             # Just subscribe to existing stream without trying to create or modify it
             self._logger.info(
-                f"Setting up subscriptions to existing stream {WeaverStream.STREAM} using SubscriptionManager"
+                f"Setting up subscriptions to existing stream {WeaverOutgressStream.STREAM} using SubscriptionManager"
             )
 
             # Subscribe to WEAVER_COMMANDS
             await self._subscription_manager.subscribe_js(
-                stream=WeaverStream.STREAM,
-                subject=torchLoomConstants.subjects.WEAVER_COMMANDS,
-                consumer=f"threadlet-{self._replica_id}",
+                stream=WeaverOutgressStream.STREAM,
+                subject=NatsConstants.subjects.WEAVER_COMMANDS,
+                consumer=f"threadlet-{self._process_id}",
                 message_handler=self._handle_weaver_command,
             )
             # Add other subscriptions if needed, e.g., _subscribe_nc from original
@@ -227,11 +226,11 @@ class ThreadletListener:
 
             await self._event_publisher.publish_device_registration(
                 device_uuid=self._device_uuid,
-                replica_id=self._replica_id,
+                process_id=self._process_id,
             )
 
             self._logger.info(
-                f"Registered device {self._device_uuid} with replica {self._replica_id}"
+                f"Registered device {self._device_uuid} with replica {self._process_id}"
             )
         except Exception as e:
             self._logger.exception(f"Failed to register device: {e}")
@@ -250,11 +249,11 @@ class ThreadletListener:
             if envelope.HasField("weaver_command"):
                 weaver_command = envelope.weaver_command
                 command_type = weaver_command.command_type
-                target_replica_id = weaver_command.target_replica_id
+                target_process_id = weaver_command.target_process_id
                 params = dict(weaver_command.params) if weaver_command.params else {}
 
                 # Only handle commands targeting this replica
-                if target_replica_id == self._replica_id:
+                if target_process_id == self._process_id:
                     self._logger.info(
                         f"Received weaver command: {command_type} with params: {params}"
                     )
@@ -265,7 +264,7 @@ class ThreadletListener:
                         cmd_type = command_type  # Use the string directly since create_command handles conversion
 
                         command_message = MessageFactory.create_command(
-                            replica_id=self._replica_id,
+                            process_id=self._process_id,
                             command_type=cmd_type,
                             params=params,
                         )
@@ -279,7 +278,7 @@ class ThreadletListener:
                         )
                 else:
                     self._logger.debug(
-                        f"Ignoring command for different replica: {target_replica_id}"
+                        f"Ignoring command for different replica: {target_process_id}"
                     )
 
         except Exception as e:
@@ -342,7 +341,7 @@ class ThreadletListener:
             )
 
             self._logger.debug(
-                f"Sent automatic heartbeat for replica {self._replica_id}"
+                f"Sent automatic heartbeat for replica {self._process_id}"
             )
 
         except Exception as e:
@@ -456,6 +455,7 @@ class ThreadletListener:
             epoch = training_status.epoch
             metrics = dict(training_status.metrics)  # Convert protobuf map to dict
             training_time = training_status.training_time
+            config = dict(training_status.config)  # Convert protobuf config map to dict
             
             # Extract message from metrics if available
             status_message_text = metrics.get("message", "")
@@ -472,6 +472,7 @@ class ThreadletListener:
                 "training_time": training_time,
                 "max_step": training_status.max_step,
                 "max_epoch": training_status.max_epoch,
+                "config": config,
             }
             
             if status_message_text:
@@ -495,7 +496,7 @@ class ThreadletListener:
             # Extract device status details from the deviceStatus protobuf message
             device_status = message.device_status
             device_id = device_status.device_id
-            replica_id = device_status.replica_id
+            process_id = device_status.process_id
             server_id = device_status.server_id
             utilization = device_status.utilization
             temperature = device_status.temperature
@@ -504,9 +505,19 @@ class ThreadletListener:
             
             self._logger.info(f"Publishing device status update: device_id='{device_id}', utilization={utilization}")
 
-            # Note: This would need a corresponding publish_device_status method in ThreadletEventPublisher
-            # For now, we'll log that we received it
-            self._logger.info(f"Device status update received but no publisher method implemented yet")
+            # Create status_data dictionary for the publisher
+            status_data = {
+                "device_id": device_id,
+                "process_id": process_id,
+                "server_id": server_id,
+                "utilization": utilization,
+                "temperature": temperature,
+                "memory_used": memory_used,
+                "memory_total": memory_total,
+            }
+
+            await self._threadlet_publisher.publish_device_status(status_data)
+            self._logger.info(f"Device status update published successfully for device: {device_id}")
         except Exception as e:
             self._logger.exception(f"Error handling device status message: {e}")
 
@@ -529,7 +540,7 @@ class ThreadletListener:
             
             self._logger.info(f"Preparing to publish status update via ThreadletEventPublisher: status='{status_str}', step={current_step}")
 
-            await self._threadlet_publisher.publish_status_update(
+            await self._threadlet_publisher.publish_training_status_update(
                 status=status_str, 
                 current_step=current_step,
                 epoch=epoch,

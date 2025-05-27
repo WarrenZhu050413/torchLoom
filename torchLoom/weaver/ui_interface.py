@@ -122,7 +122,7 @@ class UINotificationManager:
                 "devices": [
                     {
                         "device_id": device.device_id,
-                        "replica_id": device.replica_id,
+                        "process_id": device.process_id,
                         "server_id": device.server_id,
                         "utilization": device.utilization,
                         "temperature": device.temperature,
@@ -133,7 +133,7 @@ class UINotificationManager:
                 ],
                 "training_status": [
                     {
-                        "replica_id": training.replica_id,
+                        "process_id": training.process_id,
                         "current_step": training.current_step,
                         "epoch": training.epoch,
                         "metrics": dict(training.metrics),
@@ -172,7 +172,7 @@ class UINotificationManager:
         This runs in a background task and periodically broadcasts status updates
         to all connected WebSocket clients.
         """
-        from torchLoom.common.constants import TimeConstants
+        from torchLoom.common.constants import Config, TimeConstants
 
         logger.info("Starting periodic UI status broadcaster.")
 

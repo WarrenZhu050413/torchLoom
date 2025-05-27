@@ -101,7 +101,7 @@ apiService.updateConfig('replica_1', { learning_rate: 0.002 })
 // In api.js - sends WebSocket message
 this.send({
   type: 'update_config',
-  replica_id: 'replica_1',
+  process_id: 'replica_1',
   config_params: { learning_rate: 0.002 }
 })
 ```
@@ -167,7 +167,7 @@ All UI communication uses WebSockets for real-time updates:
    ```
 
 2. **WebSocket Server converts:**
-   - From: `{type: "update_config", replica_id: "replica_1", config_params: {...}}`
+   - From: `{type: "update_config", process_id: "replica_1", config_params: {...}}`
    - To: UI command format for protobuf
 
 3. **Handler dispatches:**

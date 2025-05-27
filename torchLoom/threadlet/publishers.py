@@ -17,9 +17,9 @@ class ThreadletEventPublisher(BasePublisher):
     """Publisher for threadlet events using the common EventPublisher."""
 
     def __init__(
-        self, replica_id: str, device_uuid: str, event_publisher: EventPublisher
+        self, process_id: str, device_uuid: str, event_publisher: EventPublisher
     ):
-        self.replica_id = replica_id
+        self.process_id = process_id
         self.device_uuid = device_uuid
         self.event_publisher = event_publisher
 
@@ -27,7 +27,7 @@ class ThreadletEventPublisher(BasePublisher):
         """Publish device registration event."""
         await self.event_publisher.publish_device_registration(
             device_uuid=self.device_uuid,
-            replica_id=self.replica_id,
+            process_id=self.process_id,
         )
 
     async def publish_heartbeat(
@@ -35,7 +35,7 @@ class ThreadletEventPublisher(BasePublisher):
     ) -> None:
         """Publish heartbeat event."""
         await self.event_publisher.publish_heartbeat(
-            replica_id=self.replica_id,
+            process_id=self.process_id,
             device_uuid=self.device_uuid,
             status=status,
             metadata=metadata,
@@ -44,7 +44,7 @@ class ThreadletEventPublisher(BasePublisher):
     async def publish_training_status(self, status_data: Dict[str, Any]) -> None:
         """Publish training status event."""
         await self.event_publisher.publish_training_status(
-            replica_id=self.replica_id,
+            process_id=self.process_id,
             status_data=status_data,
         )
 
@@ -52,7 +52,7 @@ class ThreadletEventPublisher(BasePublisher):
         """Publish device status event."""
         await self.event_publisher.publish_device_status(
             device_id=self.device_uuid,
-            replica_id=self.replica_id,
+            process_id=self.process_id,
             status_data=status_data,
         )
 

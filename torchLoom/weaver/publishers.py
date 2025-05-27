@@ -9,7 +9,7 @@ This module contains publishers for sending messages FROM the weaver to other co
 import time
 from typing import Dict, Optional
 
-from torchLoom.common.constants import torchLoomConstants
+from torchLoom.common.constants import Config, NatsConstants
 from torchLoom.common.publishers import BasePublisher, EventPublisher
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
@@ -45,7 +45,7 @@ class ThreadletCommandPublisher(BasePublisher):
     async def publish_weaver_command(
         self,
         command_type: str,
-        target_replica_id: str,
+        target_process_id: str,
         params: Optional[Dict[str, str]] = None,
     ) -> bool:
         """Publish a weaver command to training processes using the common publisher."""
@@ -56,39 +56,15 @@ class ThreadletCommandPublisher(BasePublisher):
 
             await self._event_publisher.publish_weaver_command(
                 command_type=command_type,
-                target_replica_id=target_replica_id,
+                target_process_id=target_process_id,
                 params=params,
             )
 
-            logger.info(f"Published command: {command_type} to {target_replica_id}")
+            logger.info(f"Published command: {command_type} to {target_process_id}")
             return True
 
         except Exception as e:
             logger.error(f"Failed to publish weaver command: {e}")
-            return False
-
-    async def publish_config_update(self, config_params: Dict[str, str]) -> bool:
-        """Publish configuration updates to all training processes."""
-        try:
-            if not self.nats_client:
-                logger.error("Cannot publish config update - no NATS client")
-                return False
-
-            js = self.nats_client.jetstream()
-            envelope = EventEnvelope()
-            config_info = envelope.config_info
-            for key, value in config_params.items():
-                config_info.config_params[key] = str(value)
-
-            await js.publish(
-                torchLoomConstants.subjects.UI_COMMANDS, envelope.SerializeToString()
-            )
-
-            logger.info(f"Published config update: {config_params}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to publish config update: {e}")
             return False
 
     async def publish(self, message_type: str, **kwargs) -> bool:
@@ -96,12 +72,12 @@ class ThreadletCommandPublisher(BasePublisher):
         try:
             if message_type == "weaver_command":
                 command_type = kwargs.get("command_type")
-                target_replica_id = kwargs.get("target_replica_id")
+                target_process_id = kwargs.get("target_process_id")
                 params = kwargs.get("params")
 
-                if command_type and target_replica_id:
+                if command_type and target_process_id:
                     return await self.publish_weaver_command(
-                        command_type, target_replica_id, params
+                        command_type, target_process_id, params
                     )
                 else:
                     logger.error("Missing required parameters for weaver_command")

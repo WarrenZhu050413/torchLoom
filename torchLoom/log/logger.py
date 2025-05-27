@@ -1,12 +1,9 @@
 import logging
 
-from torchLoom.common.config import Config
-
-
 def setup_logger(
     name: str = __name__,
     log_file: str = "logging.log",
-    format_log: bool = Config.FORMAT_LOG,
+    format_log: bool = LoggerConstants.FORMAT_LOG,
     print_to_console: bool = True,
 ) -> logging.Logger:
     """
