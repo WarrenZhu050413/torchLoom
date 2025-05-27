@@ -60,20 +60,20 @@ class StatusTracker:
 
             found_idx = -1
             for idx, d in enumerate(self._ui_state_proto.devices):
-                if d.device_id == dev_proto.device_id:
+                if d.device_uuid == dev_proto.device_uuid:
                     found_idx = idx
                     break
 
             if found_idx != -1:
                 # Device exists, update its state
                 self._ui_state_proto.devices[found_idx].CopyFrom(dev_proto)
-                logger.debug(f"Updated existing device: {dev_proto.device_id}")
+                logger.debug(f"Updated existing device: {dev_proto.device_uuid}")
             else:
                 # New device, add it to the list
                 new_device_entry = deviceStatus()
                 new_device_entry.CopyFrom(dev_proto)
                 self._ui_state_proto.devices.append(new_device_entry)
-                logger.info(f"Added new device: {dev_proto.device_id}")
+                logger.info(f"Added new device: {dev_proto.device_uuid}")
 
             self._ui_state_proto.timestamp = now_ts
             self._notify_change()
@@ -93,9 +93,9 @@ class StatusTracker:
 
     @property
     def devices(self) -> Dict[str, deviceStatus]:
-        """Get a dictionary of devices keyed by device_id."""
+        """Get a dictionary of devices keyed by device_uuid."""
         try:
-            return {device.device_id: device for device in self._ui_state_proto.devices}
+            return {device.device_uuid: device for device in self._ui_state_proto.devices}
         except Exception as e:
             logger.error(f"Failed to get devices dict: {e}")
             return {}
@@ -240,19 +240,19 @@ class StatusTracker:
         except Exception as e:
             logger.error(f"Failed to update training progress: {e}")
 
-    def update_device_status(self, device_id: str, **kwargs):
+    def update_device_status(self, device_uuid: str, **kwargs):
         """Convenience method to update device status with keyword arguments."""
         try:
             # Find or create device status
             device_status = None
             for ds in self._ui_state_proto.devices:
-                if ds.device_id == device_id:
+                if ds.device_uuid == device_uuid:
                     device_status = ds
                     break
 
             if device_status is None:
                 device_status = deviceStatus()
-                device_status.device_id = device_id
+                device_status.device_uuid = device_uuid
                 self._ui_state_proto.devices.append(device_status)
 
             # Update fields from kwargs
@@ -266,12 +266,12 @@ class StatusTracker:
         except Exception as e:
             logger.error(f"Failed to update device status: {e}")
 
-    def deactivate_device(self, device_id: str):
+    def deactivate_device(self, device_uuid: str):
         """Mark a device as inactive."""
         # Status is removed from deviceStatus. This method may need to be re-implemented or removed.
-        logger.warning(f"deactivate_device called for {device_id}, but device status field is removed.")
+        logger.warning(f"deactivate_device called for {device_uuid}, but device status field is removed.")
 
-    def update_device_config(self, device_id: str, config_params: Dict[str, Any]):
+    def update_device_config(self, device_uuid: str, config_params: Dict[str, Any]):
         """Update configuration for a specific device."""
         # Config is moved to TrainingStatus. This method should target process_id and update TrainingStatus.
-        logger.warning(f"update_device_config called for {device_id}. Config is now part of TrainingStatus. This method needs to be updated to target a process_id.")
+        logger.warning(f"update_device_config called for {device_uuid}. Config is now part of TrainingStatus. This method needs to be updated to target a process_id.")

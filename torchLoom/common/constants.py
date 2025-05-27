@@ -15,10 +15,6 @@ logger = setup_logger(
     name="torchLoom_constants", log_file=LoggerConstants.torchLoom_CONSTANTS_LOG_FILE
 )
 
-# ===========================================
-# HANDLER CONSTANTS AND CONFIGURATIONS
-# ===========================================
-
 class HandlerConstants:
     """Constants related to handler configurations."""
 
@@ -36,10 +32,6 @@ class HandlerConstants:
     # UI handler event types (merged into single handler)
     UI_EVENTS = ["ui_command"]
 
-# ===========================================
-# TIME AND NETWORK CONSTANTS
-# ===========================================
-
 class TimeConstants:
     """All timing-related constants for torchLoom."""
 
@@ -51,7 +43,7 @@ class TimeConstants:
 
     # Sleep intervals for various operations
     PIPE_POLL_INTERVAL: float = 0.1
-    ERROR_RETRY_SLEEP: float = 5.0
+    EXCEPTION_SLEEP: float = 5.0
     CLEANUP_SLEEP: float = 1.0
 
     # Process management timeouts
@@ -81,11 +73,10 @@ class UINetworkConstants:
         "http://127.0.0.1:5173",
     ]
 
-# ===========================================
-# NATS SUBJECTS AND STREAMS
-# ===========================================
 
+# NATS related constants
 class torchLoomSubjects:
+    """Subjects for torchLoom communication channels and configuration."""
     WEAVER_COMMANDS: str = "torchLoom.weaver.commands" # Weaver -> Training Process subjects
     THREADLET_EVENTS: str = "torchLoom.threadlet.events" # All events from threadlets
     EXTERNAL_EVENTS: str = "torchLoom.external.events" # All events from external systems
@@ -95,14 +86,14 @@ class StreamSpec:
     CONSUMER = None
     subjects = None
 
-# (Weaver -> Threadlets)
 class WeaverOutgressStream(StreamSpec):
+    """Weaver -> Training Process subjects"""
     STREAM: str = "WEAVER_COMMANDS_STREAM"
     CONSUMER: str = "weaver-commands-consumer"
     subjects = [torchLoomSubjects.WEAVER_COMMANDS]
 
-# (Threadlets/External -> Weaver)
 class WeaverIngressStream(StreamSpec):
+    """Threadlets/External -> Weaver"""
     STREAM: str = "WEAVER_INGRESS_STREAM"
     CONSUMER: str = "weaver-ingress-consumer"
     subjects = [
@@ -110,32 +101,11 @@ class WeaverIngressStream(StreamSpec):
         torchLoomSubjects.EXTERNAL_EVENTS,
     ]
 
-
-@dataclass
-class NatsConstantsClass:
+class NatsConstants:
     """Constants for torchLoom communication channels and configuration."""
     subjects: torchLoomSubjects = torchLoomSubjects()
     weaver_stream: WeaverOutgressStream = WeaverOutgressStream()
     weaver_ingress_stream: WeaverIngressStream = WeaverIngressStream()
     DEFAULT_ADDR: str = "nats://localhost:4222"
 
-    def __post_init__(self):
-        logger.debug(
-            f"NatsConstants initialized with DEFAULT_ADDR: {self.DEFAULT_ADDR}"
-        )
-        logger.debug(
-            f"Weaver stream: {self.weaver_stream.STREAM}, Consumer: {self.weaver_stream.CONSUMER}"
-        )
-        logger.debug(
-            f"UI stream: {self.ui_stream.STREAM}, Consumer: {self.ui_stream.CONSUMER}"
-        )
-        logger.debug(
-            f"Weaver ingress stream: {self.weaver_ingress_stream.STREAM}, Consumer: {self.weaver_ingress_stream.CONSUMER}, Subjects: {self.weaver_ingress_stream.subjects}"
-        )
-
-
-# Create a global instance for easy access
-NatsConstants = NatsConstantsClass()
-
-# Log important constants on module import
 logger.info("torchLoom constants module loaded")

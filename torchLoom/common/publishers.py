@@ -9,7 +9,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
-from torchLoom.common.constants import Config, NatsConstants
+from torchLoom.common.constants import NatsConstants
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
@@ -132,7 +132,7 @@ class EventPublisher(BasePublisher):
             logger.exception(f"Failed to publish training status: {e}")
 
     async def publish_device_status(
-        self, device_id: str, process_id: str, status_data: Dict[str, Any]
+        self, device_uuid: str, process_id: str, status_data: Dict[str, Any]
     ) -> None:
         """Publish device status event."""
         try:
@@ -144,9 +144,9 @@ class EventPublisher(BasePublisher):
             device_status = envelope.device_status
 
             # Set basic fields
-            device_status.device_id = device_id
+            device_status.device_uuid = device_uuid
             device_status.process_id = process_id
-            device_status.server_id = status_data.get("server_id", device_id)
+            device_status.server_id = status_data.get("server_id", device_uuid)
             device_status.utilization = status_data.get("utilization", 0.0)
             device_status.temperature = status_data.get("temperature", 0.0)
             device_status.memory_used = status_data.get("memory_used", 0.0)
@@ -162,7 +162,7 @@ class EventPublisher(BasePublisher):
                 envelope.SerializeToString(),
             )
 
-            logger.debug(f"Published device status for device {device_id}")
+            logger.debug(f"Published device status for device {device_uuid}")
 
         except Exception as e:
             logger.exception(f"Failed to publish device status: {e}")
@@ -219,7 +219,7 @@ class EventPublisher(BasePublisher):
             )
         elif message_type == "device_status":
             await self.publish_device_status(
-                kwargs.get("device_id"),
+                kwargs.get("device_uuid"),
                 kwargs.get("process_id"),
                 kwargs.get("status_data", {}),
             )

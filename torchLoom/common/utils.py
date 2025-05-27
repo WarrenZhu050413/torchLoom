@@ -7,9 +7,9 @@ from pynvml import nvmlDeviceGetHandleByIndex, nvmlDeviceGetUUID, nvmlInit
 
 from torchLoom.log.log_utils import log_and_raise_exception
 from torchLoom.log.logger import setup_logger
+from torchLoom.common.constants import LoggerConstants
 
 logger = setup_logger(name="torchLoom_utils", log_file=LoggerConstants.torchLoom_UTILS_LOG_FILE)
-
 
 def get_device_uuid():
     try:
@@ -21,6 +21,6 @@ def get_device_uuid():
         return device_uuid
     except Exception as e:
         # Fallback for systems without NVIDIA libraries (e.g., Mac, CPU-only systems)
-        platform_name = platform.node()
+        platform_name = os.hostname()
         logger.warning(f"Failed to get device UUID, on {platform_name}, Error: {e}")
-        return platform.node()
+        return os.hostname()

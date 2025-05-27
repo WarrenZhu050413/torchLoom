@@ -82,7 +82,7 @@ class TorchLoomWebSocketCLI:
             if devices:
                 print(f"\n🖥️  DEVICES ({len(devices)}):")
                 for device in devices:
-                    device_id = device.get('device_id') or device.get('device_uuid', 'unknown')
+                    device_uuid = device.get('device_uuid') or device.get('device_uuid', 'unknown')
                     process_id = device.get('process_id', 'unknown')
                     server_id = device.get('server_id', 'unknown')
                     utilization = device.get('utilization', 'N/A')
@@ -90,7 +90,7 @@ class TorchLoomWebSocketCLI:
                     memory_used = device.get('memory_used', 'N/A')
                     memory_total = device.get('memory_total', 'N/A')
                     
-                    print(f"  🔸 Device: {device_id}")
+                    print(f"  🔸 Device: {device_uuid}")
                     print(f"     Replica: {process_id}")
                     print(f"     Server: {server_id}")
                     print(f"     Utilization: {utilization}%")

@@ -9,7 +9,7 @@ This module contains publishers for sending messages FROM the weaver to other co
 import time
 from typing import Dict, Optional
 
-from torchLoom.common.constants import Config, NatsConstants
+from torchLoom.common.constants import NatsConstants
 from torchLoom.common.publishers import BasePublisher, EventPublisher
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope

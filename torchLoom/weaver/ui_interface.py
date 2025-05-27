@@ -121,7 +121,7 @@ class UINotificationManager:
             return {
                 "devices": [
                     {
-                        "device_id": device.device_id,
+                        "device_uuid": device.device_uuid,
                         "process_id": device.process_id,
                         "server_id": device.server_id,
                         "utilization": device.utilization,
@@ -172,7 +172,7 @@ class UINotificationManager:
         This runs in a background task and periodically broadcasts status updates
         to all connected WebSocket clients.
         """
-        from torchLoom.common.constants import Config, TimeConstants
+        from torchLoom.common.constants import TimeConstants
 
         logger.info("Starting periodic UI status broadcaster.")
 
@@ -199,7 +199,7 @@ class UINotificationManager:
                 try:
                     await asyncio.wait_for(
                         self._stop_broadcaster.wait(),
-                        timeout=TimeConstants.ERROR_RETRY_SLEEP,
+                        timeout=TimeConstants.EXCEPTION_SLEEP,
                     )
                     break
                 except asyncio.TimeoutError:

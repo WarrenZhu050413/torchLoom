@@ -97,7 +97,7 @@ class MessageFactory:
 
     @staticmethod
     def create_device_status(
-        device_id: str,
+        device_uuid: str,
         process_id: str,
         server_id: str = "",
         utilization: float = 0.0,
@@ -109,7 +109,7 @@ class MessageFactory:
         
         # Create the deviceStatus message
         device_status = torchLoom_pb2.deviceStatus(
-            device_id=device_id,
+            device_uuid=device_uuid,
             process_id=process_id,
             server_id=server_id,
             utilization=utilization,

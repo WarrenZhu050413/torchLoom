@@ -20,7 +20,7 @@ from nats.js.client import JetStreamContext
 
 import nats
 from torchLoom.common import TrainingStatus, deviceStatus
-from torchLoom.common.constants import Config, TimeConstants, WeaverOutgressStream, NatsConstants
+from torchLoom.common.constants import TimeConstants, WeaverOutgressStream, NatsConstants, LoggerConstants
 from torchLoom.common.publishers import EventPublisher
 from torchLoom.common.subscription import SubscriptionManager
 from torchLoom.common.utils import get_device_uuid
@@ -51,6 +51,7 @@ class ThreadletListener:
     def __init__(
         self,
         process_id: str,
+        device_uuid: str,
         torchLoom_addr: str,
         pipe_to_main_process: "Connection",
         stop_event: "Event",
@@ -65,7 +66,7 @@ class ThreadletListener:
 
         # Core identifiers
         self._process_id = process_id
-        self._device_uuid: Optional[str] = None
+        self._device_uuid = device_uuid
 
         # NATS connection setup via SubscriptionManager
         self._torchLoom_addr = torchLoom_addr
@@ -88,9 +89,6 @@ class ThreadletListener:
 
         # Configuration from constants
         self._nc_timeout = TimeConstants.PIPE_POLL_INTERVAL
-        self._exception_sleep = (
-            TimeConstants.ERROR_RETRY_SLEEP
-        )
 
         self._logger.info(
             f"ThreadletListener initialized with process_id: {self._process_id}"
@@ -103,20 +101,16 @@ class ThreadletListener:
             # Start a task to monitor the multiprocessing stop_event and set the asyncio stop_event
             mp_event_monitor_task = asyncio.create_task(self._monitor_mp_stop_event())
 
-            await self._subscription_manager.initialize()  # Replaces self._connect()
-            self._logger.info("Subscription manager initialized.")
+            await self._subscription_manager.initialize()
 
             # Initialize the common event publisher
             self._event_publisher = EventPublisher(
                 nats_client=self._subscription_manager.nc,
                 js_client=self._subscription_manager.js,
             )
-            self._logger.info("Event publisher initialized.")
 
-            await self._setup_subscriptions_with_manager()  # New method using SubscriptionManager
-            self._logger.info("Subscriptions set up.")
+            await self._setup_subscriptions_with_manager()
             await self._register_device()
-            self._logger.info("Device registered.")
 
             # Initialize the threadlet-specific publisher after device registration
             if self._device_uuid:
@@ -180,12 +174,12 @@ class ThreadletListener:
     async def _monitor_mp_stop_event(self) -> None:
         """Monitors the multiprocessing.Event and sets the asyncio.Event."""
         self._logger.debug("Started monitoring multiprocessing stop_event.")
-        while not self._stop_event.is_set():  # self._stop_event is the mp.Event
+        while not self._stop_event.is_set():  # self._stop_event is an mp.Event
             await asyncio.sleep(TimeConstants.MONITOR_STOP_EVENT_SLEEP)
         self._logger.info(
             "Multiprocessing stop_event detected, setting asyncio stop_event."
         )
-        self._async_stop_event.set()  # self._async_stop_event is the asyncio.Event
+        self._async_stop_event.set()  # self._async_stop_event is an asyncio.Event
 
     async def _setup_subscriptions_with_manager(self) -> None:
         """Set up subscriptions using SubscriptionManager."""
@@ -221,8 +215,6 @@ class ThreadletListener:
         try:
             if not self._event_publisher:
                 raise RuntimeError("Event publisher not initialized")
-
-            self._device_uuid = get_device_uuid()
 
             await self._event_publisher.publish_device_registration(
                 device_uuid=self._device_uuid,
@@ -308,7 +300,7 @@ class ThreadletListener:
                 await asyncio.sleep(TimeConstants.HEARTBEAT_SEND_INTERVAL)
             except Exception as e:
                 self._logger.exception(f"Error in automatic heartbeat loop: {e}")
-                await asyncio.sleep(TimeConstants.ERROR_RETRY_SLEEP)
+                await asyncio.sleep(TimeConstants.EXCEPTION_SLEEP)
 
         self._logger.info(
             f"Automatic heartbeat loop stopped after {heartbeat_count} heartbeats"
@@ -495,7 +487,7 @@ class ThreadletListener:
 
             # Extract device status details from the deviceStatus protobuf message
             device_status = message.device_status
-            device_id = device_status.device_id
+            device_uuid = device_status.device_uuid
             process_id = device_status.process_id
             server_id = device_status.server_id
             utilization = device_status.utilization
@@ -503,11 +495,11 @@ class ThreadletListener:
             memory_used = device_status.memory_used
             memory_total = device_status.memory_total
             
-            self._logger.info(f"Publishing device status update: device_id='{device_id}', utilization={utilization}")
+            self._logger.info(f"Publishing device status update: device_uuid='{device_uuid}', utilization={utilization}")
 
             # Create status_data dictionary for the publisher
             status_data = {
-                "device_id": device_id,
+                "device_uuid": device_uuid,
                 "process_id": process_id,
                 "server_id": server_id,
                 "utilization": utilization,
@@ -517,7 +509,7 @@ class ThreadletListener:
             }
 
             await self._threadlet_publisher.publish_device_status(status_data)
-            self._logger.info(f"Device status update published successfully for device: {device_id}")
+            self._logger.info(f"Device status update published successfully for device: {device_uuid}")
         except Exception as e:
             self._logger.exception(f"Error handling device status message: {e}")
 

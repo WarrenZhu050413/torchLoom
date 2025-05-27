@@ -10,11 +10,12 @@ from typing import Any, Dict, Optional, Set
 
 from nats.aio.msg import Msg
 
-from torchLoom.common.constants import Config, (
+from torchLoom.common.constants import (
     HandlerConstants,
     UINetworkConstants,
     TimeConstants,
     NatsConstants,
+    LoggerConstants,
 )
 from torchLoom.common.handlers import HandlerRegistry
 from torchLoom.common.subscription import SubscriptionManager

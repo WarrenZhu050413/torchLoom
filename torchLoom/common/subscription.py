@@ -16,7 +16,7 @@ from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
 import nats
-from torchLoom.common.constants import Config,   NatsConstants
+from torchLoom.common.constants import NatsConstants, LoggerConstants, TimeConstants
 from torchLoom.log.log_utils import log_and_raise_exception
 from torchLoom.log.logger import setup_logger
 
@@ -116,8 +116,8 @@ class SubscriptionManager:
         self._stream_manager: StreamManager | None = None  # Initialize after connection
 
         # Configuration from Config
-        self._nc_timeout = TimeConstants.NC_TIMEOUT or 1
-        self._exception_sleep = LoggerConstants.EXCEPTION_RETRY_TIME or 1
+        self._nc_timeout = TimeConstants.NC_TIMEOUT
+        self._exception_sleep = TimeConstants.EXCEPTION_SLEEP
         # Keep track of tasks created by this manager for robust cleanup
         self._managed_tasks: List[asyncio.Task] = []
 

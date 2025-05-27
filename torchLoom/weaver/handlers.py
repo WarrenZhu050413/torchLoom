@@ -9,7 +9,7 @@ import logging
 import time
 from typing import Dict, Optional, Set
 
-from torchLoom.common.constants import Config, TimeConstants
+from torchLoom.common.constants import TimeConstants
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
@@ -41,7 +41,7 @@ async def handle_device_registration(
 
     # Update device status
     device_update_kwargs = {
-        "device_id": env.register_device.device_uuid,
+        "device_uuid": env.register_device.device_uuid,
         "process_id": env.register_device.process_id, # process_id is part of deviceStatus proto
         "server_id": env.register_device.device_uuid, # Assuming device_uuid from RegisterDevice is the server_id
         "status": "active",  # Conceptual status
@@ -107,11 +107,11 @@ async def handle_training_status(env: EventEnvelope, status_tracker, **kwargs) -
 
 async def handle_device_status(env: EventEnvelope, status_tracker, **kwargs) -> None:
     """Handle device status updates from threadlets."""
-    logger.info(f"Handling device status for {env.device_status.device_id}")
+    logger.info(f"Handling device status for {env.device_status.device_uuid}")
     ds = env.device_status
     
     update_kwargs = {
-        "device_id": ds.device_id,
+        "device_uuid": ds.device_uuid,
         "process_id": ds.process_id,
         "server_id": ds.server_id,
         "utilization": ds.utilization,
@@ -138,12 +138,12 @@ async def handle_monitored_fail(env: EventEnvelope, status_tracker, **kwargs) ->
     for dev_id, device_entry in status_tracker.devices.items():
         if device_entry.server_id == device_uuid:
             device_update_kwargs = {
-                "device_id": dev_id,
+                "device_uuid": dev_id,
                 "status": "failed" # Conceptual status
             }
             status_tracker.update_device_status(**device_update_kwargs)
             # Collect process_ids associated with these devices
-            # Assuming get_replicas_for_device uses device_id
+            # Assuming get_replicas_for_device uses device_uuid
             process_ids_on_failed_server.update(status_tracker.get_replicas_for_device(dev_id))
 
 
@@ -220,13 +220,13 @@ async def handle_ui_command(
 
 
 async def handle_deactivate_device(
-    device_id: str, params: Dict, status_tracker, weaver_publish_command_func
+    device_uuid: str, params: Dict, status_tracker, weaver_publish_command_func
 ):
     """Handle deactivate device UI command."""
-    logger.info(f"Handling deactivate_device for {device_id}")
+    logger.info(f"Handling deactivate_device for {device_uuid}")
     # The deviceStatus proto doesn't have process_id directly.
-    # We need to find the process_id(s) associated with this device_id.
-    process_ids_for_device = status_tracker.get_replicas_for_device(device_id)
+    # We need to find the process_id(s) associated with this device_uuid.
+    process_ids_for_device = status_tracker.get_replicas_for_device(device_uuid)
     if process_ids_for_device:
         for process_id in process_ids_for_device: # Should typically be one for this logic stream
             training_update_kwargs = {
@@ -236,11 +236,11 @@ async def handle_deactivate_device(
             status_tracker.update_training_progress(**training_update_kwargs)
             await weaver_publish_command_func("pause", process_id)
     else:
-        logger.warning(f"No process_id found for device_id {device_id} during deactivation.")
+        logger.warning(f"No process_id found for device_uuid {device_uuid} during deactivation.")
     
     # The deactivate_device method in status_tracker is conceptual as 'status' is not on deviceStatus proto
     # It currently logs a warning. If specific fields on deviceStatus proto needed update, use update_device_status.
-    status_tracker.deactivate_device(device_id)
+    status_tracker.deactivate_device(device_uuid)
 
 
 async def handle_reactivate_group(
@@ -296,21 +296,21 @@ async def handle_resume_training(
 
 
 async def handle_drain_device(
-    device_id: str, params: Dict, status_tracker, weaver_publish_command_func
+    device_uuid: str, params: Dict, status_tracker, weaver_publish_command_func
 ):
     """Handle drain device UI command."""
-    logger.info(f"Handling drain_device for {device_id}")
+    logger.info(f"Handling drain_device for {device_uuid}")
     reason = params.get("reason", "User initiated")
 
     # Mark device as draining (conceptual status)
     device_update_kwargs = {
-        "device_id": device_id,
+        "device_uuid": device_uuid,
         "status": "draining" # Conceptual status
     }
     status_tracker.update_device_status(**device_update_kwargs)
 
     # Get replica associated with this device and pause training
-    process_ids = status_tracker.get_replicas_for_device(device_id)
+    process_ids = status_tracker.get_replicas_for_device(device_uuid)
     for process_id in process_ids:
         training_update_kwargs = {
             "process_id": process_id,
@@ -319,7 +319,7 @@ async def handle_drain_device(
         status_tracker.update_training_progress(**training_update_kwargs)
         await weaver_publish_command_func("pause", process_id)
 
-    logger.info(f"Device {device_id} marked for draining. Reason: {reason}")
+    logger.info(f"Device {device_uuid} marked for draining. Reason: {reason}")
 
 
 async def handle_global_config(

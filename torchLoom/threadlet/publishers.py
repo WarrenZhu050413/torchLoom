@@ -51,7 +51,7 @@ class ThreadletEventPublisher(BasePublisher):
     async def publish_device_status(self, status_data: Dict[str, Any]) -> None:
         """Publish device status event."""
         await self.event_publisher.publish_device_status(
-            device_id=self.device_uuid,
+            device_uuid=self.device_uuid,
             process_id=self.process_id,
             status_data=status_data,
         )

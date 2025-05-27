@@ -14,7 +14,7 @@ import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from torchLoom.common.constants import Config, UINetworkConstants
+from torchLoom.common.constants import UINetworkConstants
 from torchLoom.log.logger import setup_logger
 
 logger = setup_logger(name="websocket_server")
@@ -196,13 +196,13 @@ class WebSocketServer:
             else:
                 # Convert simple UI messages to ui_command format
                 ui_command_mapping = {
-                    "deactivate_device": ("deactivate_device", "device_id"),
+                    "deactivate_device": ("deactivate_device", "device_uuid"),
                     "reactivate_group": ("reactivate_group", "process_id"),
                     "update_config": ("update_config", "process_id"),
                     "pause_training": ("pause_training", "process_id"),
                     "resume_training": ("resume_training", "process_id"),
                     "stop_training": ("stop_training", "process_id"),
-                    "drain_device": ("drain", "device_id"),
+                    "drain_device": ("drain", "device_uuid"),
                 }
                 
                 if command_type in ui_command_mapping:

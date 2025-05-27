@@ -63,18 +63,21 @@ message Heartbeat {
 // Training Process -> Weaver messages
 message TrainingStatus {
   string process_id = 1;
-  int64 current_step = 3;
-  int64 epoch = 4;
-  map<string, string> metrics = 6; // loss, accuracy, learning_rate, etc.
-  float training_time = 7;        // Total training time in seconds
-  int64 max_step = 8;
-  int64 max_epoch = 9;
-  map<string, string> config = 10; // Training config (lr, batch_size, optimizer, etc.)
+  int64 current_step = 2;
+  int64 epoch = 3;
+  map<string, string> metrics = 4; // loss, accuracy, learning_rate, etc.
+  float training_time = 5;        // Total training time in seconds
+  int64 max_step = 6;
+  int64 max_epoch = 7;
+  map<string, string> config = 8; // Training config (lr, batch_size, optimizer, etc.)
+  // repeated string process_group_id = 9;
+  // Cluster-ID = 10
+  // Time to first all-reduce = 11
 }
 
 message deviceStatus {
-  string device_id = 1;
-  string process_id = 2;
+  string device_uuid = 1;
+  string process_id = 2;          // To delete
   string server_id = 3;
   float utilization = 5;          // 0-100%
   float temperature = 6;          // Celsius
@@ -92,7 +95,7 @@ message UIStatusUpdate {
 // UI -> Weaver messages
 message UICommand {
   string command_type = 1;  // "deactivate_device", "reactivate_group", "update_config", "pause_training", "resume_training"
-  string target_id = 2;     // device_id or replica_group_id
+  string target_id = 2;     // device_uuid or replica_group_id
   map<string, string> params = 3;
 }
 

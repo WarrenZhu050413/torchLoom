@@ -13,11 +13,10 @@ import time
 import uuid
 from typing import Any, Dict
 import random
-import platform
 import psutil
 
 from torchLoom.threadlet.threadlet import Threadlet
-from torchLoom.common.constants import Config, NatsConstants
+from torchLoom.common.constants import NatsConstants
 
 # Set up logging
 logging.basicConfig(
@@ -43,8 +42,8 @@ class DemoTrainingProcess:
         self.training_start_time = time.time()
         
         # Mock device specifications
-        self.device_id = f"mock-gpu-{uuid.uuid4().hex[:8]}"
-        self.server_id = platform.node()  # System hostname
+        self.device_uuid = f"mock-gpu-{uuid.uuid4().hex[:8]}"
+        self.server_id = os.hostname()  # System hostname
         self.mock_gpu_memory_total = 16.0  # 16GB total memory
         
         # Training configuration that can be updated
@@ -103,8 +102,8 @@ class DemoTrainingProcess:
         memory_used = self.mock_gpu_memory_total * (0.3 + 0.5 * memory_factor + random.uniform(-0.1, 0.1))
         memory_used = max(1.0, min(self.mock_gpu_memory_total, memory_used))
         
-        # device_id and process_id are handled by Threadlet.publish_device_status
-        # device_id is passed as a named argument, process_id is self._process_id from Threadlet
+        # device_uuid and process_id are handled by Threadlet.publish_device_status
+        # device_uuid is passed as a named argument, process_id is self._process_id from Threadlet
         return {
             "server_id": self.server_id,
             "utilization": utilization,
@@ -165,9 +164,9 @@ class DemoTrainingProcess:
         # Send device status update every few steps
         if self.current_step % 5 == 0:  # Update device status every 5 training steps
             device_status_metrics = self.get_mock_device_status()
-            logger.info(f"Publishing device status: utilization={device_status_metrics['utilization']:.1f}%, temp={device_status_metrics['temperature']:.1f}°C for device_id={self.device_id}")
+            logger.info(f"Publishing device status: utilization={device_status_metrics['utilization']:.1f}%, temp={device_status_metrics['temperature']:.1f}°C for device_uuid={self.device_uuid}")
             self.threadlet.publish_device_status(
-                device_id=self.device_id, # Pass device_id explicitly
+                device_uuid=self.device_uuid, # Pass device_uuid explicitly
                 **device_status_metrics   # Pass other metrics as kwargs
             )
 

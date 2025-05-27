@@ -148,7 +148,7 @@ StatusTracker provides a clean API with both proto and convenience methods:
 status_tracker.update_device_status_from_proto(device_proto)
 
 # Convenience method (for handlers)
-status_tracker.update_device_status(device_id, status="active", utilization=75.0)
+status_tracker.update_device_status(device_uuid, status="active", utilization=75.0)
 ```
 
 #### 4. **WebSocket-Only Communication**
