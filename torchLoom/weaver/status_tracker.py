@@ -266,11 +266,6 @@ class StatusTracker:
         except Exception as e:
             logger.error(f"Failed to update device status: {e}")
 
-    def deactivate_device(self, device_uuid: str):
-        """Mark a device as inactive."""
-        # Status is removed from deviceStatus. This method may need to be re-implemented or removed.
-        logger.warning(f"deactivate_device called for {device_uuid}, but device status field is removed.")
-
     def update_device_config(self, device_uuid: str, config_params: Dict[str, Any]):
         """Update configuration for a specific device."""
         # Config is moved to TrainingStatus. This method should target process_id and update TrainingStatus.

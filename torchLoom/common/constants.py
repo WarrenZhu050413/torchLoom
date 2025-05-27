@@ -104,7 +104,7 @@ class WeaverIngressStream(StreamSpec):
 class NatsConstants:
     """Constants for torchLoom communication channels and configuration."""
     subjects: torchLoomSubjects = torchLoomSubjects()
-    weaver_stream: WeaverOutgressStream = WeaverOutgressStream()
+    weaver_outgress_stream: WeaverOutgressStream = WeaverOutgressStream()
     weaver_ingress_stream: WeaverIngressStream = WeaverIngressStream()
     DEFAULT_ADDR: str = "nats://localhost:4222"
 

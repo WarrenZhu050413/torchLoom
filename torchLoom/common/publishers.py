@@ -18,7 +18,7 @@ logger = setup_logger(name="common_publishers")
 
 from abc import ABC, abstractmethod
 
-class EventPublisher(ABC):
+class BasePublisher(ABC):
     """Base publisher for components that publish events to NATS.
     Specific event publishing methods are expected to be implemented in child classes.
     """
@@ -26,7 +26,7 @@ class EventPublisher(ABC):
     def __init__(self, nats_client=None, js_client=None):
         self.nats_client = nats_client
         self.js_client = js_client
-        logger.info("EventPublisher base initialized.")
+        logger.info("BasePublisher base initialized.")
 
     @abstractmethod
     async def publish(self, message_type: str, **kwargs) -> None:

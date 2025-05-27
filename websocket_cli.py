@@ -216,7 +216,7 @@ class TorchLoomWebSocketCLI:
                     "type": "ui_command",
                     "data": {
                         "command_type": "update_config",
-                        "target_id": "demo-replica-1",
+                        "device_uuid": "demo-replica-1",
                         "params": {
                             "learning_rate": "0.0005",
                             "batch_size": "64",
@@ -228,7 +228,7 @@ class TorchLoomWebSocketCLI:
                     "type": "ui_command",
                     "data": {
                         "command_type": "update_config",
-                        "target_id": "demo-replica-1", 
+                        "device_uuid": "demo-replica-1", 
                         "params": {
                             "scheduler": "cosine_annealing",
                             "weight_decay": "0.01"
@@ -239,7 +239,7 @@ class TorchLoomWebSocketCLI:
                     "type": "ui_command",
                     "data": {
                         "command_type": "pause_training",
-                        "target_id": "demo-replica-1",
+                        "device_uuid": "demo-replica-1",
                         "params": {}
                     }
                 },
@@ -247,7 +247,7 @@ class TorchLoomWebSocketCLI:
                     "type": "ui_command",
                     "data": {
                         "command_type": "resume_training", 
-                        "target_id": "demo-replica-1",
+                        "device_uuid": "demo-replica-1",
                         "params": {}
                     }
                 },
@@ -255,7 +255,7 @@ class TorchLoomWebSocketCLI:
                     "type": "ui_command",
                     "data": {
                         "command_type": "update_config",
-                        "target_id": "demo-replica-1",
+                        "device_uuid": "demo-replica-1",
                         "params": {
                             "learning_rate": "0.002",
                             "batch_size": "128"
@@ -266,7 +266,7 @@ class TorchLoomWebSocketCLI:
                     "type": "ui_command",
                     "data": {
                         "command_type": "deactivate_device",
-                        "target_id": "mock-gpu-device",
+                        "device_uuid": "mock-gpu-device",
                         "params": {"reason": "Demo device deactivation"}
                     }
                 }

@@ -39,9 +39,6 @@ class Weaver:
     This class is responsible for managing the training process, including
     handling events and managing resources. It runs in a separate thread to
     avoid blocking the main thread.
-
-    It uses a simplified handler pattern with direct HandlerRegistry dispatch
-    for consistent event handling across all message sources.
     """
 
     def __init__(
@@ -64,14 +61,12 @@ class Weaver:
         self.ui_host = ui_host
         self.ui_port = ui_port
 
-        # UI interface components
         self.ui_notification_manager = UINotificationManager()
-        self.ui_publisher = None
+        self.ui_publisher = UIStatusPublisher()
 
         self._handler_registry: Optional[HandlerRegistry] = None
         self.threadlet_command_handler: Optional[ThreadletCommandPublisher] = None
 
-        # Heartbeat tracking for dead replica detection
         self._heartbeat_tracker = {
             "last_heartbeats": {},
             "dead_replicas": set(),
@@ -85,9 +80,6 @@ class Weaver:
         """Initialize NATS connection and JetStream via SubscriptionManager."""
         await self._subscription_manager.initialize()
         await self._setup_all_streams()
-
-        # Set up UI interface components
-        self.ui_publisher = UIStatusPublisher(self.status_tracker)
 
         if self.enable_ui:
             self.websocket_server = WebSocketServer(
@@ -137,13 +129,6 @@ class Weaver:
             "device_status", handlers.handle_device_status
         )
 
-        # Register external event handlers
-        self._handler_registry.register_handler(
-            "monitored_fail", handlers.handle_monitored_fail
-        )
-
-        # Register unified UI event handler (handles ui_command only)
-        # Note: config_info and drain are now handled as ui_command with specific command_types
         self._handler_registry.register_handler(
             "ui_command", handlers.handle_ui_command
         )
@@ -180,6 +165,7 @@ class Weaver:
         except Exception as e:
             logger.exception(f"Error in handle_message: {e}")
 
+
     async def _handle_ui_websocket_command(self, websocket_data: dict) -> None:
         """Handle UI commands received via WebSocket by converting to protobuf and using handle_message."""
         try:
@@ -194,7 +180,7 @@ class Weaver:
                 ui_command_data = websocket_data.get("data", {})
                 ui_command = envelope.ui_command
                 ui_command.command_type = ui_command_data.get("command_type", "")
-                ui_command.target_id = ui_command_data.get("target_id", "")
+                ui_command.device_uuid = ui_command_data.get("device_uuid", "")
 
                 # Add parameters
                 params = ui_command_data.get("params", {})
@@ -236,8 +222,8 @@ class Weaver:
             f"Set up stream: {NatsConstants.weaver_ingress_stream.STREAM} with subjects: {weaver_ingress_subjects}"
         )
 
-        # WEAVELET_STREAM: Now primarily for utbound Weaver -> Threadlet commands
-        weaver_commands_stream_name = NatsConstants.weaver_stream.STREAM
+        # WEAVELET_STREAM: Primarily for outbound Weaver -> Threadlet commands
+        weaver_commands_stream_name = NatsConstants.weaver_outgress_stream.STREAM
         weaver_commands_subjects = [NatsConstants.subjects.WEAVER_COMMANDS]
         await sm.maybe_create_stream(
             stream=weaver_commands_stream_name, subjects=weaver_commands_subjects

@@ -23,7 +23,7 @@ from torchLoom.common import TrainingStatus, deviceStatus
 from torchLoom.common.constants import TimeConstants, WeaverOutgressStream, NatsConstants, LoggerConstants
 from torchLoom.common.publishers import EventPublisher
 from torchLoom.common.subscription import SubscriptionManager
-from torchLoom.common.utils import get_device_uuid
+from torchLoom.common.utils import get_device_uuid, create_training_status_dict, create_device_status_dict
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto import torchLoom_pb2
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope, RegisterDevice
@@ -63,10 +63,11 @@ class ThreadletListener:
         self._device_uuid = device_uuid
         self._server_id = server_id
 
-        # NATS connection setup via SubscriptionManager
-        # Note that asyncio.Event() is used here instead of mp.Event()
-        self._torchLoom_addr = torchLoom_addr
+        # Asyncio stop event for the listener
         self._async_stop_event = asyncio.Event()
+
+        # NATS connection setup via SubscriptionManager
+        self._torchLoom_addr = torchLoom_addr
         self._subscription_manager = SubscriptionManager(
             torchLoom_addr=self._torchLoom_addr,
             stop_event=self._async_stop_event,
@@ -410,37 +411,13 @@ class ThreadletListener:
                 )
                 return
 
-            # Extract training status details from the TrainingStatus protobuf message
-            training_status = message.training_status
-            current_step = training_status.current_step
-            epoch = training_status.epoch
-            metrics = dict(training_status.metrics)  # Convert protobuf map to dict
-            training_time = training_status.training_time
-            config = dict(training_status.config)  # Convert protobuf config map to dict
-            
-            # Extract message from metrics if available
-            status_message_text = metrics.get("message", "")
-            
-            self._logger.info(f"Publishing training status update: step={current_step}, epoch={epoch}")
+            training_status_proto = message.training_status
+            self._logger.info(f"Publishing training status update: step={training_status_proto.current_step}, epoch={training_status_proto.epoch}")
 
-            # Create status_data dictionary for the publisher
-            status_data = {
-                "status_type": "batch_update",  # Default status type
-                "current_step": current_step,
-                "epoch": epoch,
-                "status": "training",  # Default status since it's no longer in protobuf
-                "metrics": metrics,
-                "training_time": training_time,
-                "max_step": training_status.max_step,
-                "max_epoch": training_status.max_epoch,
-                "config": config,
-            }
-            
-            if status_message_text:
-                status_data["message"] = status_message_text
+            status_data = create_training_status_dict(training_status_proto)
 
             await self._threadlet_publisher.publish_training_status(status_data)
-            self._logger.info(f"Training status update published successfully for step: {current_step}")
+            self._logger.info(f"Training status update published successfully for step: {training_status_proto.current_step}")
         except Exception as e:
             self._logger.exception(f"Error handling training status message: {e}")
 
@@ -454,31 +431,13 @@ class ThreadletListener:
                 )
                 return
 
-            # Extract device status details from the deviceStatus protobuf message
-            device_status = message.device_status
-            device_uuid = device_status.device_uuid
-            process_id = device_status.process_id
-            server_id = device_status.server_id
-            utilization = device_status.utilization
-            temperature = device_status.temperature
-            memory_used = device_status.memory_used
-            memory_total = device_status.memory_total
-            
-            self._logger.info(f"Publishing device status update: device_uuid='{device_uuid}', utilization={utilization}")
+            device_status_proto = message.device_status
+            self._logger.info(f"Publishing device status update: device_uuid='{device_status_proto.device_uuid}', utilization={device_status_proto.utilization}")
 
-            # Create status_data dictionary for the publisher
-            status_data = {
-                "device_uuid": device_uuid,
-                "process_id": process_id,
-                "server_id": server_id,
-                "utilization": utilization,
-                "temperature": temperature,
-                "memory_used": memory_used,
-                "memory_total": memory_total,
-            }
+            status_data = create_device_status_dict(device_status_proto)
 
             await self._threadlet_publisher.publish_device_status(status_data)
-            self._logger.info(f"Device status update published successfully for device: {device_uuid}")
+            self._logger.info(f"Device status update published successfully for device: {device_status_proto.device_uuid}")
         except Exception as e:
             self._logger.exception(f"Error handling device status message: {e}")
 

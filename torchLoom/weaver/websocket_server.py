@@ -208,9 +208,9 @@ class WebSocketServer:
                 if command_type in ui_command_mapping:
                     # Convert to ui_command format
                     cmd_type, id_field = ui_command_mapping[command_type]
-                    target_id = data.get(id_field, "")
+                    device_uuid = data.get(id_field, "")
                     
-                    # Extract params (everything except type and target_id)
+                    # Extract params (everything except type and device_uuid)
                     params = {k: v for k, v in data.items() 
                              if k not in ["type", id_field]}
                     
@@ -222,7 +222,7 @@ class WebSocketServer:
                         "type": "ui_command",
                         "data": {
                             "command_type": cmd_type,
-                            "target_id": target_id,
+                            "device_uuid": device_uuid,
                             "params": params
                         }
                     }

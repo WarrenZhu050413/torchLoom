@@ -10,15 +10,16 @@ import time
 from typing import Dict, Optional
 
 from torchLoom.common.constants import NatsConstants
-from torchLoom.common.publishers import EventPublisher
+from torchLoom.common.publishers import BasePublisher
 from torchLoom.log.logger import setup_logger
+from torchLoom.proto import torchLoom_pb2
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
-logger = setup_logger(name="publishers")
+logger = setup_logger(name="weaver_publisher")
 
 
 # Re-export the base publisher for compatibility
-Publisher = EventPublisher
+Publisher = BasePublisher
 
 
 # ===========================================
@@ -26,7 +27,7 @@ Publisher = EventPublisher
 # ===========================================
 
 
-class ThreadletCommandPublisher(EventPublisher):
+class ThreadletCommandPublisher(BasePublisher):
     """Publisher for sending commands FROM the weaver TO threadlets/training processes.
     Implements specific weaver command publishing logic.
     """
