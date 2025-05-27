@@ -35,4 +35,3 @@ class BasePublisher(ABC):
         that are called by their own version of this generic publish dispatcher.
         """
         pass
-

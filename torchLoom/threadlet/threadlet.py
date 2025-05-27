@@ -6,6 +6,7 @@ import asyncio
 import logging
 import multiprocessing
 import os
+import platform
 import threading
 import time
 import uuid
@@ -40,7 +41,7 @@ class Threadlet:
         # Core identifiers
         self._process_id = process_id or f"threadlet:{uuid.uuid4()}"
         self._device_uuid = get_device_uuid()
-        self._server_id = os.hostname() # TODO: Add tailored method for this
+        self._server_id = platform.node() # TODO: Add tailored method for this
 
         # NATS connection setup
         self._torchLoom_addr = torchLoom_addr

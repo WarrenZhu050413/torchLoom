@@ -1,4 +1,5 @@
 import asyncio
+import os
 import platform
 from typing import Any, Dict, Tuple
 
@@ -22,9 +23,9 @@ def get_device_uuid():
         return device_uuid
     except Exception as e:
         # Fallback for systems without NVIDIA libraries (e.g., Mac, CPU-only systems)
-        platform_name = os.hostname()
+        platform_name = platform.node()
         logger.warning(f"Failed to get device UUID, on {platform_name}, Error: {e}")
-        return os.hostname()
+        return platform.node()
 
 def create_training_status_dict(ts: torchLoom_pb2.TrainingStatus) -> dict:
     """Converts a TrainingStatus protobuf message to a dictionary."""
@@ -50,7 +51,7 @@ def create_training_status_dict(ts: torchLoom_pb2.TrainingStatus) -> dict:
         
     return update_kwargs
 
-def create_device_status_dict(ds: torchLoom_pb2.DeviceStatus) -> dict:
+def create_device_status_dict(ds: torchLoom_pb2.deviceStatus) -> dict:
     """Converts a DeviceStatus protobuf message to a dictionary."""
     return {
         "device_uuid": ds.device_uuid,

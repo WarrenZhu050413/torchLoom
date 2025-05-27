@@ -164,7 +164,7 @@ class WebSocketServer:
                 await websocket.send_text(
                     json.dumps({"type": "pong", "timestamp": time.time()})
                 )
-            elif command_type in ["ui_command", "config_info"]:
+            elif command_type in ["ui_command"]:
                 # Forward UI commands to Weaver's handler system
                 if self._ui_command_handler:
                     try:
@@ -193,53 +193,6 @@ class WebSocketServer:
                             }
                         )
                     )
-            else:
-                # Convert simple UI messages to ui_command format
-                ui_command_mapping = {
-                    "deactivate_device": ("deactivate_device", "device_uuid"),
-                    "reactivate_group": ("reactivate_group", "process_id"),
-                    "update_config": ("update_config", "process_id"),
-                    "pause_training": ("pause_training", "process_id"),
-                    "resume_training": ("resume_training", "process_id"),
-                    "stop_training": ("stop_training", "process_id"),
-                    "drain_device": ("drain", "device_uuid"),
-                }
-                
-                if command_type in ui_command_mapping:
-                    # Convert to ui_command format
-                    cmd_type, id_field = ui_command_mapping[command_type]
-                    device_uuid = data.get(id_field, "")
-                    
-                    # Extract params (everything except type and device_uuid)
-                    params = {k: v for k, v in data.items() 
-                             if k not in ["type", id_field]}
-                    
-                    # Special handling for config updates
-                    if command_type == "update_config" and "config_params" in data:
-                        params = data["config_params"]
-                    
-                    ui_command_data = {
-                        "type": "ui_command",
-                        "data": {
-                            "command_type": cmd_type,
-                            "device_uuid": device_uuid,
-                            "params": params
-                        }
-                    }
-                    
-                    if self._ui_command_handler:
-                        await self._ui_command_handler(ui_command_data)
-                        logger.info(f"Converted and forwarded {command_type} as UI command")
-                    else:
-                        logger.warning(f"No UI command handler available")
-                        await websocket.send_text(
-                            json.dumps({
-                                "type": "error",
-                                "message": "UI command handler not available"
-                            })
-                        )
-                else:
-                    logger.debug(f"Received message type: {command_type} (ignored)")
 
         except json.JSONDecodeError:
             logger.warning(f"Invalid JSON received via WebSocket: {message}")

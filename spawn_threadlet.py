@@ -7,6 +7,8 @@ configuration updates and send status/metrics updates to the weaver.
 
 import asyncio
 import logging
+import os
+import platform
 import signal
 import sys
 import time
@@ -43,7 +45,7 @@ class DemoTrainingProcess:
         
         # Mock device specifications
         self.device_uuid = f"mock-gpu-{uuid.uuid4().hex[:8]}"
-        self.server_id = os.hostname()  # System hostname
+        self.server_id = platform.node()  # System hostname
         self.mock_gpu_memory_total = 16.0  # 16GB total memory
         
         # Training configuration that can be updated

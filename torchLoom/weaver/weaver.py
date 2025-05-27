@@ -62,7 +62,7 @@ class Weaver:
         self.ui_port = ui_port
 
         self.ui_notification_manager = UINotificationManager()
-        self.ui_publisher = UIStatusPublisher()
+        self.ui_publisher = UIStatusPublisher(self.status_tracker)
 
         self._handler_registry: Optional[HandlerRegistry] = None
         self.threadlet_command_handler: Optional[ThreadletCommandPublisher] = None
@@ -107,6 +107,7 @@ class Weaver:
 
         self.threadlet_command_handler = ThreadletCommandPublisher(
             nats_client=self._subscription_manager.nc,
+            js_client=self._subscription_manager.js,
         )
 
         # Initialize the handler registry with direct handler registration
@@ -268,6 +269,20 @@ class Weaver:
     async def start_heartbeat_monitor(self) -> None:
         """Start the background task to monitor dead replicas and publish failure events."""
         logger.info("Starting heartbeat monitor task")
+        
+        def check_dead_replicas(heartbeat_tracker: Dict) -> Set[str]:
+            """Check for dead replicas based on heartbeat timeout."""
+            current_time = time.time()
+            dead_replicas = set()
+            
+            for process_id, last_heartbeat in heartbeat_tracker["last_heartbeats"].items():
+                if current_time - last_heartbeat > TimeConstants.HEARTBEAT_TIMEOUT:
+                    if process_id not in heartbeat_tracker["dead_replicas"]:
+                        logger.warning(f"Replica {process_id} marked as dead (no heartbeat for {current_time - last_heartbeat:.1f}s)")
+                        heartbeat_tracker["dead_replicas"].add(process_id)
+                        dead_replicas.add(process_id)
+        
+        return dead_replicas
 
         while not self._stop_nats.is_set():
             try:
