@@ -22,6 +22,7 @@ import nats
 from torchLoom.common import TrainingStatus, deviceStatus
 from torchLoom.common.config import Config
 from torchLoom.common.constants import TimeConstants, WeaverStream, torchLoomConstants
+from torchLoom.common.publishers import EventPublisher
 from torchLoom.common.subscription import SubscriptionManager
 from torchLoom.common.utils import get_device_uuid
 from torchLoom.log.logger import setup_logger
@@ -35,6 +36,7 @@ from .message import (
     deserialize_message,
     serialize_message,
 )
+from .publishers import ThreadletEventPublisher
 
 logger = setup_logger(name="threadlet_listener")
 
@@ -72,6 +74,10 @@ class ThreadletListener:
         )
         # self._nc, self._js, self._subscriptions are now managed by _subscription_manager
 
+        # Common publisher for all event publishing
+        self._event_publisher: Optional[EventPublisher] = None
+        self._threadlet_publisher: Optional[ThreadletEventPublisher] = None
+
         # Inter-process communication using a single duplex pipe
         self._pipe_to_main_process = pipe_to_main_process
         self._stop_event = stop_event
@@ -93,8 +99,23 @@ class ThreadletListener:
             mp_event_monitor_task = asyncio.create_task(self._monitor_mp_stop_event())
 
             await self._subscription_manager.initialize()  # Replaces self._connect()
+            
+            # Initialize the common event publisher
+            self._event_publisher = EventPublisher(
+                nats_client=self._subscription_manager.nc,
+                js_client=self._subscription_manager.js,
+            )
+            
             await self._setup_subscriptions_with_manager()  # New method using SubscriptionManager
             await self._register_device()
+
+            # Initialize the threadlet-specific publisher after device registration
+            if self._device_uuid:
+                self._threadlet_publisher = ThreadletEventPublisher(
+                    replica_id=self._replica_id,
+                    device_uuid=self._device_uuid,
+                    event_publisher=self._event_publisher,
+                )
 
             # Start background tasks including the async pipe listener
             async_tasks = [
@@ -173,22 +194,16 @@ class ThreadletListener:
             raise
 
     async def _register_device(self) -> None:
-        """Register this device with the weaver."""
+        """Register this device with the weaver using the common publisher."""
         try:
-            if not self._subscription_manager or not self._subscription_manager.js:
-                raise RuntimeError("JetStream not initialized")
-            if not EventEnvelope:
-                raise RuntimeError("EventEnvelope not available")
+            if not self._event_publisher:
+                raise RuntimeError("Event publisher not initialized")
 
             self._device_uuid = get_device_uuid()
 
-            envelope = EventEnvelope()
-            envelope.register_device.device_uuid = self._device_uuid
-            envelope.register_device.replica_id = self._replica_id
-
-            await self._subscription_manager.js.publish(  # Use SubscriptionManager's js
-                torchLoomConstants.subjects.THREADLET_EVENTS,  # Changed subject
-                envelope.SerializeToString(),
+            await self._event_publisher.publish_device_registration(
+                device_uuid=self._device_uuid,
+                replica_id=self._replica_id,
             )
 
             self._logger.info(
@@ -260,41 +275,21 @@ class ThreadletListener:
                 await asyncio.sleep(TimeConstants.ERROR_RETRY_SLEEP)
 
     async def _send_heartbeat(self) -> None:
-        """Send a heartbeat message to the weaver."""
+        """Send a heartbeat message to the weaver using the threadlet publisher."""
         try:
-            if (
-                not self._subscription_manager
-                or not self._subscription_manager.nc
-                or self._subscription_manager.nc.is_closed
-            ):  # Check via SM
-                self._logger.warning(
-                    "Cannot send heartbeat - NATS not connected via SubscriptionManager"
-                )
+            if not self._threadlet_publisher:
+                self._logger.warning("Cannot send heartbeat - threadlet publisher not initialized")
                 return
 
-            # Import protobuf message types
-            if not EventEnvelope:
-                self._logger.warning("EventEnvelope not available, skipping heartbeat")
-                return
+            # Create metadata
+            metadata = {
+                "process_id": str(os.getpid()) if hasattr(os, "getpid") else "unknown",
+                "nats_addr": self._torchLoom_addr,
+            }
 
-            # Create heartbeat message
-            envelope = EventEnvelope()
-            heartbeat = envelope.heartbeat
-            heartbeat.replica_id = self._replica_id
-            heartbeat.device_uuid = self._device_uuid or f"device_{self._replica_id}"
-            heartbeat.timestamp = int(time.time())
-            heartbeat.status = "active"
-
-            # Add some metadata (this could be extended to include training metrics)
-            heartbeat.metadata["process_id"] = (
-                str(os.getpid()) if hasattr(os, "getpid") else "unknown"
-            )
-            heartbeat.metadata["nats_addr"] = self._torchLoom_addr
-
-            # Publish heartbeat
-            await self._subscription_manager.nc.publish(  # Use SubscriptionManager's nc
-                torchLoomConstants.subjects.THREADLET_EVENTS,  # Changed subject
-                envelope.SerializeToString(),
+            await self._threadlet_publisher.publish_heartbeat(
+                status="active",
+                metadata=metadata,
             )
 
             self._logger.debug(f"Sent heartbeat for replica {self._replica_id}")
@@ -378,27 +373,30 @@ class ThreadletListener:
             self._logger.exception(f"Error processing pipe message: {e}")
 
     async def _handle_metrics_message(self, message) -> None:
-        """Handle metrics message from Threadlet."""
+        """Handle metrics message from Threadlet using the threadlet publisher."""
         try:
-            status_dict = {
-                "replica_id": message.replica_id,
-                "status_type": "batch_update",
-                "current_step": message.step,
-                "epoch": message.epoch,
-                "metrics": {
-                    **dict(message.metrics),
-                    "loss": message.loss if message.HasField("loss") else None,
-                    "accuracy": (
-                        message.accuracy if message.HasField("accuracy") else None
-                    ),
-                    "gradient_norm": (
-                        message.gradient_norm
-                        if message.HasField("gradient_norm")
-                        else None
-                    ),
-                },
-            }
-            self._logger.debug(f"Received metrics to publish: {status_dict}")
+            if not self._threadlet_publisher:
+                self._logger.warning("Cannot publish metrics - threadlet publisher not initialized")
+                return
+
+            # Extract metrics from the message
+            loss = message.loss if message.HasField("loss") else None
+            accuracy = message.accuracy if message.HasField("accuracy") else None
+            gradient_norm = message.gradient_norm if message.HasField("gradient_norm") else None
+
+            # Get additional metrics
+            additional_metrics = dict(message.metrics)
+
+            await self._threadlet_publisher.publish_metrics(
+                step=message.step,
+                epoch=message.epoch,
+                loss=loss,
+                accuracy=accuracy,
+                gradient_norm=gradient_norm,
+                **additional_metrics,
+            )
+
+            self._logger.debug(f"Published metrics for replica {self._replica_id}")
         except Exception as e:
             self._logger.exception(f"Error handling metrics message: {e}")
 
@@ -438,143 +436,6 @@ class ThreadletListener:
             )
         except Exception as e:
             self._logger.warning(f"Error sending message to Threadlet via pipe: {e}")
-
-    async def _publish_status(self, status: Dict[str, Any]) -> None:
-        """Publish status to NATS using protobuf messages based on status type."""
-        try:
-            if (
-                not self._subscription_manager
-                or not self._subscription_manager.nc
-                or self._subscription_manager.nc.is_closed
-            ):  # Check via SM
-                self._logger.warning(
-                    "Cannot publish status - NATS not connected via SubscriptionManager"
-                )
-                return
-
-            # Import protobuf message types
-            if not EventEnvelope:
-                self._logger.warning(
-                    "EventEnvelope not available, skipping status publish"
-                )
-                return
-
-            # Determine status type and route accordingly
-            status_type = status.get("status_type", "unknown")
-
-            if status_type == "training_status":
-                await self._publish_training_status(status)
-            elif status_type == "device_status":
-                await self._publish_device_status(status)
-            else:
-                self._logger.warning(f"Unknown status type: {status_type}")
-
-        except Exception as e:
-            self._logger.exception(f"Failed to publish status: {e}")
-
-    async def _publish_training_status(self, status: Dict[str, Any]) -> None:
-        """Publish TrainingStatus message to NATS."""
-        # Ensure replica_id is set
-        if "replica_id" not in status:
-            status["replica_id"] = self._replica_id
-
-        training_status_obj = TrainingStatus.from_dict(status)
-        envelope = EventEnvelope()
-
-        # Use helper to copy fields
-        self._copy_training_status_fields(envelope.training_status, training_status_obj)
-
-        await self._publish_envelope(
-            torchLoomConstants.subjects.THREADLET_EVENTS,  # Changed subject
-            envelope,
-            f"TrainingStatus: {training_status_obj.status_type} for {training_status_obj.replica_id} to THREADLET_EVENTS",
-        )
-
-    async def _publish_device_status(self, status: Dict[str, Any]) -> None:
-        """Publish deviceStatus message to NATS."""
-        device_status_obj = deviceStatus.from_dict(status)
-        envelope = EventEnvelope()
-
-        # Use helper to copy fields
-        self._copy_device_status_fields(envelope.device_status, device_status_obj)
-
-        await self._publish_envelope(
-            torchLoomConstants.subjects.THREADLET_EVENTS,  # Changed subject
-            envelope,
-            f"deviceStatus: {device_status_obj.device_id} status={device_status_obj.status} to THREADLET_EVENTS",
-        )
-
-    def _copy_training_status_fields(
-        self, protobuf_msg, status_obj: TrainingStatus
-    ) -> None:
-        """Copy fields from TrainingStatus object to protobuf message."""
-        # Define field mappings (protobuf_field_name: object_attribute_name)
-        field_mappings = {
-            "replica_id": "replica_id",
-            "status_type": "status_type",
-            "current_step": "current_step",
-            "epoch": "epoch",
-            "status": "status",
-            "training_time": "training_time",
-        }
-
-        # Copy simple fields
-        self._copy_fields_by_mapping(protobuf_msg, status_obj, field_mappings)
-
-        # Copy metrics map
-        protobuf_msg.metrics.update({k: str(v) for k, v in status_obj.metrics.items()})
-
-    def _copy_device_status_fields(
-        self, protobuf_msg, status_obj: deviceStatus
-    ) -> None:
-        """Copy fields from deviceStatus object to protobuf message."""
-        # Define field mappings (protobuf_field_name: object_attribute_name)
-        field_mappings = {
-            "device_id": "device_id",
-            "replica_id": "replica_id",
-            "server_id": "server_id",
-            "status": "status",
-            "utilization": "utilization",
-            "temperature": "temperature",
-            "memory_used": "memory_used",
-            "memory_total": "memory_total",
-        }
-
-        # Copy simple fields
-        self._copy_fields_by_mapping(protobuf_msg, status_obj, field_mappings)
-
-        # Copy config map
-        protobuf_msg.config.update({k: str(v) for k, v in status_obj.config.items()})
-
-    def _copy_fields_by_mapping(
-        self, protobuf_msg, source_obj, field_mappings: Dict[str, str]
-    ) -> None:
-        """Generic helper to copy fields based on a mapping dictionary."""
-        for protobuf_field, source_attr in field_mappings.items():
-            if hasattr(source_obj, source_attr):
-                value = getattr(source_obj, source_attr)
-                if value is not None:  # Add check for None before setting attribute
-                    setattr(protobuf_msg, protobuf_field, value)
-
-    async def _publish_envelope(
-        self, subject: str, envelope: EventEnvelope, log_message: str
-    ) -> None:
-        """Helper method to publish protobuf envelope to NATS with error handling."""
-        try:
-            # Use SubscriptionManager's nc for publishing
-            await self._subscription_manager.nc.publish(
-                subject, envelope.SerializeToString()
-            )
-            self._logger.debug(f"Published {log_message}")
-        except Exception as e:
-            self._logger.exception(f"Failed to publish to {subject}: {e}")
-
-    async def _monitor_stop_event(self) -> None:
-        """Monitor the ASYNC stop event and exit when signaled."""
-        await self._async_stop_event.wait()  # Wait for the asyncio event
-        self._logger.info(
-            "Async stop event detected, shutting down relevant async tasks"
-        )
 
     async def _cleanup(self) -> None:
         """Clean up resources."""

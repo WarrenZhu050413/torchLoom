@@ -294,12 +294,10 @@ class Weaver:
         while not self._stop_nats.is_set():
             try:
                 if self.ui_update_handler and self.websocket_server:
-                    constructed_envelope = (
-                        await self.ui_update_handler.publish_ui_update()
-                    )
+                    constructed_envelope = await self.status_tracker.create_ui_status_update()
                     if constructed_envelope:
                         logger.debug(
-                            "UIStatusUpdate envelope constructed by publisher for potential internal use/logging."
+                            "UIStatusUpdate envelope constructed by status tracker for potential internal use/logging."
                         )
                 await asyncio.sleep(TimeConstants.UI_UPDATE_INTERVAL)
             except asyncio.CancelledError:

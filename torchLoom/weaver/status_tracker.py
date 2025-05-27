@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Set
 
+from torchLoom.common.publishers import UIStatusPublisher
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import TrainingStatus, UIStatusUpdate, deviceStatus
 
@@ -23,6 +24,9 @@ class StatusTracker:
 
     The device-replica mappings that were previously handled by DeviceReplicaMapper
     are now integrated into the replica state management.
+    
+    This class now uses the common UIStatusPublisher for creating UI updates
+    to promote maximum code reuse.
     """
 
     # UI State (protobuf message for UI updates)
@@ -33,6 +37,13 @@ class StatusTracker:
     # Device-replica mapping functionality (moved from DeviceReplicaMapper)
     device_to_replicas: Dict[str, Set[str]] = field(default_factory=dict)
     replica_to_devices: Dict[str, Set[str]] = field(default_factory=dict)
+
+    # Common UI status publisher for creating UI updates
+    _ui_publisher: UIStatusPublisher = field(init=False)
+
+    def __post_init__(self):
+        """Initialize the UI status publisher after dataclass initialization."""
+        self._ui_publisher = UIStatusPublisher(status_tracker=self)
 
     # ========================================
     # DEVICE STATE MANAGEMENT
@@ -240,8 +251,41 @@ class StatusTracker:
         """
         return self._ui_state_proto
 
+    async def create_ui_status_update(self):
+        """Create a UI status update using the common publisher for maximum code reuse."""
+        return await self._ui_publisher.create_ui_status_update()
+
     def set_communication_status(self, status: str):
         """Updates the overall communication status string."""
         self.communication_status = status
         self._ui_state_proto.timestamp = int(time.time())  # Update timestamp on change
         logger.info(f"Communication status set to: {status}")
+
+    # Add compatibility property for replicas (used by websocket_server)
+    @property
+    def replicas(self) -> Dict[str, Any]:
+        """Get replica information for compatibility with existing code."""
+        replica_dict = {}
+        for training_status in self._ui_state_proto.training_status:
+            replica_dict[training_status.replica_id] = type('Replica', (), {
+                'status': training_status.status,
+                'step_progress': float(training_status.metrics.get('step_progress', 0)),
+                'last_active_step': int(training_status.metrics.get('last_active_step', 0)),
+                'fixed_step': None,  # This would need to be added to protobuf if needed
+            })()
+        return replica_dict
+
+    def get_system_summary(self) -> Dict[str, Any]:
+        """Get system summary for UI display."""
+        active_devices = len(self.get_active_devices())
+        total_devices = len(self._ui_state_proto.devices)
+        active_replicas = len([r for r in self._ui_state_proto.training_status if r.status == "training"])
+        total_replicas = len(self._ui_state_proto.training_status)
+        
+        return {
+            "active_devices": active_devices,
+            "total_devices": total_devices,
+            "active_replicas": active_replicas,
+            "total_replicas": total_replicas,
+            "communication_status": self.communication_status,
+        }

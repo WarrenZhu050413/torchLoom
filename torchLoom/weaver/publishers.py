@@ -13,19 +13,15 @@ from abc import ABC, abstractmethod
 from typing import Dict, Optional, Set
 
 from torchLoom.common.constants import torchLoomConstants
+from torchLoom.common.publishers import BasePublisher, EventPublisher, UIStatusPublisher
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
 logger = setup_logger(name="publishers")
 
 
-class Publisher(ABC):
-    """Abstract base class for message publishers."""
-
-    @abstractmethod
-    async def publish(self, *args, **kwargs) -> None:
-        """Publish a message or update."""
-        pass
+# Re-export the base publisher for compatibility
+Publisher = BasePublisher
 
 
 # ===========================================
@@ -33,47 +29,21 @@ class Publisher(ABC):
 # ===========================================
 
 
-class UIUpdatePublisher(Publisher):
-    """Publisher for sending consolidated UI updates FROM the weaver TO the UI."""
-
-    def __init__(self, status_tracker):
-        self.status_tracker = status_tracker
+class UIUpdatePublisher(UIStatusPublisher):
+    """Publisher for sending consolidated UI updates FROM the weaver TO the UI.
+    
+    This now inherits from the common UIStatusPublisher for maximum code reuse.
+    """
 
     async def publish_ui_update(self) -> Optional[EventEnvelope]:
         """Constructs a UIStatusUpdate message. Does not publish to NATS anymore."""
         try:
-            # Create consolidated UIStatusUpdate
-            envelope = EventEnvelope()
-            ui_update = envelope.ui_status_update
-            ui_update.communication_status = self.status_tracker.communication_status
-            ui_update.timestamp = int(time.time())
-
-            # Add all device statuses
-            for device_info in self.status_tracker.devices.values():
-                device_status = ui_update.devices.add()
-                device_status.device_id = device_info.device_id
-                device_status.replica_id = device_info.replica_id
-                device_status.server_id = device_info.server_id
-                device_status.status = device_info.status
-                device_status.utilization = device_info.utilization
-                device_status.temperature = device_info.temperature
-                device_status.memory_used = device_info.memory_used
-                device_status.memory_total = device_info.memory_total
-
-                # Add config
-                for key, value in device_info.config.items():
-                    device_status.config[key] = str(value)
-
-            # Add all training statuses (copy from existing UI state)
-            ui_snapshot = self.status_tracker.get_ui_status_snapshot()
-            for existing_training_status in ui_snapshot.training_status:
-                training_status = ui_update.training_status.add()
-                training_status.CopyFrom(existing_training_status)
-
-            logger.debug(
-                "[WEAVER->UI] Constructed UIStatusUpdate envelope. Publishing to NATS is removed."
-            )
-            return envelope  # Return the constructed envelope
+            envelope = await self.create_ui_status_update()
+            if envelope:
+                logger.debug(
+                    "[WEAVER->UI] Constructed UIStatusUpdate envelope. Publishing to NATS is removed."
+                )
+            return envelope
 
         except Exception as e:
             logger.exception(
@@ -81,27 +51,28 @@ class UIUpdatePublisher(Publisher):
             )
             return None
 
-    async def publish(self) -> None:
-        """Implement the abstract publish method."""
-        await self.publish_ui_update()  # Now just constructs and logs
-
 
 # ===========================================
 # WEAVELET PUBLISHERS (Weaver -> Training Processes)
 # ===========================================
 
 
-class ThreadletCommandPublisher(Publisher):
+class ThreadletCommandPublisher(BasePublisher):
     """Publisher for sending commands FROM the weaver TO threadlets/training processes.
 
-    Also includes heartbeat monitoring functionality to detect dead replicas
-    and publish failure events for them.
+    This now uses the common EventPublisher for maximum code reuse.
     """
 
     def __init__(self, nats_client=None, threadlet_handler=None):
         self.nats_client = nats_client
         self.threadlet_handler = (
             threadlet_handler  # Reference to threadlet handler for heartbeat monitoring
+        )
+        
+        # Initialize the common event publisher
+        self._event_publisher = EventPublisher(
+            nats_client=nats_client,
+            js_client=nats_client.jetstream() if nats_client else None,
         )
 
     async def publish_weaver_command(
@@ -110,27 +81,12 @@ class ThreadletCommandPublisher(Publisher):
         target_replica_id: str,
         params: Optional[Dict[str, str]] = None,
     ) -> None:
-        """Publish a weaver command to training processes."""
+        """Publish a weaver command to training processes using the common publisher."""
         try:
-            if not self.nats_client:
-                logger.warning(
-                    "[WEAVER->WEAVELET] Cannot publish weaver command - no NATS client"
-                )
-                return
-
-            envelope = EventEnvelope()
-            weaver_command = envelope.weaver_command
-            weaver_command.command_type = command_type
-            weaver_command.target_replica_id = target_replica_id
-
-            if params:
-                for key, value in params.items():
-                    weaver_command.params[key] = str(value)
-
-            js = self.nats_client.jetstream()
-            await js.publish(
-                torchLoomConstants.subjects.WEAVER_COMMANDS,
-                envelope.SerializeToString(),
+            await self._event_publisher.publish_weaver_command(
+                command_type=command_type,
+                target_replica_id=target_replica_id,
+                params=params,
             )
 
             logger.info(
