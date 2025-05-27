@@ -27,8 +27,8 @@ class StatusTracker:
     _ui_state_proto: UIStatusUpdate = field(default_factory=UIStatusUpdate)
 
     # Device-replica mapping functionality
-    device_to_replicas: Dict[str, Set[str]] = field(default_factory=dict)
-    replica_to_devices: Dict[str, Set[str]] = field(default_factory=dict)
+    device_to_pid: Dict[str, Set[str]] = field(default_factory=dict)
+    pid_to_devices: Dict[str, Set[str]] = field(default_factory=dict)
 
     # UI notification callback - will be set by UI interface
     _ui_notification_callback: Optional[Any] = field(init=False, default=None)
@@ -140,14 +140,14 @@ class StatusTracker:
     # DEVICE-REPLICA MAPPING
     # ========================================
 
-    def add_device_replica_mapping(self, device_uuid: str, process_id: str) -> bool:
+    def add_device_pid_mapping(self, device_uuid: str, process_id: str) -> bool:
         """Add a mapping from device to replica. Returns True if this is a new mapping."""
         try:
-            is_new = process_id not in self.device_to_replicas.setdefault(
+            is_new = process_id not in self.device_to_pid.setdefault(
                 device_uuid, set()
             )
             if is_new:
-                self.device_to_replicas[device_uuid].add(process_id)
+                self.device_to_pid[device_uuid].add(process_id)
                 logger.debug(
                     f"Added device->replica mapping: {device_uuid} -> {process_id}"
                 )
@@ -156,14 +156,14 @@ class StatusTracker:
             logger.error(f"Failed to add device-replica mapping: {e}")
             return False
 
-    def add_replica_device_mapping(self, process_id: str, device_uuid: str) -> bool:
+    def add_pid_device_mapping(self, process_id: str, device_uuid: str) -> bool:
         """Add a mapping from replica to device. Returns True if this is a new mapping."""
         try:
-            is_new = device_uuid not in self.replica_to_devices.setdefault(
+            is_new = device_uuid not in self.pid_to_devices.setdefault(
                 process_id, set()
             )
             if is_new:
-                self.replica_to_devices[process_id].add(device_uuid)
+                self.pid_to_devices[process_id].add(device_uuid)
                 logger.debug(
                     f"Added replica->device mapping: {process_id} -> {device_uuid}"
                 )
@@ -172,18 +172,18 @@ class StatusTracker:
             logger.error(f"Failed to add replica-device mapping: {e}")
             return False
 
-    def get_replicas_for_device(self, device_uuid: str) -> Set[str]:
+    def get_pid_for_device(self, device_uuid: str) -> Set[str]:
         """Get all replicas associated with a device."""
         try:
-            return self.device_to_replicas.get(device_uuid, set())
+            return self.device_to_pid.get(device_uuid, set())
         except Exception as e:
             logger.error(f"Failed to get replicas for device {device_uuid}: {e}")
             return set()
 
-    def get_devices_for_replica(self, process_id: str) -> Set[str]:
+    def get_devices_for_pid(self, process_id: str) -> Set[str]:
         """Get all devices associated with a replica."""
         try:
-            return self.replica_to_devices.get(process_id, set())
+            return self.pid_to_devices.get(process_id, set())
         except Exception as e:
             logger.error(f"Failed to get devices for replica {process_id}: {e}")
             return set()
@@ -227,12 +227,6 @@ class StatusTracker:
                         training_status.metrics.update({k: str(v) for k, v in value.items()})
                     else:
                         setattr(training_status, key, value)
-                # Move config handling to TrainingStatus
-                # This specific 'if' block for config outside hasattr is now covered by the loop above.
-                # Consider removing if redundant, but it's fine as is if it serves a specific purpose for new configs.
-                # if key == "config" and isinstance(value, dict):
-                #     training_status.config.clear()
-                #     training_status.config.update({k: str(v) for k, v in value.items()})
 
             self._ui_state_proto.timestamp = int(time.time())
             self._notify_change()

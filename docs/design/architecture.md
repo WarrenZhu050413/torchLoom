@@ -98,8 +98,8 @@ The DRMap is the core data structure that enables torchLoom to translate between
 
 The mapping is implemented as two related maps:
 
-1. `device_to_replicas`: Maps hardware device IDs to training replica IDs
-2. `replica_to_devices`: Maps training replica IDs to hardware device IDs
+1. `device_to_pid`: Maps hardware device IDs to training replica IDs
+2. `pid_to_devices`: Maps training replica IDs to hardware device IDs
 
 This is designed as a flexible many-to-many mapping:
 - Each device can be associated with multiple replicas

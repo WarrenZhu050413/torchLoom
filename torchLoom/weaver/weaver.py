@@ -135,7 +135,7 @@ class Weaver:
 
         logger.info("Registered all handlers with simplified registry")
 
-    async def handle_message(self, env: EventEnvelope) -> None:
+    async def _handle_message(self, env: EventEnvelope) -> None:
         """Main message handler that dispatches to appropriate handlers using the registry."""
         try:
             payload_type = env.WhichOneof("body")
@@ -165,7 +165,6 @@ class Weaver:
         except Exception as e:
             logger.exception(f"Error in handle_message: {e}")
 
-
     async def _handle_ui_websocket_command(self, websocket_data: dict) -> None:
         """Handle UI commands received via WebSocket by converting to protobuf and using handle_message."""
         try:
@@ -192,7 +191,7 @@ class Weaver:
                 return
 
             # Use the unified message handler
-            await self.handle_message(envelope)
+            await self._handle_message(envelope)
 
         except Exception as e:
             logger.exception(f"Error handling WebSocket UI command: {e}")
@@ -238,28 +237,20 @@ class Weaver:
             env = EventEnvelope()
             env.ParseFromString(msg.data)
             logger.debug(f"Received NATS message on subject {msg.subject}")
-
-            # Log if the message is a heartbeat
-            if env.HasField("heartbeat"):
-                logger.info(
-                    f"NATS message_handler received heartbeat for replica: {env.heartbeat.process_id} on subject: {msg.subject}"
-                )
-
-            # Use the unified message handler
-            await self.handle_message(env)
+            await self._handle_message(env)
 
         except Exception as e:
             logger.exception(
                 f"Error in NATS message_handler: {e} while processing message from subject {msg.subject if msg else 'N/A'}"
             )
 
-    def get_replicas_for_device(self, device_uuid: str) -> Set[str]:
+    def get_pid_for_device(self, device_uuid: str) -> Set[str]:
         """Get all replicas associated with a device."""
-        return self.status_tracker.get_replicas_for_device(device_uuid)
+        return self.status_tracker.get_pid_for_device(device_uuid)
 
-    def get_devices_for_replica(self, process_id: str) -> Set[str]:
+    def get_devices_for_pid(self, process_id: str) -> Set[str]:
         """Get all devices associated with a replica."""
-        return self.status_tracker.get_devices_for_replica(process_id)
+        return self.status_tracker.get_devices_for_pid(process_id)
 
     async def start_ui_server(self) -> None:
         """Start the WebSocket UI server and status broadcaster."""
@@ -323,14 +314,14 @@ class Weaver:
         logger.info("Weaver stopped successfully.")
 
     @property
-    def device_to_replicas(self) -> Dict[str, Set[str]]:
+    def device_to_pid(self) -> Dict[str, Set[str]]:
         """Get device to replicas mapping."""
-        return self.status_tracker.device_to_replicas
+        return self.status_tracker.device_to_pid
 
     @property
-    def replica_to_devices(self) -> Dict[str, Set[str]]:
+    def pid_to_devices(self) -> Dict[str, Set[str]]:
         """Get replica to devices mapping."""
-        return self.status_tracker.replica_to_devices
+        return self.status_tracker.pid_to_devices
 
 
 async def main():

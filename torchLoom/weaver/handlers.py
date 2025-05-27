@@ -27,10 +27,10 @@ async def handle_device_registration(
     """Handle device registration from threadlets."""
     logger.info(f"Handling device registration for {env.register_device.device_uuid}")
     # Update mappings using the status tracker
-    status_tracker.add_device_replica_mapping(
+    status_tracker.add_device_pid_mapping(
         env.register_device.device_uuid, env.register_device.process_id
     )
-    status_tracker.add_replica_device_mapping(
+    status_tracker.add_pid_device_mapping(
         env.register_device.process_id, env.register_device.device_uuid
     )
     # Update training progress
@@ -161,7 +161,7 @@ async def handle_deactivate_device(
     logger.info(f"Handling deactivate_device for {device_uuid}")
     # The deviceStatus proto doesn't have process_id directly.
     # We need to find the process_id(s) associated with this device_uuid.
-    process_ids_for_device = status_tracker.get_replicas_for_device(device_uuid)
+    process_ids_for_device = status_tracker.get_pid_for_device(device_uuid)
     if process_ids_for_device:
         for process_id in process_ids_for_device: # Should typically be one for this logic stream
             training_update_kwargs = {
