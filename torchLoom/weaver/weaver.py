@@ -17,7 +17,6 @@ from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
 from .handlers import (
-    DeviceReplicaMapper,
     ExternalHandler,
     MessageHandler,
     ThreadletHandler,
@@ -109,7 +108,6 @@ class Weaver:
             torchLoom_addr=torchLoom_addr, stop_event=self._stop_nats
         )
 
-        self._device_mapper = DeviceReplicaMapper()
         self.status_tracker = StatusTracker()
         self.websocket_server = None
         self.enable_ui = enable_ui
@@ -144,11 +142,10 @@ class Weaver:
 
         self._handlers = {
             "threadlet": ThreadletHandler(
-                self._device_mapper,
                 self.status_tracker,
                 heartbeat_timeout=TimeConstants.HEARTBEAT_MONITOR_INTERVAL * 3,
             ),
-            "external": ExternalHandler(self._device_mapper, self.status_tracker),
+            "external": ExternalHandler(self.status_tracker),
             "ui": UIHandler(
                 self.status_tracker,
                 weaver_publish_command_func=self.threadlet_command_handler.publish_weaver_command,
@@ -173,7 +170,6 @@ class Weaver:
         weaver_ingress_subjects = [
             torchLoomConstants.subjects.THREADLET_EVENTS,
             torchLoomConstants.subjects.EXTERNAL_EVENTS,
-            torchLoomConstants.subjects.CONFIG_INFO,
         ]
         await sm.maybe_create_stream(
             stream=torchLoomConstants.weaver_ingress_stream.STREAM,
@@ -184,17 +180,6 @@ class Weaver:
         )
 
         # WEAVELET_STREAM: Now primarily for outbound Weaver -> Threadlet commands
-        # It might also be used for specific direct configurations if not covered by ingress.
-        # For now, let's assume WEAVER_COMMANDS is the main subject here.
-        # If DR_SUBJECT or CONFIG_INFO were responses or specific interactions, they might stay or move.
-        # Given the refactor, DR_SUBJECT and CONFIG_INFO (from threadlet) are on THREADLET_EVENTS.
-        # CONFIG_INFO from external systems is on EXTERNAL_EVENTS.
-        # So, WEAVELET_STREAM might only need WEAVER_COMMANDS if it's a PULL stream for threadlets.
-        # Or, if WEAVER_COMMANDS are push, it might not need a stream if not using JS for it.
-        # For simplicity, if WEAVER_COMMANDS are simple NATS messages, this stream might not be needed
-        # or could be simplified. However, the original code had it, let's keep it for WEAVER_COMMANDS
-        # if it's intended for JS persistence/replayability for commands.
-        # Assuming WEAVER_COMMANDS are sent to threadlets and might benefit from JetStream features:
         weaver_commands_stream_name = "WEAVER_COMMANDS_STREAM"
         weaver_commands_subjects = [torchLoomConstants.subjects.WEAVER_COMMANDS]
         await sm.maybe_create_stream(
@@ -260,21 +245,18 @@ class Weaver:
                         f"Unhandled payload type {payload_type} on THREADLET_EVENTS subject"
                     )
 
-            # Dispatch to EXTERNAL_EVENTS handler (and CONFIG_INFO if it's on its own subject routed to this handler)
-            elif msg.subject == torchLoomConstants.subjects.EXTERNAL_EVENTS or (
-                msg.subject == torchLoomConstants.subjects.CONFIG_INFO
-                and payload_type == "config_info"
-            ):
-                if payload_type in ["monitored_fail", "config_info"]:
+            # Dispatch to EXTERNAL_EVENTS handler
+            elif msg.subject == torchLoomConstants.subjects.EXTERNAL_EVENTS:
+                if payload_type in ["monitored_fail"]:
                     await self._handlers["external"].handle(env)
                 else:
                     logger.warning(
-                        f"Unhandled payload type {payload_type} on EXTERNAL_EVENTS/CONFIG_INFO subject"
+                        f"Unhandled payload type {payload_type} on EXTERNAL_EVENTS subject"
                     )
 
             # Dispatch to UI_COMMANDS handler
             elif msg.subject == torchLoomConstants.subjects.UI_COMMANDS:
-                if payload_type == "ui_command":
+                if payload_type in ["ui_command", "config_info"]:
                     await self._handlers["ui"].handle(env)
                 else:
                     logger.warning(
@@ -293,11 +275,11 @@ class Weaver:
 
     def get_replicas_for_device(self, device_uuid: str) -> Set[str]:
         """Get all replicas associated with a device."""
-        return self._device_mapper.get_replicas_for_device(device_uuid)
+        return self.status_tracker.get_replicas_for_device(device_uuid)
 
     def get_devices_for_replica(self, replica_id: str) -> Set[str]:
         """Get all devices associated with a replica."""
-        return self._device_mapper.get_devices_for_replica(replica_id)
+        return self.status_tracker.get_devices_for_replica(replica_id)
 
     async def start_ui_server(self) -> None:
         """Start the WebSocket UI server."""
@@ -380,12 +362,12 @@ class Weaver:
     @property
     def device_to_replicas(self) -> Dict[str, Set[str]]:
         """Get device to replicas mapping."""
-        return self._device_mapper.device_to_replicas
+        return self.status_tracker.device_to_replicas
 
     @property
     def replica_to_devices(self) -> Dict[str, Set[str]]:
         """Get replica to devices mapping."""
-        return self._device_mapper.replica_to_devices
+        return self.status_tracker.replica_to_devices
 
     def override_handler(self, handler_category: str, handler: MessageHandler) -> None:
         """Override a consolidated handler with a custom implementation.
@@ -488,7 +470,6 @@ async def main():
             ingress_subjects_to_subscribe = [
                 torchLoomConstants.subjects.THREADLET_EVENTS,
                 torchLoomConstants.subjects.EXTERNAL_EVENTS,
-                torchLoomConstants.subjects.CONFIG_INFO,
                 torchLoomConstants.subjects.UI_COMMANDS,
             ]
 

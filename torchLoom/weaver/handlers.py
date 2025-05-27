@@ -38,11 +38,9 @@ class ThreadletHandler(MessageHandler):
 
     def __init__(
         self,
-        device_mapper: "DeviceReplicaMapper",
         status_tracker,
         heartbeat_timeout: float = 90.0,
     ):
-        self.device_mapper = device_mapper
         self.status_tracker = status_tracker
         self.heartbeat_timeout = heartbeat_timeout
         self._last_heartbeats: Dict[str, float] = {}
@@ -75,11 +73,11 @@ class ThreadletHandler(MessageHandler):
             f"[ThreadletHandler] Handling device registration for {env.register_device.device_uuid}"
         )
         # Minimal logic:
-        # Update mappings using the device mapper
-        self.device_mapper.add_device_replica_mapping(
+        # Update mappings using the status tracker
+        self.status_tracker.add_device_replica_mapping(
             env.register_device.device_uuid, env.register_device.replica_id
         )
-        self.device_mapper.add_replica_device_mapping(
+        self.status_tracker.add_replica_device_mapping(
             env.register_device.replica_id, env.register_device.device_uuid
         )
         # Update status tracker (basic registration)
@@ -149,7 +147,7 @@ class ThreadletHandler(MessageHandler):
             f"[ThreadletHandler] Handling drain event for {env.drain.device_uuid}"
         )
         # Minimal logic:
-        replicas = self.device_mapper.get_replicas_for_device(env.drain.device_uuid)
+        replicas = self.status_tracker.get_replicas_for_device(env.drain.device_uuid)
         for replica_id in replicas:
             self.status_tracker.update_training_progress(
                 replica_id=replica_id, status="draining"
@@ -190,10 +188,8 @@ class ExternalHandler(MessageHandler):
 
     def __init__(
         self,
-        device_mapper: "DeviceReplicaMapper",
         status_tracker,
     ):
-        self.device_mapper = device_mapper
         self.status_tracker = status_tracker
         logger.info("ExternalHandler initialized (simplified)")
 
@@ -203,8 +199,6 @@ class ExternalHandler(MessageHandler):
         try:
             if env.HasField("monitored_fail"):
                 await self._handle_failure_event(env)
-            elif env.HasField("config_info"):
-                await self._handle_configuration_change(env)
             else:
                 logger.warning(
                     f"ExternalHandler: Unknown event type in envelope: {env.WhichOneof('payload')}"
@@ -218,7 +212,7 @@ class ExternalHandler(MessageHandler):
         )
         # Minimal logic:
         device_uuid = env.monitored_fail.device_uuid
-        replica_ids = self.device_mapper.get_replicas_for_device(device_uuid)
+        replica_ids = self.status_tracker.get_replicas_for_device(device_uuid)
         if replica_ids:
             for device_status in list(
                 self.status_tracker.devices.values()
@@ -233,23 +227,6 @@ class ExternalHandler(MessageHandler):
                 )
         # Publishing REPLICA_FAIL is removed from here. Weaver would do it if necessary.
         pass
-
-    async def _handle_configuration_change(self, env: EventEnvelope) -> None:
-        logger.info(
-            f"[ExternalHandler] Handling configuration change: {env.config_info.config_params}"
-        )
-        # Minimal logic:
-        config_params = dict(env.config_info.config_params)
-        for device_id in list(
-            self.status_tracker.devices.keys()
-        ):  # Iterate over a copy
-            self.status_tracker.update_device_config(
-                device_id, config_params
-            )  # Assumes a method like this exists or update device status
-        # Publishing to CONFIG_INFO NATS subject is removed from here. Weaver would do it if necessary.
-        pass
-
-    # _send_replica_fail_event removed as NATS client is removed
 
 
 # ===========================================
@@ -275,6 +252,8 @@ class UIHandler(MessageHandler):
         try:
             if env.HasField("ui_command"):
                 await self._handle_ui_command(env)
+            elif env.HasField("config_info"):
+                await self._handle_configuration_change(env)
             else:
                 logger.warning(
                     f"UIHandler: Unknown event type in envelope: {env.WhichOneof('payload')}"
@@ -365,38 +344,24 @@ class UIHandler(MessageHandler):
         await self.publish_weaver_command("resume", replica_id)
         pass
 
+    async def _handle_configuration_change(self, env: EventEnvelope) -> None:
+        """Handle configuration change events from UI."""
+        logger.info(
+            f"[UIHandler] Handling configuration change: {env.config_info.config_params}"
+        )
+        # Apply configuration changes to all devices
+        config_params = dict(env.config_info.config_params)
+        for device_id in list(self.status_tracker.devices.keys()):
+            self.status_tracker.update_device_config(device_id, config_params)
+        
+        # Optionally publish configuration updates to threadlets
+        # This could be done via the weaver command publisher if needed
+        logger.info(f"Applied configuration changes to all devices: {config_params}")
+        pass
+
 
 # ===========================================
 # UTILITY CLASSES
 # ===========================================
 
-
-class DeviceReplicaMapper:
-    """Manages mapping between devices and replicas."""
-
-    def __init__(self):
-        self.device_to_replicas: Dict[str, Set[str]] = {}
-        self.replica_to_devices: Dict[str, Set[str]] = {}
-        logger.info("DeviceReplicaMapper initialized")
-
-    def add_device_replica_mapping(self, device_uuid: str, replica_id: str) -> bool:
-        is_new = replica_id not in self.device_to_replicas.setdefault(
-            device_uuid, set()
-        )
-        if is_new:
-            self.device_to_replicas[device_uuid].add(replica_id)
-        return is_new
-
-    def add_replica_device_mapping(self, replica_id: str, device_uuid: str) -> bool:
-        is_new = device_uuid not in self.replica_to_devices.setdefault(
-            replica_id, set()
-        )
-        if is_new:
-            self.replica_to_devices[replica_id].add(device_uuid)
-        return is_new
-
-    def get_replicas_for_device(self, device_uuid: str) -> Set[str]:
-        return self.device_to_replicas.get(device_uuid, set())
-
-    def get_devices_for_replica(self, replica_id: str) -> Set[str]:
-        return self.replica_to_devices.get(replica_id, set())
+# DeviceReplicaMapper functionality has been moved to StatusTracker

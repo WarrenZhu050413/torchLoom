@@ -1,0 +1,61 @@
+---
+description: Prevent and fix circular import issues in Python modules
+globs: 
+alwaysApply: false
+---
+<rule>
+name: circular_import_prevention
+description: Prevent and fix circular import issues in Python modules
+filters:
+  - type: file_extension
+    pattern: "\\.py$"
+  - type: content
+    pattern: "import.*constants|from.*constants"
+
+actions:
+  - type: suggest
+    message: |
+      ## Circular Import Prevention
+
+      ### Common Circular Import Pattern
+      ```python
+      # ❌ Problem: constants.py imports from modules that import constants
+      # constants.py
+      from torchLoom.weaver.handlers import WeaverIngressSubjects  # Circular!
+
+      # handlers.py  
+      from torchLoom.common.constants import torchLoomConstants  # Circular!
+      ```
+
+      ### Solution: Keep Constants Self-Contained
+      ```python
+      # ✅ Solution: Define subjects directly in constants.py
+      class WeaverIngressSubjects:
+          THREADLET_EVENTS: str = "torchLoom.threadlet.events"
+          EXTERNAL_EVENTS: str = "torchLoom.external.events"
+          CONFIG_INFO: str = "torchLoom.config.info"
+
+      class WeaverIngressStream(StreamSpec):
+          subjects = [
+              WeaverIngressSubjects.THREADLET_EVENTS,
+              WeaverIngressSubjects.EXTERNAL_EVENTS,
+              WeaverIngressSubjects.CONFIG_INFO,
+          ]
+      ```
+
+      ### Import Order Best Practices
+      1. Standard library imports
+      2. Third-party imports  
+      3. Local application imports (most specific last)
+      4. Avoid importing from modules that might import back
+
+examples:
+  - input: |
+      # Circular import issue
+      from torchLoom.weaver.handlers import SomeClass
+      from torchLoom.common.constants import torchLoomConstants
+    output: |
+      # Fixed - define constants locally or restructure
+      from torchLoom.common.constants import torchLoomConstants
+      # Define SomeClass locally or import differently
+</rule>

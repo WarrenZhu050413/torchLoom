@@ -18,8 +18,6 @@ class TimeConstants:
 
 
 class torchLoomSubjects:
-    CONFIG_INFO: str = "torchLoom.config.info"
-
     # UI <-> Weaver subjects
     UI_COMMANDS: str = "torchLoom.ui.commands"
 
@@ -33,21 +31,10 @@ class torchLoomSubjects:
     )
 
 
-class WeaverSubjects:
-    UI_COMMANDS: str = torchLoomSubjects.UI_COMMANDS
-    WEAVER_COMMANDS: str = torchLoomSubjects.WEAVER_COMMANDS
-
-
 class StreamSpec:
     STREAM = None
     CONSUMER = None
     subjects = None
-
-
-class WeaverStream(StreamSpec):
-    STREAM: str = "WEAVELET_STREAM"
-    CONSUMER: str = "weaver-consumer"
-    subjects = [torchLoomSubjects.WEAVER_COMMANDS]
 
 
 # UI-specific stream for WebSocket updates
@@ -65,7 +52,6 @@ class UIStream(StreamSpec):
 class WeaverIngressSubjects:
     THREADLET_EVENTS: str = torchLoomSubjects.THREADLET_EVENTS
     EXTERNAL_EVENTS: str = torchLoomSubjects.EXTERNAL_EVENTS
-    CONFIG_INFO: str = torchLoomSubjects.CONFIG_INFO
 
 
 class WeaverIngressStream(StreamSpec):
@@ -74,7 +60,6 @@ class WeaverIngressStream(StreamSpec):
     subjects = [
         torchLoomSubjects.THREADLET_EVENTS,
         torchLoomSubjects.EXTERNAL_EVENTS,
-        torchLoomSubjects.CONFIG_INFO,
     ]
 
 
@@ -83,7 +68,6 @@ class torchLoomConstantsClass:
     """Constants for torchLoom communication channels and configuration."""
 
     subjects: torchLoomSubjects = torchLoomSubjects()
-    weaver_stream: WeaverStream = WeaverStream()
     ui_stream: UIStream = UIStream()
     weaver_ingress_stream: WeaverIngressStream = WeaverIngressStream()
     DEFAULT_ADDR: str = Config.DEFAULT_ADDR
@@ -100,9 +84,6 @@ class torchLoomConstantsClass:
         )
         logger.debug(
             f"Weaver ingress stream: {self.weaver_ingress_stream.STREAM}, Consumer: {self.weaver_ingress_stream.CONSUMER}, Subjects: {self.weaver_ingress_stream.subjects}"
-        )
-        logger.debug(
-            f"Subject paths: CONFIG_INFO={self.subjects.CONFIG_INFO if hasattr(self.subjects, 'CONFIG_INFO') else 'N/A'}"
         )
 
 

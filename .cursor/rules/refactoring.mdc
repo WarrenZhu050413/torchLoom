@@ -1,0 +1,91 @@
+---
+description: Systematic approach to large codebase refactoring
+globs: 
+alwaysApply: false
+---
+
+<rule>
+name: refactoring_methodology
+description: Systematic approach to large codebase refactoring
+filters:
+  - type: file_extension
+    pattern: "\\.md$"
+  - type: content
+    pattern: "refactor|plan|phase"
+
+actions:
+  - type: suggest
+    message: |
+      ## Systematic Refactoring Methodology
+
+      ### Phase 1: Analysis and Simplification
+      1. **Remove Backward Compatibility**
+         - Identify legacy properties and methods
+         - Remove deprecated functionality
+         - Update documentation
+
+      2. **Identify Code Duplication**
+         - Look for repeated patterns
+         - Consolidate similar functionality
+         - Extract common utilities
+
+      3. **Simplify Complex Logic**
+         - Replace complex handlers with simple logging
+         - Remove unnecessary abstraction layers
+         - Eliminate hardcoded configurations
+
+      ### Phase 2: Component Testing
+      1. **Test Core Components Individually**
+         - Message factories
+         - Handler registries
+         - Status trackers
+         - Basic functionality without integration
+
+      2. **Fix Issues as They Arise**
+         - Import path problems
+         - Missing methods
+         - Circular dependencies
+
+      ### Phase 3: Integration Testing
+      1. **Test Component Interactions**
+         - Message passing between components
+         - Handler dispatch chains
+         - Status synchronization
+
+      2. **End-to-End Testing**
+         - Full system integration
+         - Real-world scenarios
+         - Performance validation
+
+      ### Success Criteria
+      - All core functionality tests pass
+      - Code is significantly simplified
+      - No backward compatibility code remains
+      - Clear separation of concerns
+      - Minimal code duplication
+
+examples:
+  - input: |
+      # Unstructured refactoring
+      # Just start changing code randomly
+    output: |
+      # Structured refactoring plan
+      ## Phase 1: Analysis
+      - Remove legacy code
+      - Identify duplication
+      - Simplify complex logic
+      
+      ## Phase 2: Component Testing
+      - Test each component individually
+      - Fix issues incrementally
+      
+      ## Phase 3: Integration
+      - Test component interactions
+      - End-to-end validation
+</rule>
+
+metadata:
+  priority: high
+  version: 1.0
+  created_from: "torchLoom refactoring project learnings"
+  applies_to: ["distributed systems", "protobuf", "multiprocessing", "Python refactoring"]

@@ -1,3 +1,5 @@
+rm -r ./nats/jetstream
+
 python -m grpc_tools.protoc \
   --proto_path=$(pwd)/torchLoom/proto \
   --python_out=$(pwd)/torchLoom/proto \

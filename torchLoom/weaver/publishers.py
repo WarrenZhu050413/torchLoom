@@ -64,23 +64,14 @@ class UIUpdatePublisher(Publisher):
                 for key, value in device_info.config.items():
                     device_status.config[key] = str(value)
 
-            # Add all training statuses
-            for replica_info in self.status_tracker.replicas.values():
+            # Add all training statuses (copy from existing UI state)
+            ui_snapshot = self.status_tracker.get_ui_status_snapshot()
+            for existing_training_status in ui_snapshot.training_status:
                 training_status = ui_update.training_status.add()
-                training_status.replica_id = replica_info.replica_id
-                training_status.status_type = "training_update"
-                training_status.current_step = replica_info.current_step
-                training_status.step_progress = replica_info.step_progress
-                training_status.status = replica_info.status
-                training_status.batch_idx = replica_info.last_active_step
+                training_status.CopyFrom(existing_training_status)
 
-            # Add topology information
-            for server_info in self.status_tracker.servers.values():
-                topology = ui_update.topology.add()
-                topology.server_id = server_info.server_id
-                topology.replica_group_id = server_info.replica_group_id
-                for device_id in server_info.device_ids:
-                    topology.device_ids.append(device_id)
+            # Note: Topology information is not currently tracked in the reorganized StatusTracker
+            # If topology is needed, it would need to be added to the StatusTracker or derived from device-replica mappings
 
             # Publish to UI - This part is removed as UI_UPDATE NATS subject is removed.
             # await self.nats_client.publish(
@@ -161,7 +152,7 @@ class ThreadletCommandPublisher(Publisher):
             )
 
     async def publish_config_update(self, config_params: Dict[str, str]) -> None:
-        """Publish configuration updates to all training processes."""
+        """Publish configuration updates to all training processes via UI_COMMANDS."""
         try:
             if not self.nats_client:
                 logger.warning(
@@ -176,11 +167,12 @@ class ThreadletCommandPublisher(Publisher):
             for key, value in config_params.items():
                 config_info.config_params[key] = str(value)
 
+            # Publish to UI_COMMANDS
             await js.publish(
-                torchLoomConstants.subjects.CONFIG_INFO, envelope.SerializeToString()
+                torchLoomConstants.subjects.UI_COMMANDS, envelope.SerializeToString()
             )
 
-            logger.info(f"[WEAVER->WEAVELET] Published config update: {config_params}")
+            logger.info(f"[WEAVER->WEAVELET] Published config update via UI_COMMANDS: {config_params}")
 
         except Exception as e:
             logger.exception(f"[WEAVER->WEAVELET] Failed to publish config update: {e}")

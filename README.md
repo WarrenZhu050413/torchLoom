@@ -139,6 +139,32 @@ graph TD
     class NATS nats;
 ```
 
+## Quickstart
+
+First, start a NATS server:
+
+```sh
+./nats/nats-server -c ./nats/nats.conf
+```
+
+Then, start the Weaver service:
+
+```sh
+python -m torchLoom.weaver.weaver
+```
+
+Then, start the cli:
+
+```sh
+python -m torchLoom.cli
+```
+
+Then, start the training process:
+
+```sh
+python -m torchLoom.examples.pytorch.train_fed
+```
+
 ## Environment setup
 
 cd into scripts and run the setup script for your machine.

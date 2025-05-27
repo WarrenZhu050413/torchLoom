@@ -1,0 +1,69 @@
+---
+description: Maintain consistent import paths after refactoring
+globs: 
+alwaysApply: false
+---
+<rule>
+name: import_path_consistency
+description: Maintain consistent import paths after refactoring
+filters:
+  - type: file_extension
+    pattern: "\\.py$"
+  - type: content
+    pattern: "from.*import|import.*"
+
+actions:
+  - type: suggest
+    message: |
+      ## Import Path Consistency
+
+      ### 1. Update __init__.py Files After Refactoring
+      ```python
+      # ❌ Wrong - importing from old module name
+      from .core import Threadlet
+
+      # ✅ Correct - update to new module name
+      from .threadlet import Threadlet
+      ```
+
+      ### 2. Fix Class Name Changes
+      ```python
+      # ❌ Old class name
+      from torchLoom.weaver.status_tracker import WeaverUIState
+
+      # ✅ New class name
+      from torchLoom.weaver.status_tracker import StatusTracker
+      ```
+
+      ### 3. Remove Non-Existent Imports
+      ```python
+      # ❌ Remove imports for deleted classes
+      from .handlers import (
+          MessageHandler,
+          MonitoredFailEvent,  # ❌ This class was removed
+      )
+
+      # ✅ Only import existing classes
+      from .handlers import MessageHandler
+      ```
+
+      ### 4. Update Relative Imports
+      ```python
+      # After moving files, update relative imports
+      # ❌ Old path
+      from ..weaver.core import Weaver
+
+      # ✅ New path  
+      from ..weaver.weaver import Weaver
+      ```
+
+examples:
+  - input: |
+      # Outdated imports after refactoring
+      from .core import Threadlet
+      from .handlers import MonitoredFailEvent
+    output: |
+      # Updated imports
+      from .threadlet import Threadlet
+      # Remove MonitoredFailEvent import (class deleted)
+</rule>
