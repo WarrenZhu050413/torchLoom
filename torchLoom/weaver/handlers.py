@@ -66,12 +66,21 @@ async def handle_training_status(env: EventEnvelope, status_tracker, **kwargs) -
     """Handle training status updates from threadlets."""
     logger.info(f"Handling training status for {env.training_status.replica_id}")
     ts = env.training_status
+    
+    # Calculate step progress if we have max_step
+    step_progress = 0.0
+    if ts.max_step > 0:
+        step_progress = float(ts.current_step) / float(ts.max_step)
+    
+    # Use a default status since it's no longer in the protobuf
+    default_status = "training"
+    
     status_tracker.update_training_progress(
         replica_id=ts.replica_id,
         current_step=ts.current_step,
-        step_progress=ts.step_progress,
-        status=ts.status,
-        last_active_step=ts.batch_idx,
+        step_progress=step_progress,
+        status=default_status,
+        last_active_step=ts.current_step,  # Use current_step instead of batch_idx
     )
 
 

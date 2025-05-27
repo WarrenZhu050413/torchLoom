@@ -105,11 +105,11 @@ class EventPublisher(BasePublisher):
 
             # Set basic fields
             training_status.replica_id = replica_id
-            training_status.status_type = status_data.get("status_type", "update")
             training_status.current_step = status_data.get("current_step", 0)
             training_status.epoch = status_data.get("epoch", 0)
-            training_status.status = status_data.get("status", "active")
             training_status.training_time = status_data.get("training_time", 0.0)
+            training_status.max_step = status_data.get("max_step", 0)
+            training_status.max_epoch = status_data.get("max_epoch", 0)
 
             # Add metrics
             metrics = status_data.get("metrics", {})

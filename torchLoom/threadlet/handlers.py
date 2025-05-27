@@ -24,7 +24,7 @@ logger = setup_logger(name="threadlet_handlers")
 # Command dispatch table
 COMMAND_HANDLERS = {
     CommandType.KILL: "handle_kill_command",
-    CommandType.PAUSE: "handle_pause_command", 
+    CommandType.PAUSE: "handle_pause_command",
     CommandType.RESUME: "handle_resume_command",
     CommandType.UPDATE_CONFIG: "handle_update_config",
 }
@@ -35,7 +35,7 @@ def handle_command_message(
     handler_registry: HandlerRegistry,
     auto_dispatch: bool,
     stop_callback: Optional[Callable] = None,
-    **kwargs
+    **kwargs,
 ) -> None:
     """Main command handler that dispatches to specific command handlers."""
     try:
@@ -49,16 +49,14 @@ def handle_command_message(
         # Check for custom command type in params
         actual_command_type = params.pop("_command_type", None) or command_type
 
-        logger.info(
-            f"Processing command: {actual_command_type} with params: {params}"
-        )
+        logger.info(f"Processing command: {actual_command_type} with params: {params}")
 
         # Use dispatch table to find handler
         handler_name = COMMAND_HANDLERS.get(actual_command_type)
         if not handler_name:
             # Try with command_type enum if actual_command_type didn't match
             handler_name = COMMAND_HANDLERS.get(command_type)
-        
+
         if handler_name:
             # Get the handler function from the current module
             handler_func = globals().get(handler_name)
@@ -68,21 +66,19 @@ def handle_command_message(
                     handler_registry=handler_registry,
                     auto_dispatch=auto_dispatch,
                     stop_callback=stop_callback,
-                    **kwargs
+                    **kwargs,
                 )
             else:
                 logger.error(f"Handler function {handler_name} not found in module")
         else:
             logger.warning(f"Unknown command type: {actual_command_type}")
-            
+
     except Exception as e:
         logger.exception(f"Error handling command message: {e}")
 
 
 def handle_kill_command(
-    params: Dict[str, Any],
-    stop_callback: Optional[Callable] = None,
-    **kwargs
+    params: Dict[str, Any], stop_callback: Optional[Callable] = None, **kwargs
 ) -> None:
     """Handle KILL command from weaver."""
     logger.warning("Received KILL command from weaver")
@@ -96,7 +92,7 @@ def handle_pause_command(
     params: Dict[str, Any],
     handler_registry: HandlerRegistry,
     auto_dispatch: bool,
-    **kwargs
+    **kwargs,
 ) -> None:
     """Handle PAUSE command from weaver."""
     logger.info("Received PAUSE command from weaver")
@@ -108,7 +104,7 @@ def handle_resume_command(
     params: Dict[str, Any],
     handler_registry: HandlerRegistry,
     auto_dispatch: bool,
-    **kwargs
+    **kwargs,
 ) -> None:
     """Handle RESUME command from weaver."""
     logger.info("Received RESUME command from weaver")
@@ -120,7 +116,7 @@ def handle_update_config(
     params: Dict[str, Any],
     handler_registry: HandlerRegistry,
     auto_dispatch: bool,
-    **kwargs
+    **kwargs,
 ) -> None:
     """Handle UPDATE_CONFIG command from weaver."""
     logger.info(f"Received config update command with params: {params}")
@@ -128,10 +124,7 @@ def handle_update_config(
         handler_registry.dispatch_handlers(params)
 
 
-def handle_status_command(
-    params: Dict[str, Any],
-    **kwargs
-) -> None:
+def handle_status_command(params: Dict[str, Any], **kwargs) -> None:
     """Handle STATUS command from weaver."""
     logger.info(f"Received status command: {params}")
     # Status updates can be handled here if needed
@@ -146,8 +139,8 @@ def handle_status_command(
 def create_threadlet_command_registry() -> HandlerRegistry:
     """Create and configure the command handler registry for Threadlet."""
     registry = HandlerRegistry("threadlet_commands")
-    
+
     # Register the main command handler
     registry.register_handler("command", handle_command_message)
-    
-    return registry 
+
+    return registry

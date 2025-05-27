@@ -10,6 +10,7 @@ import logging
 from typing import Any, Awaitable, Callable, Dict, List, Tuple
 
 import nats.errors
+from nats.js import errors as js_errors
 from nats.aio.client import Client
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
@@ -271,7 +272,7 @@ class SubscriptionManager:
                         break
                     continue  # Normal timeout, no messages
                 except (
-                    nats.errors.JetStreamError
+                    js_errors.APIError
                 ) as js_e:  # More specific NATS/JS errors
                     logger.error(
                         f"JetStream error on {subject} (consumer: {consumer}): {js_e}"

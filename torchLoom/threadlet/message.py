@@ -13,12 +13,13 @@ from torchLoom.proto import torchLoom_pb2
 
 # Use only command messages - config is now a command type
 PipeMessage = Union[
-    torchLoom_pb2.PipeHeartbeatMessage,
-    torchLoom_pb2.PipeMetricsMessage,
     torchLoom_pb2.PipeCommandMessage,
+    torchLoom_pb2.PipeTrainingStatusMessage,
+    torchLoom_pb2.PipeDeviceStatusMessage,
 ]
 ThreadletToListenerMessage = Union[
-    torchLoom_pb2.PipeHeartbeatMessage, torchLoom_pb2.PipeMetricsMessage
+    torchLoom_pb2.PipeTrainingStatusMessage,
+    torchLoom_pb2.PipeDeviceStatusMessage,
 ]
 ListenerToThreadletMessage = (
     torchLoom_pb2.PipeCommandMessage
@@ -26,10 +27,10 @@ ListenerToThreadletMessage = (
 
 
 class MessageType(Enum):
-    """Message types for pipe communication (simplified to only use COMMAND)."""
+    """Message types for pipe communication."""
 
-    HEARTBEAT = torchLoom_pb2.PIPE_HEARTBEAT
-    METRICS = torchLoom_pb2.PIPE_METRICS
+    TRAINING_STATUS = torchLoom_pb2.PIPE_TRAINING_STATUS
+    DEVICE_STATUS = torchLoom_pb2.PIPE_DEVICE_STATUS
     COMMAND = torchLoom_pb2.PIPE_COMMAND
 
 
@@ -42,51 +43,82 @@ class CommandType(Enum):
     UPDATE_CONFIG = torchLoom_pb2.UPDATE_CONFIG
     CONFIG = "CONFIG"
 
-
 class MessageFactory:
     """Simple factory for creating messages using Protobuf."""
 
     @staticmethod
-    def create_heartbeat(
-        replica_id: str, status: str = "active"
-    ) -> torchLoom_pb2.PipeHeartbeatMessage:
-        """Create a protobuf heartbeat message."""
-        return torchLoom_pb2.PipeHeartbeatMessage(
-            message_type=torchLoom_pb2.PIPE_HEARTBEAT,
-            timestamp=int(time.time()),  # Protobuf uses int64 for timestamp
+    def create_status(
+        replica_id: str,
+        current_step: int = 0,
+        epoch: int = 0,
+        message: str = "",
+        metrics: Optional[Dict[str, Any]] = None,
+        training_time: float = 0.0,
+        max_step: int = 0,
+        max_epoch: int = 0,
+    ) -> torchLoom_pb2.PipeTrainingStatusMessage:
+        """Create a protobuf training status message using proper TrainingStatus structure."""
+        
+        # Convert metrics to string map
+        metrics_map = {}
+        if metrics:
+            metrics_map = {k: str(v) for k, v in metrics.items()}
+        
+        # Add the message to metrics if provided
+        if message:
+            metrics_map["message"] = message
+
+        # Create the TrainingStatus message
+        training_status = torchLoom_pb2.TrainingStatus(
             replica_id=replica_id,
-            status=status,
+            current_step=current_step,
+            epoch=epoch,
+            metrics=metrics_map,
+            training_time=training_time,
+            max_step=max_step,
+            max_epoch=max_epoch,
         )
+
+        # Create the pipe message wrapper
+        pipe_training_status = torchLoom_pb2.PipeTrainingStatusMessage(
+            message_type=torchLoom_pb2.PIPE_TRAINING_STATUS,
+            timestamp=int(time.time()),
+            training_status=training_status,
+        )
+            
+        return pipe_training_status
 
     @staticmethod
-    def create_metrics(
+    def create_device_status(
+        device_id: str,
         replica_id: str,
-        step: int = 0,
-        epoch: int = 0,
-        loss: Optional[float] = None,
-        accuracy: Optional[float] = None,
-        gradient_norm: Optional[float] = None,
-        **kwargs: Any,  # Protobuf map<string, string> for metrics
-    ) -> torchLoom_pb2.PipeMetricsMessage:
-        """Create a protobuf metrics message."""
-        # Convert all kwargs to string for the protobuf map
-        string_metrics = {k: str(v) for k, v in kwargs.items()}
-
-        metrics_msg = torchLoom_pb2.PipeMetricsMessage(
-            message_type=torchLoom_pb2.PIPE_METRICS,
-            timestamp=int(time.time()),
+        server_id: str = "",
+        utilization: float = 0.0,
+        temperature: float = 0.0,
+        memory_used: float = 0.0,
+        memory_total: float = 0.0,
+    ) -> torchLoom_pb2.PipeDeviceStatusMessage:
+        """Create a protobuf device status message using proper deviceStatus structure."""
+        
+        # Create the deviceStatus message
+        device_status = torchLoom_pb2.deviceStatus(
+            device_id=device_id,
             replica_id=replica_id,
-            step=step,
-            epoch=epoch,
-            metrics=string_metrics,
+            server_id=server_id,
+            utilization=utilization,
+            temperature=temperature,
+            memory_used=memory_used,
+            memory_total=memory_total,
         )
-        if loss is not None:
-            metrics_msg.loss = loss
-        if accuracy is not None:
-            metrics_msg.accuracy = accuracy
-        if gradient_norm is not None:
-            metrics_msg.gradient_norm = gradient_norm
-        return metrics_msg
+
+        # Create the pipe message wrapper
+        pipe_device_status = torchLoom_pb2.PipeDeviceStatusMessage(
+            message_type=torchLoom_pb2.PIPE_DEVICE_STATUS,
+            timestamp=int(time.time()),
+            device_status=device_status,
+        )
+            
+        return pipe_device_status
 
     @staticmethod
     def create_config(
@@ -132,25 +164,6 @@ class MessageFactory:
             params=string_params,
         )
 
-    @staticmethod
-    def create_status(
-        replica_id: str,
-        status: str = "active",
-        current_step: int = 0,
-        epoch: int = 0,
-        message: str = "",
-    ) -> torchLoom_pb2.PipeCommandMessage:
-        """Create a command message for status updates."""
-        params = {
-            "status": status,
-            "current_step": str(current_step),
-            "epoch": str(epoch),
-            "message": message,
-        }
-        return MessageFactory.create_command(
-            replica_id=replica_id, command_type="STATUS", params=params
-        )
-
 
 # Helper functions for protobuf serialization (using native protobuf methods)
 def serialize_message(message: PipeMessage) -> bytes:
@@ -161,12 +174,12 @@ def serialize_message(message: PipeMessage) -> bytes:
 def deserialize_message(data: bytes, message_type: str) -> Optional[PipeMessage]:
     """Deserialize bytes back to a protobuf message using native protobuf deserialization."""
     try:
-        if message_type == "HEARTBEAT":
-            msg = torchLoom_pb2.PipeHeartbeatMessage()
+        if message_type == "TRAINING_STATUS":
+            msg = torchLoom_pb2.PipeTrainingStatusMessage()
             msg.ParseFromString(data)
             return msg
-        elif message_type == "METRICS":
-            msg = torchLoom_pb2.PipeMetricsMessage()
+        elif message_type == "DEVICE_STATUS":
+            msg = torchLoom_pb2.PipeDeviceStatusMessage()
             msg.ParseFromString(data)
             return msg
         elif message_type == "COMMAND":

@@ -84,7 +84,9 @@ class StatusTracker:
     def get_active_devices(self) -> List[deviceStatus]:
         """Returns a list of all devices currently marked as active."""
         try:
-            return [d for d in self._ui_state_proto.devices if d.status == "active"]
+            # Status is removed from deviceStatus, so this method needs to be re-evaluated.
+            # For now, returning all devices. Consider how to determine 'active' status.
+            return [d for d in self._ui_state_proto.devices]
         except Exception as e:
             logger.error(f"Failed to get active devices: {e}")
             return []
@@ -116,13 +118,17 @@ class StatusTracker:
             if found_idx != -1:
                 # Replica exists, update it
                 self._ui_state_proto.training_status[found_idx].CopyFrom(ts_proto)
-                logger.debug(f"Updated training status for replica: {ts_proto.replica_id}")
+                logger.debug(
+                    f"Updated training status for replica: {ts_proto.replica_id}"
+                )
             else:
                 # New replica, add it
                 new_training_entry = TrainingStatus()
                 new_training_entry.CopyFrom(ts_proto)
                 self._ui_state_proto.training_status.append(new_training_entry)
-                logger.info(f"Added training status for new replica: {ts_proto.replica_id}")
+                logger.info(
+                    f"Added training status for new replica: {ts_proto.replica_id}"
+                )
 
             self._ui_state_proto.timestamp = now_ts
             self._notify_change()
@@ -137,10 +143,14 @@ class StatusTracker:
     def add_device_replica_mapping(self, device_uuid: str, replica_id: str) -> bool:
         """Add a mapping from device to replica. Returns True if this is a new mapping."""
         try:
-            is_new = replica_id not in self.device_to_replicas.setdefault(device_uuid, set())
+            is_new = replica_id not in self.device_to_replicas.setdefault(
+                device_uuid, set()
+            )
             if is_new:
                 self.device_to_replicas[device_uuid].add(replica_id)
-                logger.debug(f"Added device->replica mapping: {device_uuid} -> {replica_id}")
+                logger.debug(
+                    f"Added device->replica mapping: {device_uuid} -> {replica_id}"
+                )
             return is_new
         except Exception as e:
             logger.error(f"Failed to add device-replica mapping: {e}")
@@ -149,10 +159,14 @@ class StatusTracker:
     def add_replica_device_mapping(self, replica_id: str, device_uuid: str) -> bool:
         """Add a mapping from replica to device. Returns True if this is a new mapping."""
         try:
-            is_new = device_uuid not in self.replica_to_devices.setdefault(replica_id, set())
+            is_new = device_uuid not in self.replica_to_devices.setdefault(
+                replica_id, set()
+            )
             if is_new:
                 self.replica_to_devices[replica_id].add(device_uuid)
-                logger.debug(f"Added replica->device mapping: {replica_id} -> {device_uuid}")
+                logger.debug(
+                    f"Added replica->device mapping: {replica_id} -> {device_uuid}"
+                )
             return is_new
         except Exception as e:
             logger.error(f"Failed to add replica-device mapping: {e}")
@@ -181,7 +195,7 @@ class StatusTracker:
     def get_ui_status_snapshot(self) -> UIStatusUpdate:
         """Returns the current UIStatusUpdate protobuf message."""
         return self._ui_state_proto
-    
+
     # ========================================
     # CONVENIENCE METHODS FOR HANDLERS
     # ========================================
@@ -195,20 +209,24 @@ class StatusTracker:
                 if ts.replica_id == replica_id:
                     training_status = ts
                     break
-            
+
             if training_status is None:
                 training_status = TrainingStatus()
                 training_status.replica_id = replica_id
                 self._ui_state_proto.training_status.append(training_status)
-            
+
             # Update fields from kwargs
             for key, value in kwargs.items():
                 if hasattr(training_status, key):
                     setattr(training_status, key, value)
-            
+                # Move config handling to TrainingStatus
+                if key == "config" and isinstance(value, dict):
+                    training_status.config.clear()
+                    training_status.config.update({k: str(v) for k, v in value.items()})
+
             self._ui_state_proto.timestamp = int(time.time())
             self._notify_change()
-            
+
         except Exception as e:
             logger.error(f"Failed to update training progress: {e}")
 
@@ -221,30 +239,29 @@ class StatusTracker:
                 if ds.device_id == device_id:
                     device_status = ds
                     break
-            
+
             if device_status is None:
                 device_status = deviceStatus()
                 device_status.device_id = device_id
                 self._ui_state_proto.devices.append(device_status)
-            
+
             # Update fields from kwargs
             for key, value in kwargs.items():
-                if key == "config" and isinstance(value, dict):
-                    device_status.config.clear()
-                    device_status.config.update({k: str(v) for k, v in value.items()})
-                elif hasattr(device_status, key):
+                if hasattr(device_status, key):
                     setattr(device_status, key, value)
-            
+
             self._ui_state_proto.timestamp = int(time.time())
             self._notify_change()
-            
+
         except Exception as e:
             logger.error(f"Failed to update device status: {e}")
 
     def deactivate_device(self, device_id: str):
         """Mark a device as inactive."""
-        self.update_device_status(device_id, status="inactive")
+        # Status is removed from deviceStatus. This method may need to be re-implemented or removed.
+        logger.warning(f"deactivate_device called for {device_id}, but device status field is removed.")
 
     def update_device_config(self, device_id: str, config_params: Dict[str, Any]):
         """Update configuration for a specific device."""
-        self.update_device_status(device_id, config=config_params) 
+        # Config is moved to TrainingStatus. This method should target replica_id and update TrainingStatus.
+        logger.warning(f"update_device_config called for {device_id}. Config is now part of TrainingStatus. This method needs to be updated to target a replica_id.")

@@ -78,8 +78,8 @@ class TimeConstants:
     # Broadcast and monitoring intervals
     STATUS_BROADCAST_IN: float = 1.0
     HEARTBEAT_MONITOR_INTERVAL: float = 30.0
-    HEARTBEAT_SEND_INTERVAL: float = 30.0
-    HEARTBEAT_TIMEOUT: float = 90.0  # 3x monitor interval
+    HEARTBEAT_SEND_INTERVAL: float = 3.0
+    HEARTBEAT_TIMEOUT: float = 10.0
 
     # Sleep intervals for various operations
     PIPE_POLL_INTERVAL: float = 0.1
@@ -93,6 +93,7 @@ class TimeConstants:
     PIPE_LISTENER_STOP_TIMEOUT: float = 2.0
     THREADLET_PROCESS_TIMEOUT: float = 5.0
     THREADLET_PROCESS_TERMINATE_TIMEOUT: float = 2.0
+    ASYNC_PIPE_POLL_INTERVAL = 0.1
 
     # Async operation timeouts
     MONITOR_STOP_EVENT_SLEEP: float = 0.1

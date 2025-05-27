@@ -16,6 +16,8 @@ def _training_status_from_dict(cls, data):
     for key, value in data.items():
         if key == "metrics" and isinstance(value, dict):
             obj.metrics.update({k: str(v) for k, v in value.items()})
+        elif key == "config" and isinstance(value, dict):
+            obj.config.update({k: str(v) for k, v in value.items()})
         elif hasattr(obj, key):
             setattr(obj, key, value)
     return obj
@@ -25,9 +27,7 @@ def _device_status_from_dict(cls, data):
     """Create deviceStatus from dictionary."""
     obj = cls()
     for key, value in data.items():
-        if key == "config" and isinstance(value, dict):
-            obj.config.update({k: str(v) for k, v in value.items()})
-        elif hasattr(obj, key):
+        if hasattr(obj, key):
             setattr(obj, key, value)
     return obj
 

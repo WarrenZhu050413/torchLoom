@@ -6,9 +6,9 @@ message ChangeConfigEvent    { map<string, string> config_params = 1; }
 // Enum for basic message types for pipe communication
 enum PipeMessageType {
   PIPE_MESSAGE_TYPE_UNSPECIFIED = 0; // Default value
-  PIPE_HEARTBEAT = 1;
-  PIPE_METRICS = 2;
-  PIPE_COMMAND = 4;
+  PIPE_COMMAND = 1;
+  PIPE_TRAINING_STATUS = 2;
+  PIPE_DEVICE_STATUS = 3;
 }
 
 // Enum for simple command types
@@ -20,25 +20,18 @@ enum PipeCommandType {
   UPDATE_CONFIG = 4;
 }
 
-// Heartbeat message for pipe communication
-message PipeHeartbeatMessage {
+// Training status message for pipe communication
+message PipeTrainingStatusMessage {
   PipeMessageType message_type = 1;
   int64 timestamp = 2; // Unix timestamp
-  string replica_id = 3;
-  string status = 4;   // "active"
+  TrainingStatus training_status = 3;
 }
 
-// Metrics message for pipe communication
-message PipeMetricsMessage {
+// Device status message for pipe communication
+message PipeDeviceStatusMessage {
   PipeMessageType message_type = 1;
   int64 timestamp = 2; // Unix timestamp
-  string replica_id = 3;
-  int32 step = 4;
-  int32 epoch = 5;
-  optional float loss = 6;
-  optional float accuracy = 7;
-  optional float gradient_norm = 8;
-  map<string, string> metrics = 9; // Using string for Any, to be parsed
+  deviceStatus device_status = 3;
 }
 
 // Config message for pipe communication
@@ -70,26 +63,23 @@ message Heartbeat {
 // Training Process -> Weaver messages
 message TrainingStatus {
   string replica_id = 1;
-  string status_type = 2;         // "training_start", "epoch_start", "batch_update", "epoch_complete", "training_complete"
   int64 current_step = 3;
   int64 epoch = 4;
-  string status = 5;              // "starting", "training", "completed", "paused"
   map<string, string> metrics = 6; // loss, accuracy, learning_rate, etc.
   float training_time = 7;        // Total training time in seconds
   int64 max_step = 8;
   int64 max_epoch = 9;
+  map<string, string> config = 10; // Training config (lr, batch_size, optimizer, etc.)
 }
 
 message deviceStatus {
   string device_id = 1;
   string replica_id = 2;
   string server_id = 3;
-  string status = 4;              // "active", "offline", "failed"
   float utilization = 5;          // 0-100%
   float temperature = 6;          // Celsius
   float memory_used = 7;          // GB
   float memory_total = 8;         // GB
-  map<string, string> config = 9; // Training config (lr, batch_size, optimizer, etc.)
 }
 
 // Weaver -> UI messages
@@ -113,45 +103,6 @@ message WeaverCommand {
   map<string, string> params = 3;
 }
 
-// UI Data Structures (for schema definition only - not for protobuf transmission)
-message UIDeviceInfo {
-  string id = 1;
-  string server = 2;
-  string status = 3;
-  float utilization = 4;
-  float temperature = 5;
-  float memory_used = 6;
-  float memory_total = 7;
-  string batch = 8;
-  string lr = 9;
-  string opt = 10;
-  int64 last_updated = 11;
-}
-
-message UIReplicaGroup {
-  string id = 1;
-  map<string, UIDeviceInfo> devices = 2;
-  string status = 3;
-  float step_progress = 4;
-  optional int32 fixed_step = 5;
-  optional int32 last_active_step = 6;
-}
-
-message UISystemSummary {
-  int32 total_devices = 1;
-  int32 active_devices = 2;
-  float avg_utilization = 3;
-  string overall_status = 4;
-}
-
-message UIStatusSnapshot {
-  map<string, UIReplicaGroup> replica_groups = 1;
-  string communication_status = 2;
-  UISystemSummary system_summary = 3;
-  int64 timestamp = 4;
-}
-
-
 message EventEnvelope {
   uint64  seq      = 1;
   uint64  ts_nanos = 2;
@@ -173,9 +124,9 @@ message EventEnvelope {
     WeaverCommand       weaver_command     = 23;
 
     // Pipe Messages
-    PipeHeartbeatMessage pipe_heartbeat     = 24;
-    PipeMetricsMessage   pipe_metrics       = 25;
-    PipeConfigMessage    pipe_config        = 26;
-    PipeCommandMessage   pipe_command       = 27;
+    PipeTrainingStatusMessage pipe_training_status = 24;
+    PipeDeviceStatusMessage   pipe_device_status   = 25;
+    PipeConfigMessage         pipe_config          = 26;
+    PipeCommandMessage        pipe_command         = 27;
   }
 }

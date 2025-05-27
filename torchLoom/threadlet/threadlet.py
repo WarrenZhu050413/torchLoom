@@ -14,6 +14,7 @@ from typing import Any, Dict, Optional, Tuple, Type
 from torchLoom.common.config import Config
 from torchLoom.common.constants import TimeConstants, torchLoomConstants
 from torchLoom.common.handlers import *
+from torchLoom.proto import torchLoom_pb2
 
 from . import handlers
 from .listener import ThreadletListener
@@ -25,7 +26,6 @@ from .message import (
     serialize_message,
 )
 
-
 class Threadlet:
     """Process-based Threadlet for torchLoom training processes.
 
@@ -33,6 +33,9 @@ class Threadlet:
     including receiving configuration updates and sending training status updates.
     It runs in a separate process using multiprocessing.Process and supports
     handler registration for automatic configuration management.
+
+    Note: Heartbeats are sent automatically by the ThreadletListener process
+    at regular intervals. The main process cannot control heartbeat timing.
     """
 
     def __init__(
@@ -147,10 +150,24 @@ class Threadlet:
         """Send a structured message to the ThreadletListener process."""
         try:
             if self._main_pipe_conn and not self._main_pipe_conn.closed:
-                serialized_message = serialize_message(message)
-                self._main_pipe_conn.send(serialized_message)
+                # Determine the message_type_str for the listener's deserialize_message
+                message_type_str = ""
+                # The 'message' object here is a protobuf message instance
+                if isinstance(message, torchLoom_pb2.PipeTrainingStatusMessage):
+                    message_type_str = "TRAINING_STATUS"
+                elif isinstance(message, torchLoom_pb2.PipeDeviceStatusMessage):
+                    message_type_str = "DEVICE_STATUS"
+                elif isinstance(message, torchLoom_pb2.PipeCommandMessage):
+                    message_type_str = "COMMAND"
+                else:
+                    self._logger.error(f"Attempting to send unknown protobuf message type: {type(message)}")
+                    return
+
+                serialized_bytes = message.SerializeToString()
+                payload = (message_type_str, serialized_bytes)
+                self._main_pipe_conn.send(payload)
                 self._logger.debug(
-                    f"Sent message to ThreadletListener: {message.message_type}"
+                    f"Sent message to ThreadletListener: type_str='{message_type_str}', content_bytes_len={len(serialized_bytes)}"
                 )
         except (BrokenPipeError, OSError):
             self._logger.warning("Pipe to listener process is broken, dropping message")
@@ -314,60 +331,31 @@ class Threadlet:
         except Exception as e:
             self._logger.exception(f"Error stopping threadlet: {e}")
 
-    def publish_heartbeat(self, status: str = "active") -> None:
-        """Send heartbeat message to ThreadletListener."""
-        try:
-            heartbeat_message = MessageFactory.create_heartbeat(
-                replica_id=self._replica_id, status=status
-            )
-            self._send_message_to_listener(heartbeat_message)
-            self._logger.debug(f"Sent heartbeat: {status}")
-        except Exception as e:
-            self._logger.exception(f"Error sending heartbeat: {e}")
-
-    def publish_metrics(
-        self,
-        step: int = 0,
-        epoch: int = 0,
-        loss: Optional[float] = None,
-        accuracy: Optional[float] = None,
-        gradient_norm: Optional[float] = None,
-        **kwargs,
-    ) -> None:
-        """Send metrics message to ThreadletListener."""
-        try:
-            metrics_message = MessageFactory.create_metrics(
-                replica_id=self._replica_id,
-                step=step,
-                epoch=epoch,
-                loss=loss,
-                accuracy=accuracy,
-                gradient_norm=gradient_norm,
-                **kwargs,
-            )
-            self._send_message_to_listener(metrics_message)
-            self._logger.debug(f"Sent metrics for step {step}")
-        except Exception as e:
-            self._logger.exception(f"Error sending metrics: {e}")
-
     def publish_status(
         self,
-        status: str = "active",
         current_step: int = 0,
         epoch: int = 0,
         message: str = "",
+        metrics: Optional[Dict[str, Any]] = None,
+        training_time: float = 0.0,
+        max_step: int = 0,
+        max_epoch: int = 0,
     ) -> None:
         """Send status message to ThreadletListener."""
         try:
+            self._logger.debug(f"publish_status called with: current_step={current_step}, epoch={epoch}")
             status_message = MessageFactory.create_status(
                 replica_id=self._replica_id,
-                status=status,
                 current_step=current_step,
                 epoch=epoch,
                 message=message,
+                metrics=metrics,
+                training_time=training_time,
+                max_step=max_step,
+                max_epoch=max_epoch,
             )
             self._send_message_to_listener(status_message)
-            self._logger.debug(f"Sent status: {status}")
+            self._logger.debug(f"Sent status for step: {current_step}")
         except Exception as e:
             self._logger.exception(f"Error sending status: {e}")
 
