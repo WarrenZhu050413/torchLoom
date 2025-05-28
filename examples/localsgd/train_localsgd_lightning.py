@@ -16,7 +16,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.utils.data import DataLoader, random_split
 from torch.utils.data.distributed import DistributedSampler
 
-sys.path.insert(0, '/srv/apps/torchLoom')
+sys.path.insert(0, '/srv/apps/torchLoom') # HACK. Should change to other paths depending on your repo. And this should be removed in the future.
 # torchLoom imports for threadlet integration
 from torchLoom.threadlet.threadlet import Threadlet
 from torchLoom.common.utils import maybe_get_device_uuid, get_device_status
@@ -451,7 +451,7 @@ if __name__ == "__main__":
     print("2. Run this script")
     print("3. Send config updates via weaver UI or commands\n")
 
-    dm = CIFAR10DataModule(batch_size=1)
+    dm = CIFAR10DataModule(batch_size=1) # Currently batch size is 1 so easier to observe. note that sync_every should be a mulitple of batch size.
     model = LocalSGDLightning(
         sync_every=5 if QUICK_RUN else 100, learning_rate=1e-3, process_id=process_id
     )
