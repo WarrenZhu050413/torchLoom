@@ -19,13 +19,11 @@ from torch.utils.data.distributed import DistributedSampler
 sys.path.insert(0, '/srv/apps/torchLoom')
 # torchLoom imports for threadlet integration
 from torchLoom.threadlet.threadlet import Threadlet
-from torchLoom.common.utils import maybe_get_device_uuid
+from torchLoom.common.utils import maybe_get_device_uuid, get_device_status
 
 # Import device status utilities
 try:
     import pynvml
-
-    from examples.utils.utils import get_device_status
 
     PYNVML_AVAILABLE = True
 except ImportError as e:
@@ -94,7 +92,7 @@ class LocalSGDLightning(pl.LightningModule):
             maybe_device_uuid = maybe_get_device_uuid()
             self.threadlet = Threadlet(
                 process_id=self.process_id,
-                device_uuid=f"localsgd-device-{maybe_device_uuid.hex[:8]}",
+                device_uuid=f"localsgd-device-{maybe_device_uuid}",
             )
 
             # Register handler for sync_every parameter changes
@@ -386,7 +384,7 @@ class CIFAR10DataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             shuffle=shuffle,
             sampler=sampler,
-            persistent_workers=True if self.num_workers > 0 else False,
+            persistent_workers=False,
         )
 
     def val_dataloader(self):
@@ -406,7 +404,7 @@ class CIFAR10DataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             sampler=sampler,
-            persistent_workers=True if self.num_workers > 0 else False,
+            persistent_workers=False,
         )
 
     def test_dataloader(self):
@@ -426,7 +424,7 @@ class CIFAR10DataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             sampler=sampler,
-            persistent_workers=True if self.num_workers > 0 else False,
+            persistent_workers=False,
         )
 
 
@@ -453,7 +451,7 @@ if __name__ == "__main__":
     print("2. Run this script")
     print("3. Send config updates via weaver UI or commands\n")
 
-    dm = CIFAR10DataModule(batch_size=1024)
+    dm = CIFAR10DataModule(batch_size=1)
     model = LocalSGDLightning(
         sync_every=5 if QUICK_RUN else 100, learning_rate=1e-3, process_id=process_id
     )
