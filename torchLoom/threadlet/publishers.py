@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 
 from torchLoom.common.constants import NatsConstants  # Added
 from torchLoom.common.publishers import BasePublisher
-from torchLoom.log.logger import setup_logger
+from torchLoom.log_utils.logger import setup_logger
 from torchLoom.proto import torchLoom_pb2  # Added for EventEnvelope
 
 logger = setup_logger(name="threadlet_publishers")

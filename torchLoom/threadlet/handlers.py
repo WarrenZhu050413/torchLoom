@@ -9,7 +9,7 @@ import logging
 from typing import Any, Callable, Dict, Optional
 
 from torchLoom.common.handlers import HandlerRegistry
-from torchLoom.log.logger import setup_logger
+from torchLoom.log_utils.logger import setup_logger
 from torchLoom.proto import torchLoom_pb2
 from torchLoom.proto.torchLoom_pb2 import PipeCommandType as CommandType
 
