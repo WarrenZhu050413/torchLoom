@@ -69,7 +69,7 @@ class Weaver:
 
         self._heartbeat_tracker = {
             "last_heartbeats": {},
-            "dead_replicas": set(),
+            "dead_processes": set(),
         }
 
         logger.info(f"Weaver initialized with NATS address: {torchLoom_addr}")
@@ -258,24 +258,24 @@ class Weaver:
         while not self._stop_nats.is_set():
             try:
                 current_time = time.time()
-                dead_replicas = set()
+                dead_processes = set()
 
                 for process_id, last_heartbeat in self._heartbeat_tracker[
                     "last_heartbeats"
                 ].items():
                     if current_time - last_heartbeat > TimeConstants.HEARTBEAT_TIMEOUT:
-                        if process_id not in self._heartbeat_tracker["dead_replicas"]:
+                        if process_id not in self._heartbeat_tracker["dead_processes"]:
                             logger.warning(
                                 f"Replica {process_id} marked as dead (no heartbeat for {current_time - last_heartbeat:.1f}s)"
                             )
-                            self._heartbeat_tracker["dead_replicas"].add(process_id)
-                            dead_replicas.add(process_id)
+                            self._heartbeat_tracker["dead_processes"].add(process_id)
+                            dead_processes.add(process_id)
 
-                if dead_replicas:
+                if dead_processes:
                     logger.warning(
-                        f"Heartbeat monitor identified dead replicas: {dead_replicas}"
+                        f"Heartbeat monitor identified dead replicas: {dead_processes}"
                     )
-                    for process_id in dead_replicas:
+                    for process_id in dead_processes:
                         self.status_tracker.update_training_progress(
                             process_id=process_id, status="dead"
                         )

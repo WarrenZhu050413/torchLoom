@@ -68,8 +68,8 @@ async def handle_heartbeat(
     # This ensures we always have a meaningful status to set.
     current_replica_status = heartbeat_status if heartbeat_status else "active"
 
-    if process_id in heartbeat_tracker["dead_replicas"]:
-        heartbeat_tracker["dead_replicas"].remove(process_id)
+    if process_id in heartbeat_tracker["dead_processes"]:
+        heartbeat_tracker["dead_processes"].remove(process_id)
         logger.info(
             f"Replica {process_id} revived by heartbeat. Status reported: '{current_replica_status}'."
         )

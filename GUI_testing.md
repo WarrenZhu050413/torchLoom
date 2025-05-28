@@ -10,11 +10,11 @@
 python -m torchLoom.weaver.weaver
 ```
 
-3. Start the websocket server:
+<!-- 3. Start the websocket server:
 
 ```sh
 python websocket_cli.py
-```
+``` -->
 
 4. Start the training process with threadlet
 

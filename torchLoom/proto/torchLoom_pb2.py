@@ -4,85 +4,87 @@
 # source: torchLoom.proto
 # Protobuf Python Version: 5.29.0
 """Generated protocol buffer code."""
-from google.protobuf import (
-    descriptor as _descriptor,
-    descriptor_pool as _descriptor_pool,
-    runtime_version as _runtime_version,
-    symbol_database as _symbol_database,
-)
+from google.protobuf import descriptor as _descriptor
+from google.protobuf import descriptor_pool as _descriptor_pool
+from google.protobuf import runtime_version as _runtime_version
+from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
-
 _runtime_version.ValidateProtobufRuntimeVersion(
-    _runtime_version.Domain.PUBLIC, 5, 29, 0, "", "torchLoom.proto"
+    _runtime_version.Domain.PUBLIC,
+    5,
+    29,
+    0,
+    '',
+    'torchLoom.proto'
 )
 # @@protoc_insertion_point(imports)
 
 _sym_db = _symbol_database.Default()
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
-    b'\n\x0ftorchLoom.proto"9\n\x0eRegisterDevice\x12\x13\n\x0b\x64\x65vice_uuid\x18\x01 \x01(\t\x12\x12\n\nprocess_id\x18\x02 \x01(\t"\x85\x01\n\x11\x43hangeConfigEvent\x12;\n\rconfig_params\x18\x01 \x03(\x0b\x32$.ChangeConfigEvent.ConfigParamsEntry\x1a\x33\n\x11\x43onfigParamsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01"\x80\x01\n\x19PipeTrainingStatusMessage\x12&\n\x0cmessage_type\x18\x01 \x01(\x0e\x32\x10.PipeMessageType\x12\x11\n\ttimestamp\x18\x02 \x01(\x03\x12(\n\x0ftraining_status\x18\x03 \x01(\x0b\x32\x0f.TrainingStatus"z\n\x17PipeDeviceStatusMessage\x12&\n\x0cmessage_type\x18\x01 \x01(\x0e\x32\x10.PipeMessageType\x12\x11\n\ttimestamp\x18\x02 \x01(\x03\x12$\n\rdevice_status\x18\x03 \x01(\x0b\x32\r.deviceStatus"\xeb\x01\n\x12PipeCommandMessage\x12&\n\x0cmessage_type\x18\x01 \x01(\x0e\x32\x10.PipeMessageType\x12\x11\n\ttimestamp\x18\x02 \x01(\x03\x12\x12\n\nprocess_id\x18\x03 \x01(\t\x12&\n\x0c\x63ommand_type\x18\x04 \x01(\x0e\x32\x10.PipeCommandType\x12/\n\x06params\x18\x05 \x03(\x0b\x32\x1f.PipeCommandMessage.ParamsEntry\x1a-\n\x0bParamsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01"\xb4\x01\n\tHeartbeat\x12\x12\n\nprocess_id\x18\x01 \x01(\t\x12\x13\n\x0b\x64\x65vice_uuid\x18\x02 \x01(\t\x12\x11\n\ttimestamp\x18\x03 \x01(\x03\x12\x0e\n\x06status\x18\x04 \x01(\t\x12*\n\x08metadata\x18\x05 \x03(\x0b\x32\x18.Heartbeat.MetadataEntry\x1a/\n\rMetadataEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01"\xc0\x02\n\x0eTrainingStatus\x12\x12\n\nprocess_id\x18\x01 \x01(\t\x12\x14\n\x0c\x63urrent_step\x18\x02 \x01(\x03\x12\r\n\x05\x65poch\x18\x03 \x01(\x03\x12-\n\x07metrics\x18\x04 \x03(\x0b\x32\x1c.TrainingStatus.MetricsEntry\x12\x15\n\rtraining_time\x18\x05 \x01(\x02\x12\x10\n\x08max_step\x18\x06 \x01(\x03\x12\x11\n\tmax_epoch\x18\x07 \x01(\x03\x12+\n\x06\x63onfig\x18\x08 \x03(\x0b\x32\x1b.TrainingStatus.ConfigEntry\x1a.\n\x0cMetricsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a-\n\x0b\x43onfigEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01"\x9f\x01\n\x0c\x64\x65viceStatus\x12\x13\n\x0b\x64\x65vice_uuid\x18\x01 \x01(\t\x12\x12\n\nprocess_id\x18\x02 \x01(\t\x12\x11\n\tserver_id\x18\x03 \x01(\t\x12\x13\n\x0butilization\x18\x05 \x01(\x02\x12\x13\n\x0btemperature\x18\x06 \x01(\x02\x12\x13\n\x0bmemory_used\x18\x07 \x01(\x02\x12\x14\n\x0cmemory_total\x18\x08 \x01(\x02"m\n\x0eUIStatusUpdate\x12\x1e\n\x07\x64\x65vices\x18\x02 \x03(\x0b\x32\r.deviceStatus\x12(\n\x0ftraining_status\x18\x03 \x03(\x0b\x32\x0f.TrainingStatus\x12\x11\n\ttimestamp\x18\x07 \x01(\x03"\x8c\x01\n\tUICommand\x12\x14\n\x0c\x63ommand_type\x18\x01 \x01(\t\x12\x12\n\nprocess_id\x18\x02 \x01(\t\x12&\n\x06params\x18\x03 \x03(\x0b\x32\x16.UICommand.ParamsEntry\x1a-\n\x0bParamsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01"\x9b\x01\n\rWeaverCommand\x12\x14\n\x0c\x63ommand_type\x18\x01 \x01(\t\x12\x19\n\x11target_process_id\x18\x02 \x01(\t\x12*\n\x06params\x18\x03 \x03(\x0b\x32\x1a.WeaverCommand.ParamsEntry\x1a-\n\x0bParamsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01"\xef\x03\n\rEventEnvelope\x12\x0b\n\x03seq\x18\x01 \x01(\x04\x12\x10\n\x08ts_nanos\x18\x02 \x01(\x04\x12*\n\x0fregister_device\x18\t \x01(\x0b\x32\x0f.RegisterDeviceH\x00\x12)\n\x0b\x63onfig_info\x18\x0f \x01(\x0b\x32\x12.ChangeConfigEventH\x00\x12\x1f\n\theartbeat\x18\x10 \x01(\x0b\x32\n.HeartbeatH\x00\x12*\n\x0ftraining_status\x18\x11 \x01(\x0b\x32\x0f.TrainingStatusH\x00\x12&\n\rdevice_status\x18\x12 \x01(\x0b\x32\r.deviceStatusH\x00\x12 \n\nui_command\x18\x15 \x01(\x0b\x32\n.UICommandH\x00\x12(\n\x0eweaver_command\x18\x17 \x01(\x0b\x32\x0e.WeaverCommandH\x00\x12:\n\x14pipe_training_status\x18\x18 \x01(\x0b\x32\x1a.PipeTrainingStatusMessageH\x00\x12\x36\n\x12pipe_device_status\x18\x19 \x01(\x0b\x32\x18.PipeDeviceStatusMessageH\x00\x12+\n\x0cpipe_command\x18\x1b \x01(\x0b\x32\x13.PipeCommandMessageH\x00\x42\x06\n\x04\x62ody*x\n\x0fPipeMessageType\x12!\n\x1dPIPE_MESSAGE_TYPE_UNSPECIFIED\x10\x00\x12\x10\n\x0cPIPE_COMMAND\x10\x01\x12\x18\n\x14PIPE_TRAINING_STATUS\x10\x02\x12\x16\n\x12PIPE_DEVICE_STATUS\x10\x03*h\n\x0fPipeCommandType\x12!\n\x1dPIPE_COMMAND_TYPE_UNSPECIFIED\x10\x00\x12\x08\n\x04KILL\x10\x01\x12\t\n\x05PAUSE\x10\x02\x12\n\n\x06RESUME\x10\x03\x12\x11\n\rUPDATE_CONFIG\x10\x04\x62\x06proto3'
-)
+
+
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0ftorchLoom.proto\"9\n\x0eRegisterDevice\x12\x13\n\x0b\x64\x65vice_uuid\x18\x01 \x01(\t\x12\x12\n\nprocess_id\x18\x02 \x01(\t\"\x85\x01\n\x11\x43hangeConfigEvent\x12;\n\rconfig_params\x18\x01 \x03(\x0b\x32$.ChangeConfigEvent.ConfigParamsEntry\x1a\x33\n\x11\x43onfigParamsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x80\x01\n\x19PipeTrainingStatusMessage\x12&\n\x0cmessage_type\x18\x01 \x01(\x0e\x32\x10.PipeMessageType\x12\x11\n\ttimestamp\x18\x02 \x01(\x03\x12(\n\x0ftraining_status\x18\x03 \x01(\x0b\x32\x0f.TrainingStatus\"z\n\x17PipeDeviceStatusMessage\x12&\n\x0cmessage_type\x18\x01 \x01(\x0e\x32\x10.PipeMessageType\x12\x11\n\ttimestamp\x18\x02 \x01(\x03\x12$\n\rdevice_status\x18\x03 \x01(\x0b\x32\r.deviceStatus\"\xeb\x01\n\x12PipeCommandMessage\x12&\n\x0cmessage_type\x18\x01 \x01(\x0e\x32\x10.PipeMessageType\x12\x11\n\ttimestamp\x18\x02 \x01(\x03\x12\x12\n\nprocess_id\x18\x03 \x01(\t\x12&\n\x0c\x63ommand_type\x18\x04 \x01(\x0e\x32\x10.PipeCommandType\x12/\n\x06params\x18\x05 \x03(\x0b\x32\x1f.PipeCommandMessage.ParamsEntry\x1a-\n\x0bParamsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xb4\x01\n\tHeartbeat\x12\x12\n\nprocess_id\x18\x01 \x01(\t\x12\x13\n\x0b\x64\x65vice_uuid\x18\x02 \x01(\t\x12\x11\n\ttimestamp\x18\x03 \x01(\x03\x12\x0e\n\x06status\x18\x04 \x01(\t\x12*\n\x08metadata\x18\x05 \x03(\x0b\x32\x18.Heartbeat.MetadataEntry\x1a/\n\rMetadataEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xc0\x02\n\x0eTrainingStatus\x12\x12\n\nprocess_id\x18\x01 \x01(\t\x12\x14\n\x0c\x63urrent_step\x18\x02 \x01(\x03\x12\r\n\x05\x65poch\x18\x03 \x01(\x03\x12-\n\x07metrics\x18\x04 \x03(\x0b\x32\x1c.TrainingStatus.MetricsEntry\x12\x15\n\rtraining_time\x18\x05 \x01(\x02\x12\x10\n\x08max_step\x18\x06 \x01(\x03\x12\x11\n\tmax_epoch\x18\x07 \x01(\x03\x12+\n\x06\x63onfig\x18\x08 \x03(\x0b\x32\x1b.TrainingStatus.ConfigEntry\x1a.\n\x0cMetricsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a-\n\x0b\x43onfigEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x9f\x01\n\x0c\x64\x65viceStatus\x12\x13\n\x0b\x64\x65vice_uuid\x18\x01 \x01(\t\x12\x12\n\nprocess_id\x18\x02 \x01(\t\x12\x11\n\tserver_id\x18\x03 \x01(\t\x12\x13\n\x0butilization\x18\x05 \x01(\x02\x12\x13\n\x0btemperature\x18\x06 \x01(\x02\x12\x13\n\x0bmemory_used\x18\x07 \x01(\x02\x12\x14\n\x0cmemory_total\x18\x08 \x01(\x02\"m\n\x0eUIStatusUpdate\x12\x1e\n\x07\x64\x65vices\x18\x02 \x03(\x0b\x32\r.deviceStatus\x12(\n\x0ftraining_status\x18\x03 \x03(\x0b\x32\x0f.TrainingStatus\x12\x11\n\ttimestamp\x18\x07 \x01(\x03\"\x8c\x01\n\tUICommand\x12\x14\n\x0c\x63ommand_type\x18\x01 \x01(\t\x12\x12\n\nprocess_id\x18\x02 \x01(\t\x12&\n\x06params\x18\x03 \x03(\x0b\x32\x16.UICommand.ParamsEntry\x1a-\n\x0bParamsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x9b\x01\n\rWeaverCommand\x12\x14\n\x0c\x63ommand_type\x18\x01 \x01(\t\x12\x19\n\x11target_process_id\x18\x02 \x01(\t\x12*\n\x06params\x18\x03 \x03(\x0b\x32\x1a.WeaverCommand.ParamsEntry\x1a-\n\x0bParamsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xef\x03\n\rEventEnvelope\x12\x0b\n\x03seq\x18\x01 \x01(\x04\x12\x10\n\x08ts_nanos\x18\x02 \x01(\x04\x12*\n\x0fregister_device\x18\t \x01(\x0b\x32\x0f.RegisterDeviceH\x00\x12)\n\x0b\x63onfig_info\x18\x0f \x01(\x0b\x32\x12.ChangeConfigEventH\x00\x12\x1f\n\theartbeat\x18\x10 \x01(\x0b\x32\n.HeartbeatH\x00\x12*\n\x0ftraining_status\x18\x11 \x01(\x0b\x32\x0f.TrainingStatusH\x00\x12&\n\rdevice_status\x18\x12 \x01(\x0b\x32\r.deviceStatusH\x00\x12 \n\nui_command\x18\x15 \x01(\x0b\x32\n.UICommandH\x00\x12(\n\x0eweaver_command\x18\x17 \x01(\x0b\x32\x0e.WeaverCommandH\x00\x12:\n\x14pipe_training_status\x18\x18 \x01(\x0b\x32\x1a.PipeTrainingStatusMessageH\x00\x12\x36\n\x12pipe_device_status\x18\x19 \x01(\x0b\x32\x18.PipeDeviceStatusMessageH\x00\x12+\n\x0cpipe_command\x18\x1b \x01(\x0b\x32\x13.PipeCommandMessageH\x00\x42\x06\n\x04\x62ody*x\n\x0fPipeMessageType\x12!\n\x1dPIPE_MESSAGE_TYPE_UNSPECIFIED\x10\x00\x12\x10\n\x0cPIPE_COMMAND\x10\x01\x12\x18\n\x14PIPE_TRAINING_STATUS\x10\x02\x12\x16\n\x12PIPE_DEVICE_STATUS\x10\x03*h\n\x0fPipeCommandType\x12!\n\x1dPIPE_COMMAND_TYPE_UNSPECIFIED\x10\x00\x12\x08\n\x04KILL\x10\x01\x12\t\n\x05PAUSE\x10\x02\x12\n\n\x06RESUME\x10\x03\x12\x11\n\rUPDATE_CONFIG\x10\x04\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, "torchLoom_pb2", _globals)
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'torchLoom_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
-    DESCRIPTOR._loaded_options = None
-    _globals["_CHANGECONFIGEVENT_CONFIGPARAMSENTRY"]._loaded_options = None
-    _globals["_CHANGECONFIGEVENT_CONFIGPARAMSENTRY"]._serialized_options = b"8\001"
-    _globals["_PIPECOMMANDMESSAGE_PARAMSENTRY"]._loaded_options = None
-    _globals["_PIPECOMMANDMESSAGE_PARAMSENTRY"]._serialized_options = b"8\001"
-    _globals["_HEARTBEAT_METADATAENTRY"]._loaded_options = None
-    _globals["_HEARTBEAT_METADATAENTRY"]._serialized_options = b"8\001"
-    _globals["_TRAININGSTATUS_METRICSENTRY"]._loaded_options = None
-    _globals["_TRAININGSTATUS_METRICSENTRY"]._serialized_options = b"8\001"
-    _globals["_TRAININGSTATUS_CONFIGENTRY"]._loaded_options = None
-    _globals["_TRAININGSTATUS_CONFIGENTRY"]._serialized_options = b"8\001"
-    _globals["_UICOMMAND_PARAMSENTRY"]._loaded_options = None
-    _globals["_UICOMMAND_PARAMSENTRY"]._serialized_options = b"8\001"
-    _globals["_WEAVERCOMMAND_PARAMSENTRY"]._loaded_options = None
-    _globals["_WEAVERCOMMAND_PARAMSENTRY"]._serialized_options = b"8\001"
-    _globals["_PIPEMESSAGETYPE"]._serialized_start = 2285
-    _globals["_PIPEMESSAGETYPE"]._serialized_end = 2405
-    _globals["_PIPECOMMANDTYPE"]._serialized_start = 2407
-    _globals["_PIPECOMMANDTYPE"]._serialized_end = 2511
-    _globals["_REGISTERDEVICE"]._serialized_start = 19
-    _globals["_REGISTERDEVICE"]._serialized_end = 76
-    _globals["_CHANGECONFIGEVENT"]._serialized_start = 79
-    _globals["_CHANGECONFIGEVENT"]._serialized_end = 212
-    _globals["_CHANGECONFIGEVENT_CONFIGPARAMSENTRY"]._serialized_start = 161
-    _globals["_CHANGECONFIGEVENT_CONFIGPARAMSENTRY"]._serialized_end = 212
-    _globals["_PIPETRAININGSTATUSMESSAGE"]._serialized_start = 215
-    _globals["_PIPETRAININGSTATUSMESSAGE"]._serialized_end = 343
-    _globals["_PIPEDEVICESTATUSMESSAGE"]._serialized_start = 345
-    _globals["_PIPEDEVICESTATUSMESSAGE"]._serialized_end = 467
-    _globals["_PIPECOMMANDMESSAGE"]._serialized_start = 470
-    _globals["_PIPECOMMANDMESSAGE"]._serialized_end = 705
-    _globals["_PIPECOMMANDMESSAGE_PARAMSENTRY"]._serialized_start = 660
-    _globals["_PIPECOMMANDMESSAGE_PARAMSENTRY"]._serialized_end = 705
-    _globals["_HEARTBEAT"]._serialized_start = 708
-    _globals["_HEARTBEAT"]._serialized_end = 888
-    _globals["_HEARTBEAT_METADATAENTRY"]._serialized_start = 841
-    _globals["_HEARTBEAT_METADATAENTRY"]._serialized_end = 888
-    _globals["_TRAININGSTATUS"]._serialized_start = 891
-    _globals["_TRAININGSTATUS"]._serialized_end = 1211
-    _globals["_TRAININGSTATUS_METRICSENTRY"]._serialized_start = 1118
-    _globals["_TRAININGSTATUS_METRICSENTRY"]._serialized_end = 1164
-    _globals["_TRAININGSTATUS_CONFIGENTRY"]._serialized_start = 1166
-    _globals["_TRAININGSTATUS_CONFIGENTRY"]._serialized_end = 1211
-    _globals["_DEVICESTATUS"]._serialized_start = 1214
-    _globals["_DEVICESTATUS"]._serialized_end = 1373
-    _globals["_UISTATUSUPDATE"]._serialized_start = 1375
-    _globals["_UISTATUSUPDATE"]._serialized_end = 1484
-    _globals["_UICOMMAND"]._serialized_start = 1487
-    _globals["_UICOMMAND"]._serialized_end = 1627
-    _globals["_UICOMMAND_PARAMSENTRY"]._serialized_start = 660
-    _globals["_UICOMMAND_PARAMSENTRY"]._serialized_end = 705
-    _globals["_WEAVERCOMMAND"]._serialized_start = 1630
-    _globals["_WEAVERCOMMAND"]._serialized_end = 1785
-    _globals["_WEAVERCOMMAND_PARAMSENTRY"]._serialized_start = 660
-    _globals["_WEAVERCOMMAND_PARAMSENTRY"]._serialized_end = 705
-    _globals["_EVENTENVELOPE"]._serialized_start = 1788
-    _globals["_EVENTENVELOPE"]._serialized_end = 2283
+  DESCRIPTOR._loaded_options = None
+  _globals['_CHANGECONFIGEVENT_CONFIGPARAMSENTRY']._loaded_options = None
+  _globals['_CHANGECONFIGEVENT_CONFIGPARAMSENTRY']._serialized_options = b'8\001'
+  _globals['_PIPECOMMANDMESSAGE_PARAMSENTRY']._loaded_options = None
+  _globals['_PIPECOMMANDMESSAGE_PARAMSENTRY']._serialized_options = b'8\001'
+  _globals['_HEARTBEAT_METADATAENTRY']._loaded_options = None
+  _globals['_HEARTBEAT_METADATAENTRY']._serialized_options = b'8\001'
+  _globals['_TRAININGSTATUS_METRICSENTRY']._loaded_options = None
+  _globals['_TRAININGSTATUS_METRICSENTRY']._serialized_options = b'8\001'
+  _globals['_TRAININGSTATUS_CONFIGENTRY']._loaded_options = None
+  _globals['_TRAININGSTATUS_CONFIGENTRY']._serialized_options = b'8\001'
+  _globals['_UICOMMAND_PARAMSENTRY']._loaded_options = None
+  _globals['_UICOMMAND_PARAMSENTRY']._serialized_options = b'8\001'
+  _globals['_WEAVERCOMMAND_PARAMSENTRY']._loaded_options = None
+  _globals['_WEAVERCOMMAND_PARAMSENTRY']._serialized_options = b'8\001'
+  _globals['_PIPEMESSAGETYPE']._serialized_start=2285
+  _globals['_PIPEMESSAGETYPE']._serialized_end=2405
+  _globals['_PIPECOMMANDTYPE']._serialized_start=2407
+  _globals['_PIPECOMMANDTYPE']._serialized_end=2511
+  _globals['_REGISTERDEVICE']._serialized_start=19
+  _globals['_REGISTERDEVICE']._serialized_end=76
+  _globals['_CHANGECONFIGEVENT']._serialized_start=79
+  _globals['_CHANGECONFIGEVENT']._serialized_end=212
+  _globals['_CHANGECONFIGEVENT_CONFIGPARAMSENTRY']._serialized_start=161
+  _globals['_CHANGECONFIGEVENT_CONFIGPARAMSENTRY']._serialized_end=212
+  _globals['_PIPETRAININGSTATUSMESSAGE']._serialized_start=215
+  _globals['_PIPETRAININGSTATUSMESSAGE']._serialized_end=343
+  _globals['_PIPEDEVICESTATUSMESSAGE']._serialized_start=345
+  _globals['_PIPEDEVICESTATUSMESSAGE']._serialized_end=467
+  _globals['_PIPECOMMANDMESSAGE']._serialized_start=470
+  _globals['_PIPECOMMANDMESSAGE']._serialized_end=705
+  _globals['_PIPECOMMANDMESSAGE_PARAMSENTRY']._serialized_start=660
+  _globals['_PIPECOMMANDMESSAGE_PARAMSENTRY']._serialized_end=705
+  _globals['_HEARTBEAT']._serialized_start=708
+  _globals['_HEARTBEAT']._serialized_end=888
+  _globals['_HEARTBEAT_METADATAENTRY']._serialized_start=841
+  _globals['_HEARTBEAT_METADATAENTRY']._serialized_end=888
+  _globals['_TRAININGSTATUS']._serialized_start=891
+  _globals['_TRAININGSTATUS']._serialized_end=1211
+  _globals['_TRAININGSTATUS_METRICSENTRY']._serialized_start=1118
+  _globals['_TRAININGSTATUS_METRICSENTRY']._serialized_end=1164
+  _globals['_TRAININGSTATUS_CONFIGENTRY']._serialized_start=1166
+  _globals['_TRAININGSTATUS_CONFIGENTRY']._serialized_end=1211
+  _globals['_DEVICESTATUS']._serialized_start=1214
+  _globals['_DEVICESTATUS']._serialized_end=1373
+  _globals['_UISTATUSUPDATE']._serialized_start=1375
+  _globals['_UISTATUSUPDATE']._serialized_end=1484
+  _globals['_UICOMMAND']._serialized_start=1487
+  _globals['_UICOMMAND']._serialized_end=1627
+  _globals['_UICOMMAND_PARAMSENTRY']._serialized_start=660
+  _globals['_UICOMMAND_PARAMSENTRY']._serialized_end=705
+  _globals['_WEAVERCOMMAND']._serialized_start=1630
+  _globals['_WEAVERCOMMAND']._serialized_end=1785
+  _globals['_WEAVERCOMMAND_PARAMSENTRY']._serialized_start=660
+  _globals['_WEAVERCOMMAND_PARAMSENTRY']._serialized_end=705
+  _globals['_EVENTENVELOPE']._serialized_start=1788
+  _globals['_EVENTENVELOPE']._serialized_end=2283
 # @@protoc_insertion_point(module_scope)
