@@ -64,7 +64,7 @@ class UINetworkConstants:
     """Network-related constants for torchLoom."""
 
     DEFAULT_UI_HOST: str = "0.0.0.0"
-    DEFAULT_UI_PORT: int = 8080
+    DEFAULT_UI_PORT: int = 8079
 
     # CORS origins for WebSocket connections
     CORS_ORIGINS = [

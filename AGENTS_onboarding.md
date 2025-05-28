@@ -210,7 +210,7 @@ python examples/interactive/train_interactive.py
 ```
 
 ### 4. Open the UI
-Navigate to `http://localhost:8080` to see real-time training status and control the training process.
+Navigate to `http://localhost:8079` to see real-time training status and control the training process.
 
 ## 🧪 Testing the System
 

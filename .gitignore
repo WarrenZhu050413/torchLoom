@@ -4,6 +4,12 @@ jetstream
 lightning_logs
 checkpoints
 cifar
+tb_logs
+*checkpoints*
+
+version*
+
+OTHERS
 
 # Python
 __pycache__

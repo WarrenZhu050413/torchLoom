@@ -15,7 +15,7 @@ from typing import Any, Dict, Optional, Tuple, Type
 
 from torchLoom.common.constants import NatsConstants, TimeConstants
 from torchLoom.common.handlers import *
-from torchLoom.common.utils import get_device_uuid
+from torchLoom.common.utils import maybe_get_device_uuid
 from torchLoom.proto import torchLoom_pb2
 
 from .listener import ThreadletListener
@@ -42,7 +42,7 @@ class Threadlet:
     ):
         # Core identifiers
         self._process_id = process_id or f"threadlet:{uuid.uuid4()}"
-        self._device_uuid = device_uuid or get_device_uuid()
+        self._device_uuid = device_uuid or maybe_get_device_uuid()
         self._server_id = platform.node()  # TODO: Add tailored method for this
 
         # NATS connection setup

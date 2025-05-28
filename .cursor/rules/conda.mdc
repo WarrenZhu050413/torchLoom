@@ -3,4 +3,4 @@ description:
 globs: 
 alwaysApply: true
 ---
-run conda init bash && source ~/.bashrc && conda activate nats-torch27 before any python commands to test the project code
+run conda init bash && source ~/.bashrc && conda activate /srv/apps/danny/miniconda3/envs/warren/torchtitan before any python commands to test the project code

@@ -80,7 +80,7 @@ If replica failure events aren't being properly handled:
 2. Manually trigger a failure event to test the pipeline
    ```bash
    # Get a valid device UUID 
-   python -c "from torchLoom.utils import get_device_uuid; print(get_device_uuid())"
+   python -c "from torchLoom.utils import maybe_get_device_uuid; print(maybe_get_device_uuid())"
    
    # Use the monitor CLI to test with that UUID
    python /srv/apps/warren/torchft/torchft/torchLoom/monitor_cli.py

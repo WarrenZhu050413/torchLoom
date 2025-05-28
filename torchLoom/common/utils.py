@@ -16,7 +16,7 @@ logger = setup_logger(
 )
 
 
-def get_device_uuid():
+def maybe_get_device_uuid():
     try:
         nvmlInit()
         index = torch.cuda.current_device()

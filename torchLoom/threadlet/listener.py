@@ -30,7 +30,7 @@ from torchLoom.common.subscription import SubscriptionManager
 from torchLoom.common.utils import (
     create_device_status_dict,
     create_training_status_dict,
-    get_device_uuid,
+    maybe_get_device_uuid,
 )
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto import torchLoom_pb2
