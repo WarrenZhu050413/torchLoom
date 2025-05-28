@@ -178,7 +178,7 @@ We aim to be an AI agent friendly library. In [AGENTS.md](AGENTS.md) are some in
 
 ## Explore More
 
-- Check out the [examples](examples) for ways of using torchLoom.
+- Check out the [examples](examples) for ways of using torchLoom. Specifically, the `localsgd` example demonstrates how to integrate torchLoom with PyTorch Lightning for configuring the sync-every parameter of a LocalSGD training setup.
 - Check out the [docs](docs) for more details on the design and implementation of torchLoom.
 - Check out the [contributing](contributing) for more details on how to contribute to torchLoom.
 - Check out the [contributors](CONTRIBUTORS.md) to see who has contributed to torchLoom.

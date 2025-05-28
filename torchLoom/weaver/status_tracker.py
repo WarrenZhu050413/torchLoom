@@ -233,57 +233,79 @@ class StatusTracker:
         except Exception as e:
             logger.error(f"Failed to update device status: {e}")
 
-    def delete_process(self, process_id: str) -> bool:
-        """
-        Remove a process and all its associated mappings from tracking.
-        
-        Args:
-            process_id: The process ID to remove
-            
-        Returns:
-            True if the process was found and removed, False otherwise
-        """
+    def delete_device(self, device_uuid: str) -> bool:
         try:
-            process_found = False
+            device_found_in_proto = False
+            # Remove from UI state proto devices list
+            idx_to_remove = -1
+            for idx, d in enumerate(self._ui_state_proto.devices):
+                if d.device_uuid == device_uuid:
+                    idx_to_remove = idx
+                    break
+            if idx_to_remove != -1:
+                del self._ui_state_proto.devices[idx_to_remove]
+                logger.info(f"Removed device from UI proto: {device_uuid}")
+
+            if device_uuid in self.device_to_pid:
+                del self.device_to_pid[device_uuid]
+                logger.debug(f"Removed device entry from device_to_pid: {device_uuid}")
+
+            if device_found_in_proto:
+                self._ui_state_proto.timestamp = int(time.time())
+                self._notify_change()
+                logger.info(f"Successfully deleted device and notified: {device_uuid}")
+                return True
+            else:
+                logger.warning(f"Device not found for deletion in UI proto: {device_uuid}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Failed to delete device {device_uuid}: {e}")
+            return False
+
+    def delete_process(self, process_id: str) -> bool:
+        try:
+            process_found_in_training_status = False
             
-            # Remove from training status list - find and remove by index
             indices_to_remove = []
             for idx, ts in enumerate(self._ui_state_proto.training_status):
                 if ts.process_id == process_id:
                     indices_to_remove.append(idx)
-                    process_found = True
+                    process_found_in_training_status = True
             
-            # Remove in reverse order to maintain correct indices
             for idx in reversed(indices_to_remove):
                 del self._ui_state_proto.training_status[idx]
                 logger.info(f"Removed training status for process: {process_id}")
             
-            # Get devices associated with this process before removal
             associated_devices = self.pid_to_devices.get(process_id, set()).copy()
             
-            # Remove from pid_to_devices mapping
+            process_found_in_mappings = False
             if process_id in self.pid_to_devices:
                 del self.pid_to_devices[process_id]
-                process_found = True
+                process_found_in_mappings = True
                 logger.debug(f"Removed process from pid_to_devices mapping: {process_id}")
             
-            # Remove process from device_to_pid mappings
+            devices_deleted_as_consequence = False
             for device_uuid in associated_devices:
                 if device_uuid in self.device_to_pid:
                     self.device_to_pid[device_uuid].discard(process_id)
-                    # Clean up empty device entries
+                    process_found_in_mappings = True
                     if not self.device_to_pid[device_uuid]:
-                        del self.device_to_pid[device_uuid]
-                        logger.debug(f"Removed empty device entry: {device_uuid}")
+                        logger.info(f"Device {device_uuid} has no more processes after removing {process_id}. Deleting device.")
+                        if self.delete_device(device_uuid):
+                            devices_deleted_as_consequence = True
             
-            if process_found:
-                self._ui_state_proto.timestamp = int(time.time())
-                self._notify_change()
-                logger.info(f"Successfully deleted process: {process_id}")
+            overall_process_found = process_found_in_training_status or process_found_in_mappings
+
+            if overall_process_found:
+                if not devices_deleted_as_consequence:
+                    self._ui_state_proto.timestamp = int(time.time())
+                    self._notify_change()
+                logger.info(f"Successfully processed deletion for process: {process_id}. Devices deleted as consequence: {devices_deleted_as_consequence}")
             else:
                 logger.warning(f"Process not found for deletion: {process_id}")
                 
-            return process_found
+            return overall_process_found
             
         except Exception as e:
             logger.error(f"Failed to delete process {process_id}: {e}")

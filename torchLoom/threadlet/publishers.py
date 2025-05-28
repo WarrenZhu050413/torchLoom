@@ -8,7 +8,7 @@ using the common EventPublisher for maximum code reuse.
 import time  # Added for heartbeat timestamp
 from typing import Any, Dict, Optional
 
-from torchLoom.common.constants import NatsConstants  # Added
+from torchLoom.common.constants import NatsConstants
 from torchLoom.common.publishers import BasePublisher
 from torchLoom.log_utils.logger import setup_logger
 from torchLoom.proto import torchLoom_pb2  # Added for EventEnvelope

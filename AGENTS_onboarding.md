@@ -21,8 +21,8 @@ Welcome to torchLoom! This guide will help you understand, set up, and start wor
 **State Management & UI Interface:**
 - `torchLoom/weaver/status_tracker.py` - Pure state management for device and training status, with no external dependencies.
 - `torchLoom/weaver/ui_interface.py` - UI-specific functionality including WebSocket broadcasting and status formatting.
-- `torchLoom-ui/src/stores/training.js` - Pinia store for frontend state management and WebSocket message handling.
-- `torchLoom-ui/src/services/api.js` - Frontend WebSocket-only service for real-time communication.
+- `torchloom_web_gui/templates/index.html` - Main HTML file for the web user interface.
+- `torchloom_web_gui/static/styles.css` - Stylesheet for the web user interface.
 
 **Publisher Organization:**
 - `torchLoom/common/publishers.py` - Common publisher functionality shared between components.
@@ -83,10 +83,12 @@ threadlet.publish_metrics(
 
 **4. UI Receives Update**
 ```javascript
-// In torchLoom-ui/src/stores/training.js
+// In the UI's JavaScript (e.g., within index.html or linked scripts)
 function handleWebSocketMessage(message) {
   if (message.type === 'status_update') {
-    updateLocalState(message.data)
+    // Logic to update the UI based on message.data
+    console.log("Received status update:", message.data);
+    // Example: document.getElementById('statusDisplay').innerText = JSON.stringify(message.data);
   }
 }
 ```
@@ -95,15 +97,15 @@ function handleWebSocketMessage(message) {
 
 **1. UI → Weaver (via WebSocket)**
 ```javascript
-// UI sends command via WebSocket
-apiService.updateConfig('replica_1', { learning_rate: 0.002 })
-
-// In api.js - sends WebSocket message
-this.send({
-  type: 'update_config',
-  process_id: 'replica_1',
-  config_params: { learning_rate: 0.002 }
-})
+// UI sends command via WebSocket (e.g., from a button click in index.html)
+// Assuming a global 'websocket' object is available for sending messages
+// For example, if you have: let websocket = new WebSocket("ws://localhost:8079/ws");
+// websocket.send(JSON.stringify({
+//   type: 'update_config',
+//   process_id: 'replica_1',
+//   config_params: { learning_rate: 0.002 }
+// }));
+// The exact implementation will depend on how the WebSocket is managed in your UI.
 ```
 
 **2. WebSocket Server → Weaver**
@@ -163,7 +165,10 @@ All UI communication uses WebSockets for real-time updates:
 
 1. **UI sends command:**
    ```javascript
-   apiService.updateConfig("replica_1", {learning_rate: "0.002"})
+   // UI sends command (e.g., from index.html via a WebSocket connection)
+   // Example:
+   // websocket.send(JSON.stringify({type: "update_config", process_id: "replica_1", config_params: {learning_rate: "0.002"}}));
+   // The exact JavaScript code will depend on the UI's WebSocket implementation.
    ```
 
 2. **WebSocket Server converts:**
@@ -205,8 +210,9 @@ python -m torchLoom.weaver.weaver
 
 ### 3. Run Training with torchLoom
 ```bash
-# Run the interactive training example
-python examples/interactive/train_interactive.py
+# Run an example training script (adapt command as necessary)
+# Example using a script in examples/localsgd:
+python examples/localsgd/train_localsgd_lightning.py
 ```
 
 ### 4. Open the UI
@@ -214,11 +220,12 @@ Navigate to `http://localhost:8079` to see real-time training status and control
 
 ## 🧪 Testing the System
 
-The best way to test torchLoom is with the interactive training example:
+The best way to test torchLoom is with an example training script, such as:
 
 ```bash
-cd examples/interactive
-python train_interactive.py --epochs 10 --learning-rate 0.01
+# Navigate to the directory containing the example if needed
+cd examples/localsgd
+python train_localsgd_lightning.py # (Adjust parameters as needed)
 ```
 
 **Features you can test:**
@@ -250,8 +257,8 @@ python train_interactive.py --epochs 10 --learning-rate 0.01
 ## 📚 Next Steps
 
 1. **Explore Examples**
-   - `examples/interactive/train_interactive.py` - Complete training integration
-   - `examples/pytorch/train_fed.py` - Federated learning example
+   - `examples/localsgd/train_localsgd_lightning.py` - Example of training integration.
+   - (Explore other examples in the `examples/` directory and adapt them as needed)
 
 2. **Extend Functionality**
    - Add custom handlers for your training parameters

@@ -59,6 +59,10 @@ class TimeConstants:
    
     # NATS connection constants 
     NC_TIMEOUT: float = 1
+    
+    # UI constants
+    DEVICE_UNKNOWN_TIMEOUT: float = 10.0
+    DEVICE_LEAVE_TIMEOUT: float = 60.0
 
 class UINetworkConstants:
     """Network-related constants for torchLoom."""

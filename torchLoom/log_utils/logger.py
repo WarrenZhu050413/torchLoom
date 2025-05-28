@@ -1,4 +1,5 @@
 import logging
+import os
 
 def setup_logger(
     name: str = __name__,
@@ -34,7 +35,10 @@ def setup_logger(
             console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
 
-    # Create a file handler
+    log_dir = os.path.dirname(log_file)
+    if log_dir and not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
     file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.DEBUG)  # The file records all levels
     if format_log:

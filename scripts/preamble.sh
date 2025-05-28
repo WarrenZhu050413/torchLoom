@@ -20,6 +20,7 @@ kill_processes "nats-server -c"
 kill_processes "weaver"
 kill_processes "threadlet"
 kill_processes "localsgd"
+kill_processes "train_"
 
 if [ -d "/srv/tmp/jetstream/store" ]; then
     rm -r /srv/tmp/jetstream/store
