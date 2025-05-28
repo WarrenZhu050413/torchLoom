@@ -17,31 +17,18 @@ from torchLoom.common.subscription import SubscriptionManager
 from . import handlers
 
 # Publishers (messages FROM the weaver)
-from .publishers import (  # Weaver -> Threadlet publishers
-    Publisher,
-    ThreadletCommandPublisher,
-)
+from .publishers import ThreadletCommandPublisher  # Weaver -> Threadlet publishers
 from .status_tracker import StatusTracker
-from .ui_interface import (  # UI interface components
-    UINotificationManager,
-    UIStatusPublisher,
-)
+from .ui_interface import UINotificationManager
 from .weaver import Weaver
 
 __all__ = [
-    # Core
     "Weaver",
     "StatusTracker",
-    # Handler system
     "BaseHandler",
     "HandlerRegistry",
     "handlers",
-    # Publishers (FROM weaver)
-    "Publisher",
     "ThreadletCommandPublisher",
-    # UI Interface
-    "UIStatusPublisher",
     "UINotificationManager",
-    # Infrastructure
     "SubscriptionManager",
 ]

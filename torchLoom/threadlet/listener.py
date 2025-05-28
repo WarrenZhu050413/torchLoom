@@ -20,10 +20,18 @@ from nats.js.client import JetStreamContext
 
 import nats
 from torchLoom.common import TrainingStatus, deviceStatus
-from torchLoom.common.constants import TimeConstants, WeaverOutgressStream, NatsConstants, LoggerConstants
-from torchLoom.common.publishers import EventPublisher
+from torchLoom.common.constants import (
+    LoggerConstants,
+    NatsConstants,
+    TimeConstants,
+    WeaverOutgressStream,
+)
 from torchLoom.common.subscription import SubscriptionManager
-from torchLoom.common.utils import get_device_uuid, create_training_status_dict, create_device_status_dict
+from torchLoom.common.utils import (
+    create_device_status_dict,
+    create_training_status_dict,
+    get_device_uuid,
+)
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto import torchLoom_pb2
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope, RegisterDevice
@@ -73,7 +81,6 @@ class ThreadletListener:
             stop_event=self._async_stop_event,
         )
 
-        self._event_publisher: Optional[EventPublisher] = None
         self._threadlet_publisher: Optional[ThreadletEventPublisher] = None
 
         # Inter-process communication using a single duplex pipe
@@ -92,26 +99,24 @@ class ThreadletListener:
         self._logger.info("ThreadletListener run() method started.")
         try:
             await self._subscription_manager.initialize()
-            self._event_publisher = EventPublisher(
-                nats_client=self._subscription_manager.nc,
-                js_client=self._subscription_manager.js,
-            )
-
             await self._setup_subscriptions_with_manager()
-            await self._register_device()
-
             self._threadlet_publisher = ThreadletEventPublisher(
                 nats_client=self._subscription_manager.nc,
                 js_client=self._subscription_manager.js,
                 process_id=self._process_id,
                 device_uuid=self._device_uuid,
             )
+            await self._register_device()
             self._logger.info("Threadlet publisher initialized.")
 
             async_tasks = [
                 asyncio.create_task(self._heartbeat_loop(), name="heartbeat_loop_task"),
-                asyncio.create_task(self._async_pipe_message_processor(), name="pipe_processor_task"),
-                asyncio.create_task(self._monitor_mp_stop_event(), name="mp_event_monitor_task"),
+                asyncio.create_task(
+                    self._async_pipe_message_processor(), name="pipe_processor_task"
+                ),
+                asyncio.create_task(
+                    self._monitor_mp_stop_event(), name="mp_event_monitor_task"
+                ),
             ]
 
             self._logger.info(
@@ -123,17 +128,23 @@ class ThreadletListener:
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
-            self._logger.info(f"asyncio.wait completed. Done tasks: {[t.get_name() for t in done if hasattr(t, 'get_name')]}. Pending tasks: {[t.get_name() for t in pending if hasattr(t, 'get_name')]}.")
-            
+            self._logger.info(
+                f"asyncio.wait completed. Done tasks: {[t.get_name() for t in done if hasattr(t, 'get_name')]}. Pending tasks: {[t.get_name() for t in pending if hasattr(t, 'get_name')]}."
+            )
+
             self._cleanup_futures(done, pending)
         except Exception as e:
-            self._logger.exception(f"Unhandled exception in ThreadletListener run() loop: {e}")
+            self._logger.exception(
+                f"Unhandled exception in ThreadletListener run() loop: {e}"
+            )
         finally:
             self._logger.info("ThreadletListener run() method entering finally block.")
             self._async_stop_event.set()
             await self._cleanup()
-            
-    async def _cleanup_futures(self, done: List[asyncio.Future], pending: List[asyncio.Future]) -> None:
+
+    async def _cleanup_futures(
+        self, done: List[asyncio.Future], pending: List[asyncio.Future]
+    ) -> None:
         """Clean up done and pending futures."""
         # Check done task exception
         for task in done:
@@ -141,9 +152,14 @@ class ThreadletListener:
                 # If a task raised an exception, we handle it here
                 exc = task.exception()
                 if exc:
-                    self._logger.error(f"Task {task.get_name()} raised an exception: {exc}", exc_info=exc)
+                    self._logger.error(
+                        f"Task {task.get_name()} raised an exception: {exc}",
+                        exc_info=exc,
+                    )
             except asyncio.InvalidStateError:
-                self._logger.debug(f"Task {task.get_name()} state was invalid, could not get exception (might be okay if cancelled).")
+                self._logger.debug(
+                    f"Task {task.get_name()} state was invalid, could not get exception (might be okay if cancelled)."
+                )
 
         # Cancel remaining pending tasks
         for task in pending:
@@ -153,9 +169,7 @@ class ThreadletListener:
             except asyncio.CancelledError:
                 self._logger.debug(f"Async task {task.get_name()} cancelled.")
             except Exception as e:
-                self._logger.warning(
-                    f"Error during cancellation of async task: {e}"
-                )
+                self._logger.warning(f"Error during cancellation of async task: {e}")
 
         self._logger.info("ThreadletListener main loop completed")
 
@@ -198,13 +212,10 @@ class ThreadletListener:
     async def _register_device(self) -> None:
         """Register this device with the weaver using the common publisher."""
         try:
-            if not self._event_publisher:
-                raise RuntimeError("Event publisher not initialized")
+            if not self._threadlet_publisher:
+                raise RuntimeError("Threadlet publisher not initialized")
 
-            await self._event_publisher.publish_device_registration(
-                device_uuid=self._device_uuid,
-                process_id=self._process_id,
-            )
+            await self._threadlet_publisher.publish_device_registration()
 
             self._logger.info(
                 f"Registered device {self._device_uuid} with replica {self._process_id}"
@@ -321,16 +332,23 @@ class ThreadletListener:
                     raw_message = await asyncio.to_thread(
                         self._pipe_to_main_process.recv
                     )
-                    self._logger.info(f"Received raw data from pipe: {type(raw_message)}")
+                    self._logger.info(
+                        f"Received raw data from pipe: {type(raw_message)}"
+                    )
+                    self._logger.debug(f"Received raw message from pipe: {raw_message}")
                     if raw_message:
                         await self._process_pipe_message(raw_message)
                     else:
-                        self._logger.warning("Received None from pipe, might indicate EOF or error.")
+                        self._logger.warning(
+                            "Received None from pipe, might indicate EOF or error."
+                        )
                         # Consider a small sleep or break if pipe seems closed
                         await asyncio.sleep(0.1)
                 else:
                     # If no data, yield control to the event loop
-                    await asyncio.sleep(TimeConstants.ASYNC_PIPE_POLL_INTERVAL) # Use a defined constant
+                    await asyncio.sleep(
+                        TimeConstants.ASYNC_PIPE_POLL_INTERVAL
+                    )  # Use a defined constant
 
         except EOFError:
             self._logger.info(
@@ -353,64 +371,74 @@ class ThreadletListener:
         self._logger.debug(f"Processing raw message from pipe: {type(raw_message)}")
         try:
             if isinstance(raw_message, dict):
-                action = raw_message.get('action')
-                
-                if action == 'publish_event':
+                action = raw_message.get("action")
+
+                if action == "publish_event":
                     # Handle publish event requests from main process
                     await self._handle_publish_event_request(raw_message)
                 else:
                     self._logger.warning(f"Unknown action in pipe message: {action}")
             else:
-                self._logger.warning(f"Received unexpected data type from pipe: {type(raw_message)}. Expected dict.")
+                self._logger.warning(
+                    f"Received unexpected data type from pipe: {type(raw_message)}. Expected dict."
+                )
         except Exception as e:
             self._logger.exception(f"Error processing pipe message: {e}")
 
     async def _handle_publish_event_request(self, request_dict: Dict[str, Any]) -> None:
         """Handle a publish event request from the main process."""
         try:
-            event_type = request_dict.get('event_type')
-            event_data = request_dict.get('event_data', {})
-            
+            event_type = request_dict.get("event_type")
+            event_data = request_dict.get("event_data", {})
+
             if not self._threadlet_publisher:
-                self._logger.warning("Threadlet publisher not initialized, cannot publish event.")
+                self._logger.warning(
+                    "Threadlet publisher not initialized, cannot publish event."
+                )
                 return
-                
-            self._logger.debug(f"Publishing event: {event_type} with data: {event_data}")
-            
-            if event_type == 'training_status':
-                status_data = event_data.get('status_data', {})
-                process_id = event_data.get('process_id', self._process_id)
+
+            self._logger.debug(
+                f"Publishing event: {event_type} with data: {event_data}"
+            )
+
+            if event_type == "training_status":
+                status_data = event_data.get("status_data", {})
+                process_id = event_data.get("process_id", self._process_id)
                 await self._threadlet_publisher.publish_training_status(status_data)
-                
-            elif event_type == 'device_status':
-                status_data = event_data.get('status_data', {})
-                device_uuid = event_data.get('device_uuid', self._device_uuid)
-                process_id = event_data.get('process_id', self._process_id)
+
+            elif event_type == "device_status":
+                status_data = event_data.get("status_data", {})
+                device_uuid = event_data.get("device_uuid", self._device_uuid)
+                process_id = event_data.get("process_id", self._process_id)
                 await self._threadlet_publisher.publish_device_status(status_data)
-                
-            elif event_type == 'heartbeat':
-                status = event_data.get('status', 'active')
-                metadata = event_data.get('metadata')
-                process_id = event_data.get('process_id', self._process_id)
-                device_uuid = event_data.get('device_uuid', self._device_uuid)
+
+            elif event_type == "heartbeat":
+                status = event_data.get("status", "active")
+                metadata = event_data.get("metadata")
+                process_id = event_data.get("process_id", self._process_id)
+                device_uuid = event_data.get("device_uuid", self._device_uuid)
                 await self._threadlet_publisher.publish_heartbeat(status, metadata)
-                
-            elif event_type == 'device_registration':
-                device_uuid = event_data.get('device_uuid', self._device_uuid)
-                process_id = event_data.get('process_id', self._process_id)
+
+            elif event_type == "device_registration":
+                device_uuid = event_data.get("device_uuid", self._device_uuid)
+                process_id = event_data.get("process_id", self._process_id)
                 await self._threadlet_publisher.publish_device_registration()
-                
+
             else:
                 self._logger.warning(f"Unknown event type for publishing: {event_type}")
-                
+
             self._logger.debug(f"Successfully published {event_type} event")
-            
+
         except Exception as e:
             self._logger.exception(f"Error handling publish event request: {e}")
 
-    async def _handle_training_status_message(self, message: torchLoom_pb2.PipeTrainingStatusMessage) -> None:
+    async def _handle_training_status_message(
+        self, message: torchLoom_pb2.PipeTrainingStatusMessage
+    ) -> None:
         """Handles training status messages received from the main threadlet process."""
-        self._logger.debug(f"_handle_training_status_message invoked with: {message.training_status}")
+        self._logger.debug(
+            f"_handle_training_status_message invoked with: {message.training_status}"
+        )
         try:
             if not self._threadlet_publisher:
                 self._logger.warning(
@@ -419,18 +447,26 @@ class ThreadletListener:
                 return
 
             training_status_proto = message.training_status
-            self._logger.info(f"Publishing training status update: step={training_status_proto.current_step}, epoch={training_status_proto.epoch}")
+            self._logger.info(
+                f"Publishing training status update: step={training_status_proto.current_step}, epoch={training_status_proto.epoch}"
+            )
 
             status_data = create_training_status_dict(training_status_proto)
 
             await self._threadlet_publisher.publish_training_status(status_data)
-            self._logger.info(f"Training status update published successfully for step: {training_status_proto.current_step}")
+            self._logger.info(
+                f"Training status update published successfully for step: {training_status_proto.current_step}"
+            )
         except Exception as e:
             self._logger.exception(f"Error handling training status message: {e}")
 
-    async def _handle_device_status_message(self, message: torchLoom_pb2.PipeDeviceStatusMessage) -> None:
+    async def _handle_device_status_message(
+        self, message: torchLoom_pb2.PipeDeviceStatusMessage
+    ) -> None:
         """Handles device status messages received from the main threadlet process."""
-        self._logger.debug(f"_handle_device_status_message invoked with: {message.device_status}")
+        self._logger.debug(
+            f"_handle_device_status_message invoked with: {message.device_status}"
+        )
         try:
             if not self._threadlet_publisher:
                 self._logger.warning(
@@ -439,18 +475,26 @@ class ThreadletListener:
                 return
 
             device_status_proto = message.device_status
-            self._logger.info(f"Publishing device status update: device_uuid='{device_status_proto.device_uuid}', utilization={device_status_proto.utilization}")
+            self._logger.info(
+                f"Publishing device status update: device_uuid='{device_status_proto.device_uuid}', utilization={device_status_proto.utilization}"
+            )
 
             status_data = create_device_status_dict(device_status_proto)
 
             await self._threadlet_publisher.publish_device_status(status_data)
-            self._logger.info(f"Device status update published successfully for device: {device_status_proto.device_uuid}")
+            self._logger.info(
+                f"Device status update published successfully for device: {device_status_proto.device_uuid}"
+            )
         except Exception as e:
             self._logger.exception(f"Error handling device status message: {e}")
 
-    async def _handle_status_message(self, message: torchLoom_pb2.PipeCommandMessage) -> None:
+    async def _handle_status_message(
+        self, message: torchLoom_pb2.PipeCommandMessage
+    ) -> None:
         """Handles status messages (which are specific command messages) received from the main threadlet process."""
-        self._logger.debug(f"_handle_status_message invoked with command params: {message.params}")
+        self._logger.debug(
+            f"_handle_status_message invoked with command params: {message.params}"
+        )
         try:
             if not self._threadlet_publisher:
                 self._logger.warning(
@@ -461,14 +505,18 @@ class ThreadletListener:
             # Extract status details from the command's params map
             # These were set in MessageFactory.create_status
             status_str = message.params.get("status", TrainingStatus.UNKNOWN.value)
-            current_step = int(message.params.get("current_step", "0")) # Params are strings
+            current_step = int(
+                message.params.get("current_step", "0")
+            )  # Params are strings
             epoch = int(message.params.get("epoch", "0"))
             status_message_text = message.params.get("message", "")
-            
-            self._logger.info(f"Preparing to publish status update via ThreadletEventPublisher: status='{status_str}', step={current_step}")
+
+            self._logger.info(
+                f"Preparing to publish status update via ThreadletEventPublisher: status='{status_str}', step={current_step}"
+            )
 
             await self._threadlet_publisher.publish_training_status_update(
-                status=status_str, 
+                status=status_str,
                 current_step=current_step,
                 epoch=epoch,
                 message=status_message_text,
@@ -482,24 +530,28 @@ class ThreadletListener:
         try:
             if self._pipe_to_main_process and not self._pipe_to_main_process.closed:
                 self._pipe_to_main_process.send(message_dict)
-                self._logger.debug(f"Sent dict message to Threadlet via pipe: {message_dict.get('message_type', 'unknown')}")
+                self._logger.debug(
+                    f"Sent dict message to Threadlet via pipe: {message_dict.get('message_type', 'unknown')}"
+                )
         except (BrokenPipeError, OSError):
-            self._logger.warning("Pipe to main process is broken or closed, dropping message.")
+            self._logger.warning(
+                "Pipe to main process is broken or closed, dropping message."
+            )
         except Exception as e:
-            self._logger.warning(f"Error sending dict message to Threadlet via pipe: {e}")
+            self._logger.warning(
+                f"Error sending dict message to Threadlet via pipe: {e}"
+            )
 
     async def _cleanup(self) -> None:
         """Clean up resources."""
         try:
             self._logger.info("Starting ThreadletListener cleanup...")
-            self._async_stop_event.set()  # Ensure all async loops are signaled
+            self._async_stop_event.set()
 
-            # Close SubscriptionManager (handles NATS connection and its subscriptions)
             if self._subscription_manager:
                 await self._subscription_manager.close()
                 self._logger.info("SubscriptionManager closed.")
 
-            # Perform cleanup in logical order
             await self._cleanup_pipes()
 
             self._logger.info("ThreadletListener cleanup completed")

@@ -15,45 +15,6 @@ from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
 logger = setup_logger(name="ui_interface")
 
-
-class UIStatusPublisher(BasePublisher):
-    """Publisher for UI status updates specific to the Weaver."""
-
-    def __init__(self, status_tracker):
-        self.status_tracker = status_tracker
-
-    async def create_ui_status_update(self) -> Optional[EventEnvelope]:
-        """Create a UIStatusUpdate envelope using the status tracker's data."""
-        try:
-            envelope = EventEnvelope()
-            ui_update = envelope.ui_status_update
-            ui_update.timestamp = int(time.time())
-
-            # Get the current UI status snapshot from status tracker
-            ui_snapshot = self.status_tracker.get_ui_status_snapshot()
-
-            # Copy all device statuses
-            for device in ui_snapshot.devices:
-                device_status = ui_update.devices.add()
-                device_status.CopyFrom(device)
-
-            # Copy all training statuses
-            for training_status in ui_snapshot.training_status:
-                training_status_copy = ui_update.training_status.add()
-                training_status_copy.CopyFrom(training_status)
-
-            logger.debug("Created UIStatusUpdate envelope")
-            return envelope
-
-        except Exception as e:
-            logger.error(f"Failed to create UIStatusUpdate envelope: {e}")
-            return None
-
-    async def publish(self) -> Optional[EventEnvelope]:
-        """Implement the abstract publish method."""
-        return await self.create_ui_status_update()
-
-
 class UINotificationManager:
     """
     Manages UI notifications and WebSocket broadcasting.

@@ -7,7 +7,7 @@ including device state, replica state, and device-replica mappings.
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import TrainingStatus, UIStatusUpdate, deviceStatus
@@ -23,23 +23,24 @@ class StatusTracker:
     This class maintains the core protobuf state for UI updates.
     """
 
-    # UI State (protobuf message for UI updates)
     _ui_state_proto: UIStatusUpdate = field(default_factory=UIStatusUpdate)
-
-    # Device-replica mapping functionality
     device_to_pid: Dict[str, Set[str]] = field(default_factory=dict)
     pid_to_devices: Dict[str, Set[str]] = field(default_factory=dict)
+    _ui_notification_callback: Optional[Callable[[], None]] = None
 
-    # UI notification callback - will be set by UI interface
-    _ui_notification_callback: Optional[Any] = field(init=False, default=None)
+    def set_ui_notification_callback(self, callback: Callable[[], None]) -> None:
+        """Set the UI notification callback."""
+        self._ui_notification_callback = callback
 
-    def set_ui_notification_callback(self, callback):
-        """Set a callback function to notify UI of changes."""
-        try:
-            self._ui_notification_callback = callback
-            logger.debug("UI notification callback set successfully")
-        except Exception as e:
-            logger.error(f"Failed to set UI notification callback: {e}")
+    def connect_ui_manager(self, ui_manager) -> None:
+        """Automatically connect to a UI notification manager."""
+        if hasattr(ui_manager, "notify_status_change"):
+            self.set_ui_notification_callback(ui_manager.notify_status_change)
+            logger.info(
+                "StatusTracker automatically connected to UI notification manager"
+            )
+        else:
+            logger.warning("UI manager does not have notify_status_change method")
 
     def _notify_change(self):
         """Notify UI of status changes if callback is set."""
@@ -48,10 +49,6 @@ class StatusTracker:
                 self._ui_notification_callback()
         except Exception as e:
             logger.warning(f"Failed to notify UI of change: {e}")
-
-    # ========================================
-    # DEVICE STATE MANAGEMENT
-    # ========================================
 
     def update_device_status_from_proto(self, dev_proto: deviceStatus):
         """Update an existing device or add a new one based on deviceStatus protobuf message."""
@@ -65,11 +62,9 @@ class StatusTracker:
                     break
 
             if found_idx != -1:
-                # Device exists, update its state
                 self._ui_state_proto.devices[found_idx].CopyFrom(dev_proto)
                 logger.debug(f"Updated existing device: {dev_proto.device_uuid}")
             else:
-                # New device, add it to the list
                 new_device_entry = deviceStatus()
                 new_device_entry.CopyFrom(dev_proto)
                 self._ui_state_proto.devices.append(new_device_entry)
@@ -82,10 +77,7 @@ class StatusTracker:
             logger.error(f"Failed to update device status from proto: {e}")
 
     def get_active_devices(self) -> List[deviceStatus]:
-        """Returns a list of all devices currently marked as active."""
         try:
-            # Status is removed from deviceStatus, so this method needs to be re-evaluated.
-            # For now, returning all devices. Consider how to determine 'active' status.
             return [d for d in self._ui_state_proto.devices]
         except Exception as e:
             logger.error(f"Failed to get active devices: {e}")
@@ -93,19 +85,15 @@ class StatusTracker:
 
     @property
     def devices(self) -> Dict[str, deviceStatus]:
-        """Get a dictionary of devices keyed by device_uuid."""
         try:
-            return {device.device_uuid: device for device in self._ui_state_proto.devices}
+            return {
+                device.device_uuid: device for device in self._ui_state_proto.devices
+            }
         except Exception as e:
             logger.error(f"Failed to get devices dict: {e}")
             return {}
 
-    # ========================================
-    # REPLICA STATE MANAGEMENT
-    # ========================================
-
     def update_training_progress_from_proto(self, ts_proto: TrainingStatus):
-        """Update training status using TrainingStatus protobuf message."""
         try:
             now_ts = int(time.time())
 
@@ -116,7 +104,6 @@ class StatusTracker:
                     break
 
             if found_idx != -1:
-                # Replica exists, update it
                 self._ui_state_proto.training_status[found_idx].CopyFrom(ts_proto)
                 logger.debug(
                     f"Updated training status for replica: {ts_proto.process_id}"
@@ -136,16 +123,9 @@ class StatusTracker:
         except Exception as e:
             logger.error(f"Failed to update training progress from proto: {e}")
 
-    # ========================================
-    # DEVICE-REPLICA MAPPING
-    # ========================================
-
     def add_device_pid_mapping(self, device_uuid: str, process_id: str) -> bool:
-        """Add a mapping from device to replica. Returns True if this is a new mapping."""
         try:
-            is_new = process_id not in self.device_to_pid.setdefault(
-                device_uuid, set()
-            )
+            is_new = process_id not in self.device_to_pid.setdefault(device_uuid, set())
             if is_new:
                 self.device_to_pid[device_uuid].add(process_id)
                 logger.debug(
@@ -157,7 +137,6 @@ class StatusTracker:
             return False
 
     def add_pid_device_mapping(self, process_id: str, device_uuid: str) -> bool:
-        """Add a mapping from replica to device. Returns True if this is a new mapping."""
         try:
             is_new = device_uuid not in self.pid_to_devices.setdefault(
                 process_id, set()
@@ -173,7 +152,6 @@ class StatusTracker:
             return False
 
     def get_pid_for_device(self, device_uuid: str) -> Set[str]:
-        """Get all replicas associated with a device."""
         try:
             return self.device_to_pid.get(device_uuid, set())
         except Exception as e:
@@ -181,29 +159,24 @@ class StatusTracker:
             return set()
 
     def get_devices_for_pid(self, process_id: str) -> Set[str]:
-        """Get all devices associated with a replica."""
         try:
             return self.pid_to_devices.get(process_id, set())
         except Exception as e:
             logger.error(f"Failed to get devices for replica {process_id}: {e}")
             return set()
 
-    # ========================================
-    # UI STATE MANAGEMENT
-    # ========================================
+    def has_process_id(self, process_id: str) -> bool:
+        try:
+            return process_id in self.pid_to_devices
+        except Exception as e:
+            logger.error(f"Failed to check if process_id {process_id} exists: {e}")
+            return False
 
     def get_ui_status_snapshot(self) -> UIStatusUpdate:
-        """Returns the current UIStatusUpdate protobuf message."""
         return self._ui_state_proto
 
-    # ========================================
-    # CONVENIENCE METHODS FOR HANDLERS
-    # ========================================
-
     def update_training_progress(self, process_id: str, **kwargs):
-        """Convenience method to update training progress with keyword arguments."""
         try:
-            # Find or create training status
             training_status = None
             for ts in self._ui_state_proto.training_status:
                 if ts.process_id == process_id:
@@ -211,22 +184,27 @@ class StatusTracker:
                     break
 
             if training_status is None:
-                training_status = TrainingStatus()
-                training_status.process_id = process_id
-                self._ui_state_proto.training_status.append(training_status)
+                new_training_status = TrainingStatus()
+                new_training_status.process_id = process_id
+                self._ui_state_proto.training_status.append(new_training_status)
+                # Get reference to the actual object in the list
+                training_status = self._ui_state_proto.training_status[-1]
 
-            # Update fields from kwargs
             for key, value in kwargs.items():
-                if hasattr(training_status, key):
-                    # Handle protobuf map fields (like config and metrics)
-                    if key == "config" and isinstance(value, dict):
-                        training_status.config.clear()
-                        training_status.config.update({k: str(v) for k, v in value.items()})
-                    elif key == "metrics" and isinstance(value, dict):
-                        training_status.metrics.clear()
-                        training_status.metrics.update({k: str(v) for k, v in value.items()})
-                    else:
-                        setattr(training_status, key, value)
+                if key == "config" and isinstance(value, dict):
+                    training_status.config.clear()
+                    training_status.config.update(
+                        {k: str(v) for k, v in value.items()}
+                    )
+                elif key == "metrics" and isinstance(value, dict):
+                    training_status.metrics.clear()
+                    training_status.metrics.update(
+                        {k: str(v) for k, v in value.items()}
+                    )
+                elif hasattr(training_status, key):
+                    setattr(training_status, key, value)
+                else:
+                    logger.warning(f"TrainingStatus does not have attribute: {key}")
 
             self._ui_state_proto.timestamp = int(time.time())
             self._notify_change()
@@ -235,9 +213,7 @@ class StatusTracker:
             logger.error(f"Failed to update training progress: {e}")
 
     def update_device_status(self, device_uuid: str, **kwargs):
-        """Convenience method to update device status with keyword arguments."""
         try:
-            # Find or create device status
             device_status = None
             for ds in self._ui_state_proto.devices:
                 if ds.device_uuid == device_uuid:
@@ -249,7 +225,6 @@ class StatusTracker:
                 device_status.device_uuid = device_uuid
                 self._ui_state_proto.devices.append(device_status)
 
-            # Update fields from kwargs
             for key, value in kwargs.items():
                 if hasattr(device_status, key):
                     setattr(device_status, key, value)
@@ -259,8 +234,3 @@ class StatusTracker:
 
         except Exception as e:
             logger.error(f"Failed to update device status: {e}")
-
-    def update_device_config(self, device_uuid: str, config_params: Dict[str, Any]):
-        """Update configuration for a specific device."""
-        # Config is moved to TrainingStatus. This method should target process_id and update TrainingStatus.
-        logger.warning(f"update_device_config called for {device_uuid}. Config is now part of TrainingStatus. This method needs to be updated to target a process_id.")

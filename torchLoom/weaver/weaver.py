@@ -6,16 +6,17 @@ and subscription management using the extracted components.
 """
 
 import asyncio
+import time
 from typing import Any, Dict, Optional, Set
 
 from nats.aio.msg import Msg
 
 from torchLoom.common.constants import (
     HandlerConstants,
-    UINetworkConstants,
-    TimeConstants,
-    NatsConstants,
     LoggerConstants,
+    NatsConstants,
+    TimeConstants,
+    UINetworkConstants,
 )
 from torchLoom.common.handlers import HandlerRegistry
 from torchLoom.common.subscription import SubscriptionManager
@@ -25,7 +26,7 @@ from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 from . import handlers
 from .publishers import ThreadletCommandPublisher
 from .status_tracker import StatusTracker
-from .ui_interface import UINotificationManager, UIStatusPublisher
+from .ui_interface import UINotificationManager
 from .websocket_server import WebSocketServer
 
 logger = setup_logger(
@@ -62,7 +63,6 @@ class Weaver:
         self.ui_port = ui_port
 
         self.ui_notification_manager = UINotificationManager()
-        self.ui_publisher = UIStatusPublisher(self.status_tracker)
 
         self._handler_registry: Optional[HandlerRegistry] = None
         self.threadlet_command_handler: Optional[ThreadletCommandPublisher] = None
@@ -86,13 +86,11 @@ class Weaver:
                 host=self.ui_host,
                 port=self.ui_port,
             )
-            # Set up UI interface connections (unidirectional)
             self.ui_notification_manager.set_websocket_send_func(
                 self.websocket_server.send_to_all
             )
             self.ui_notification_manager.set_status_tracker(self.status_tracker)
 
-            # Set up websocket server callbacks
             self.websocket_server.set_ui_command_handler(
                 self._handle_ui_websocket_command
             )
@@ -100,17 +98,13 @@ class Weaver:
                 self.ui_notification_manager.get_status_data_for_initial_connection
             )
 
-        # Connect StatusTracker to UI notification system
-        self.status_tracker.set_ui_notification_callback(
-            self.ui_notification_manager.notify_status_change
-        )
+        self.status_tracker.connect_ui_manager(self.ui_notification_manager)
 
         self.threadlet_command_handler = ThreadletCommandPublisher(
             nats_client=self._subscription_manager.nc,
             js_client=self._subscription_manager.js,
         )
 
-        # Initialize the handler registry with direct handler registration
         self._handler_registry = HandlerRegistry("weaver_main")
         self._register_handlers()
 
@@ -118,26 +112,24 @@ class Weaver:
 
     def _register_handlers(self) -> None:
         """Register all message handlers directly with the registry."""
-        # Register threadlet event handlers
         self._handler_registry.register_handler(
             "register_device", handlers.handle_device_registration
         )
-        self._handler_registry.register_handler("heartbeat", handlers.handle_heartbeat)
+        self._handler_registry.register_handler(
+            "heartbeat", handlers.handle_heartbeat
+        )
         self._handler_registry.register_handler(
             "training_status", handlers.handle_training_status
         )
         self._handler_registry.register_handler(
             "device_status", handlers.handle_device_status
         )
-
         self._handler_registry.register_handler(
             "ui_command", handlers.handle_ui_command
         )
-
         logger.info("Registered all handlers with simplified registry")
 
     async def _handle_message(self, env: EventEnvelope) -> None:
-        """Main message handler that dispatches to appropriate handlers using the registry."""
         try:
             payload_type = env.WhichOneof("body")
             logger.debug(f"Received message with payload type: {payload_type}")
@@ -146,13 +138,11 @@ class Weaver:
                 logger.warning(f"Received message with no body")
                 return
 
-            # Check if we have a handler for this payload type
             if self._handler_registry and self._handler_registry.has_handler(
                 payload_type
             ):
                 handler_func = self._handler_registry.get_handler(payload_type)
 
-                # Call the handler with the required context
                 await handler_func(
                     env=env,
                     status_tracker=self.status_tracker,
@@ -167,22 +157,18 @@ class Weaver:
             logger.exception(f"Error in handle_message: {e}")
 
     async def _handle_ui_websocket_command(self, websocket_data: dict) -> None:
-        """Handle UI commands received via WebSocket by converting to protobuf and using handle_message."""
         try:
             command_type = websocket_data.get("type")
             logger.debug(f"Processing WebSocket UI command: {command_type}")
 
-            # Create EventEnvelope - only handle ui_command type
             envelope = EventEnvelope()
 
             if command_type == "ui_command":
-                # Convert WebSocket ui_command to protobuf
                 ui_command_data = websocket_data.get("data", {})
                 ui_command = envelope.ui_command
                 ui_command.command_type = ui_command_data.get("command_type", "")
-                ui_command.device_uuid = ui_command_data.get("device_uuid", "")
+                ui_command.process_id = ui_command_data.get("process_id", "")
 
-                # Add parameters
                 params = ui_command_data.get("params", {})
                 for key, value in params.items():
                     ui_command.params[key] = str(value)
@@ -191,7 +177,6 @@ class Weaver:
                 logger.warning(f"Unknown WebSocket command type: {command_type}")
                 return
 
-            # Use the unified message handler
             await self._handle_message(envelope)
 
         except Exception as e:
@@ -269,24 +254,23 @@ class Weaver:
     async def start_heartbeat_monitor(self) -> None:
         """Start the background task to monitor dead replicas and publish failure events."""
         logger.info("Starting heartbeat monitor task")
-        
-        def check_dead_replicas(heartbeat_tracker: Dict) -> Set[str]:
-            """Check for dead replicas based on heartbeat timeout."""
-            current_time = time.time()
-            dead_replicas = set()
-            
-            for process_id, last_heartbeat in heartbeat_tracker["last_heartbeats"].items():
-                if current_time - last_heartbeat > TimeConstants.HEARTBEAT_TIMEOUT:
-                    if process_id not in heartbeat_tracker["dead_replicas"]:
-                        logger.warning(f"Replica {process_id} marked as dead (no heartbeat for {current_time - last_heartbeat:.1f}s)")
-                        heartbeat_tracker["dead_replicas"].add(process_id)
-                        dead_replicas.add(process_id)
-        
-        return dead_replicas
 
         while not self._stop_nats.is_set():
             try:
-                dead_replicas = handlers.check_dead_replicas(self._heartbeat_tracker)
+                current_time = time.time()
+                dead_replicas = set()
+
+                for process_id, last_heartbeat in self._heartbeat_tracker[
+                    "last_heartbeats"
+                ].items():
+                    if current_time - last_heartbeat > TimeConstants.HEARTBEAT_TIMEOUT:
+                        if process_id not in self._heartbeat_tracker["dead_replicas"]:
+                            logger.warning(
+                                f"Replica {process_id} marked as dead (no heartbeat for {current_time - last_heartbeat:.1f}s)"
+                            )
+                            self._heartbeat_tracker["dead_replicas"].add(process_id)
+                            dead_replicas.add(process_id)
+
                 if dead_replicas:
                     logger.warning(
                         f"Heartbeat monitor identified dead replicas: {dead_replicas}"
@@ -295,6 +279,7 @@ class Weaver:
                         self.status_tracker.update_training_progress(
                             process_id=process_id, status="dead"
                         )
+
                 await asyncio.sleep(TimeConstants.HEARTBEAT_MONITOR_INTERVAL)
             except asyncio.CancelledError:
                 logger.info("Heartbeat monitor task cancelled.")
@@ -340,7 +325,6 @@ class Weaver:
 
 
 async def main():
-    """Main function to start the weaver."""
     weaver: Optional[Weaver] = None
     try:
         logger.info("Starting torchLoom Weaver")

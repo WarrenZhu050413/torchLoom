@@ -69,7 +69,7 @@ message TrainingStatus {
 
 message deviceStatus {
   string device_uuid = 1;
-  string process_id = 2;          // To delete
+  string process_id = 2;
   string server_id = 3;
   float utilization = 5;          // 0-100%
   float temperature = 6;          // Celsius
@@ -87,7 +87,7 @@ message UIStatusUpdate {
 // UI -> Weaver messages
 message UICommand {
   string command_type = 1;  // "deactivate_device", "update_config"
-  string device_uuid = 2;     // device_uuid
+  string process_id = 2;      // process_id (primary identifier for commands)
   map<string, string> params = 3;
 }
 

@@ -11,7 +11,6 @@ from typing import Any, Callable, Dict, Optional
 from torchLoom.common.handlers import HandlerRegistry
 from torchLoom.log.logger import setup_logger
 from torchLoom.proto import torchLoom_pb2
-
 from torchLoom.proto.torchLoom_pb2 import PipeCommandType as CommandType
 
 logger = setup_logger(name="threadlet_handlers")
