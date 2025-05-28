@@ -115,9 +115,7 @@ class Weaver:
         self._handler_registry.register_handler(
             "register_device", handlers.handle_device_registration
         )
-        self._handler_registry.register_handler(
-            "heartbeat", handlers.handle_heartbeat
-        )
+        self._handler_registry.register_handler("heartbeat", handlers.handle_heartbeat)
         self._handler_registry.register_handler(
             "training_status", handlers.handle_training_status
         )
@@ -276,9 +274,20 @@ class Weaver:
                         f"Heartbeat monitor identified dead replicas: {dead_processes}"
                     )
                     for process_id in dead_processes:
-                        self.status_tracker.update_training_progress(
-                            process_id=process_id, status="dead"
-                        )
+                        # Delete the process completely from tracking instead of just marking as dead
+                        deleted = self.status_tracker.delete_process(process_id)
+                        if deleted:
+                            logger.info(
+                                f"Successfully removed dead process: {process_id}"
+                            )
+                        else:
+                            logger.warning(
+                                f"Failed to remove dead process: {process_id}"
+                            )
+
+                        # Also remove from heartbeat tracker's dead_processes set for cleanup
+                        # (it will be re-added if the process somehow comes back to life)
+                        self._heartbeat_tracker["last_heartbeats"].pop(process_id, None)
 
                 await asyncio.sleep(TimeConstants.HEARTBEAT_MONITOR_INTERVAL)
             except asyncio.CancelledError:

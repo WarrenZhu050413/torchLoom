@@ -1,3 +1,10 @@
+0. Cleanup all related processes by
+
+```sh
+chmod +x ./scripts/preamble.sh
+./scripts/preamble.sh
+```
+
 1. Start the nats server:
 
 ```sh

@@ -209,35 +209,42 @@ class WebSocketServer:
                 if self._get_initial_status:
                     status_data = self._get_initial_status()
                     processes = []
-                    
+
                     # Extract process information from training status
                     training_status = status_data.get("training_status", [])
                     for status in training_status:
                         process_id = status.get("process_id")
                         if process_id and process_id != "N/A":
                             config = status.get("config", {})
-                            processes.append({
-                                "process_id": process_id,
-                                "config": config,
-                                "type": "training"
-                            })
-                    
+                            processes.append(
+                                {
+                                    "process_id": process_id,
+                                    "config": config,
+                                    "type": "training",
+                                }
+                            )
+
                     # Extract process information from devices
                     devices = status_data.get("devices", [])
                     for device in devices:
                         process_id = device.get("process_id")
                         if process_id and process_id != "N/A":
                             # Check if we already have this process from training status
-                            existing = next((p for p in processes if p["process_id"] == process_id), None)
+                            existing = next(
+                                (p for p in processes if p["process_id"] == process_id),
+                                None,
+                            )
                             if not existing:
                                 config = device.get("config", {})
-                                processes.append({
-                                    "process_id": process_id,
-                                    "config": config,
-                                    "type": "device",
-                                    "device_uuid": device.get("device_uuid", "N/A")
-                                })
-                    
+                                processes.append(
+                                    {
+                                        "process_id": process_id,
+                                        "config": config,
+                                        "type": "device",
+                                        "device_uuid": device.get("device_uuid", "N/A"),
+                                    }
+                                )
+
                     return {"processes": processes}
                 else:
                     return {"processes": []}

@@ -37,14 +37,14 @@ class TimeConstants:
 
     # Broadcast and monitoring intervals
     STATUS_BROADCAST_IN: float = 1.0
-    HEARTBEAT_MONITOR_INTERVAL: float = 30.0
+    HEARTBEAT_MONITOR_INTERVAL: float = 5.0
     HEARTBEAT_SEND_INTERVAL: float = 3.0
-    HEARTBEAT_TIMEOUT: float = 10.0
+    HEARTBEAT_TIMEOUT: float = 8.0
 
     # Sleep intervals for various operations
     PIPE_POLL_INTERVAL: float = 0.1
     EXCEPTION_SLEEP: float = 5.0
-    CLEANUP_SLEEP: float = 1.0
+    CLEANUP_SLEEP: float = 0.1
 
     # Process management timeouts
     PIPE_LISTENER_TIMEOUT: float = 1.0

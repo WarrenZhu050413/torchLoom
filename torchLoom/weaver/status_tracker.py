@@ -193,9 +193,7 @@ class StatusTracker:
             for key, value in kwargs.items():
                 if key == "config" and isinstance(value, dict):
                     training_status.config.clear()
-                    training_status.config.update(
-                        {k: str(v) for k, v in value.items()}
-                    )
+                    training_status.config.update({k: str(v) for k, v in value.items()})
                 elif key == "metrics" and isinstance(value, dict):
                     training_status.metrics.clear()
                     training_status.metrics.update(
@@ -234,3 +232,59 @@ class StatusTracker:
 
         except Exception as e:
             logger.error(f"Failed to update device status: {e}")
+
+    def delete_process(self, process_id: str) -> bool:
+        """
+        Remove a process and all its associated mappings from tracking.
+        
+        Args:
+            process_id: The process ID to remove
+            
+        Returns:
+            True if the process was found and removed, False otherwise
+        """
+        try:
+            process_found = False
+            
+            # Remove from training status list - find and remove by index
+            indices_to_remove = []
+            for idx, ts in enumerate(self._ui_state_proto.training_status):
+                if ts.process_id == process_id:
+                    indices_to_remove.append(idx)
+                    process_found = True
+            
+            # Remove in reverse order to maintain correct indices
+            for idx in reversed(indices_to_remove):
+                del self._ui_state_proto.training_status[idx]
+                logger.info(f"Removed training status for process: {process_id}")
+            
+            # Get devices associated with this process before removal
+            associated_devices = self.pid_to_devices.get(process_id, set()).copy()
+            
+            # Remove from pid_to_devices mapping
+            if process_id in self.pid_to_devices:
+                del self.pid_to_devices[process_id]
+                process_found = True
+                logger.debug(f"Removed process from pid_to_devices mapping: {process_id}")
+            
+            # Remove process from device_to_pid mappings
+            for device_uuid in associated_devices:
+                if device_uuid in self.device_to_pid:
+                    self.device_to_pid[device_uuid].discard(process_id)
+                    # Clean up empty device entries
+                    if not self.device_to_pid[device_uuid]:
+                        del self.device_to_pid[device_uuid]
+                        logger.debug(f"Removed empty device entry: {device_uuid}")
+            
+            if process_found:
+                self._ui_state_proto.timestamp = int(time.time())
+                self._notify_change()
+                logger.info(f"Successfully deleted process: {process_id}")
+            else:
+                logger.warning(f"Process not found for deletion: {process_id}")
+                
+            return process_found
+            
+        except Exception as e:
+            logger.error(f"Failed to delete process {process_id}: {e}")
+            return False
