@@ -219,7 +219,6 @@ class WebSocketServer:
                             processes.append({
                                 "process_id": process_id,
                                 "config": config,
-                                "status": status.get("status", "unknown"),
                                 "type": "training"
                             })
                     
@@ -235,7 +234,6 @@ class WebSocketServer:
                                 processes.append({
                                     "process_id": process_id,
                                     "config": config,
-                                    "status": "device",
                                     "type": "device",
                                     "device_uuid": device.get("device_uuid", "N/A")
                                 })
