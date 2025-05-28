@@ -71,14 +71,15 @@ async def handle_heartbeat(
     if process_id in heartbeat_tracker["dead_replicas"]:
         heartbeat_tracker["dead_replicas"].remove(process_id)
         logger.info(
-            f"Replica {process_id} revived by heartbeat. Setting status to '{current_replica_status}'."
+            f"Replica {process_id} revived by heartbeat. Status reported: '{current_replica_status}'."
         )
     # else, replica is already considered alive, just update its status if reported by heartbeat
     # No, always update, because the status from heartbeat (e.g. training, idle) is the source of truth.
 
+    # Note: TrainingStatus protobuf doesn't have a 'status' field, so we store it in metrics
     training_update_kwargs = {
         "process_id": process_id,
-        "status": current_replica_status,  # Use status from heartbeat or default to "active"
+        "metrics": {"heartbeat_status": current_replica_status},  # Store status in metrics
     }
     status_tracker.update_training_progress(**training_update_kwargs)
 
@@ -188,7 +189,8 @@ async def handle_pause_training(
     # Verify the process_id is registered
     if status_tracker.has_process_id(process_id):
         logger.info(f"Sending pause command to process_id: {process_id}")
-        training_update_kwargs = {"process_id": process_id, "status": "pausing"}
+        # Store status in metrics since TrainingStatus doesn't have a status field
+        training_update_kwargs = {"process_id": process_id, "metrics": {"training_status": "pausing"}}
         status_tracker.update_training_progress(**training_update_kwargs)
         await weaver_publish_command_func("pause", process_id, params)
     else:
@@ -207,7 +209,8 @@ async def handle_resume_training(
     # Verify the process_id is registered
     if status_tracker.has_process_id(process_id):
         logger.info(f"Sending resume command to process_id: {process_id}")
-        training_update_kwargs = {"process_id": process_id, "status": "resuming"}
+        # Store status in metrics since TrainingStatus doesn't have a status field
+        training_update_kwargs = {"process_id": process_id, "metrics": {"training_status": "resuming"}}
         status_tracker.update_training_progress(**training_update_kwargs)
         await weaver_publish_command_func("resume", process_id, params)
     else:
@@ -226,7 +229,8 @@ async def handle_deactivate_device(
     # Verify the process_id is registered
     if status_tracker.has_process_id(process_id):
         logger.info(f"Sending deactivate command to process_id: {process_id}")
-        training_update_kwargs = {"process_id": process_id, "status": "deactivating"}
+        # Store status in metrics since TrainingStatus doesn't have a status field
+        training_update_kwargs = {"process_id": process_id, "metrics": {"training_status": "deactivating"}}
         status_tracker.update_training_progress(**training_update_kwargs)
         await weaver_publish_command_func("pause", process_id, params)
     else:

@@ -33,22 +33,12 @@ def create_training_status_dict(ts: torchLoom_pb2.TrainingStatus) -> dict:
         "process_id": ts.process_id,
         "current_step": ts.current_step,
         "epoch": ts.epoch,
+        "metrics": dict(ts.metrics),  # Convert protobuf map to dict
         "training_time": ts.training_time,
         "max_step": ts.max_step,
         "max_epoch": ts.max_epoch,
-        "metrics": dict(ts.metrics),  # Convert protobuf map to dict
         "config": dict(ts.config),  # Convert protobuf map to dict
-        "last_active_step": ts.current_step,
-        "status": "training",  # Default status
     }
-    if ts.max_step > 0:
-        update_kwargs["step_progress"] = float(ts.current_step) / float(ts.max_step)
-    
-    # Add message from metrics if available
-    status_message_text = update_kwargs["metrics"].get("message", "")
-    if status_message_text:
-        update_kwargs["message"] = status_message_text
-        
     return update_kwargs
 
 def create_device_status_dict(ds: torchLoom_pb2.deviceStatus) -> dict:
@@ -61,5 +51,4 @@ def create_device_status_dict(ds: torchLoom_pb2.deviceStatus) -> dict:
         "temperature": ds.temperature,
         "memory_used": ds.memory_used,
         "memory_total": ds.memory_total,
-        "status": "active",  # Conceptual status for a device reporting metrics
     }

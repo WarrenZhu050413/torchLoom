@@ -32,8 +32,9 @@ logger = logging.getLogger("spawn_threadlet")
 class DemoTrainingProcess:
     """Mock training process that simulates training with metrics."""
 
-    def __init__(self, threadlet: Threadlet):
+    def __init__(self, threadlet: Threadlet, process_id: str):
         self.threadlet = threadlet
+        self.process_id = process_id
         self.current_step = 0
         self.current_epoch = 0
         self.is_training = True
@@ -66,11 +67,11 @@ class DemoTrainingProcess:
             self.learning_rate = new_lr_value
             self.config["learning_rate"] = str(self.learning_rate)
             logger.info(
-                f"🔄 Learning rate updated: {old_lr} -> {self.learning_rate} (received: '{new_lr}' as {type(new_lr)})"
+                f"PROCESS_ID: {self.process_id} - 🔄 Learning rate updated: {old_lr} -> {self.learning_rate} (received: '{new_lr}' as {type(new_lr)})"
             )
         except (ValueError, TypeError) as e:
             logger.error(
-                f"❌ Failed to update learning rate: invalid value '{new_lr}' ({type(new_lr)}): {e}"
+                f"PROCESS_ID: {self.process_id} - ❌ Failed to update learning rate: invalid value '{new_lr}' ({type(new_lr)}): {e}"
             )
 
     def update_batch_size(self, new_batch_size):
@@ -81,22 +82,22 @@ class DemoTrainingProcess:
             self.batch_size = new_batch_size_value
             self.config["batch_size"] = str(self.batch_size)
             logger.info(
-                f"🔄 Batch size updated: {old_batch} -> {self.batch_size} (received: '{new_batch_size}' as {type(new_batch_size)})"
+                f"PROCESS_ID: {self.process_id} - 🔄 Batch size updated: {old_batch} -> {self.batch_size} (received: '{new_batch_size}' as {type(new_batch_size)})"
             )
         except (ValueError, TypeError) as e:
             logger.error(
-                f"❌ Failed to update batch size: invalid value '{new_batch_size}' ({type(new_batch_size)}): {e}"
+                f"PROCESS_ID: {self.process_id} - ❌ Failed to update batch size: invalid value '{new_batch_size}' ({type(new_batch_size)}): {e}"
             )
 
     def pause_training(self):
         """Handler for pause training command."""
         self.is_training = False
-        logger.info("Training paused")
+        logger.info(f"PROCESS_ID: {self.process_id} - Training paused")
 
     def resume_training(self):
         """Handler for resume training command."""
         self.is_training = True
-        logger.info("Training resumed")
+        logger.info(f"PROCESS_ID: {self.process_id} - Training resumed")
 
     def get_mock_device_status(self):
         """Generate mock GPU device status metrics."""
@@ -175,7 +176,7 @@ class DemoTrainingProcess:
 
         # Send comprehensive training status update
         logger.info(
-            f"Publishing training status: step={self.current_step}, epoch={self.current_epoch}"
+            f"PROCESS_ID: {self.process_id} - Publishing training status: step={self.current_step}, epoch={self.current_epoch}"
         )
         status_data = {
             "current_step": self.current_step,
@@ -193,7 +194,7 @@ class DemoTrainingProcess:
         if self.current_step % 5 == 0:  # Update device status every 5 training steps
             device_status_metrics = self.get_mock_device_status()
             logger.info(
-                f"Publishing device status: utilization={device_status_metrics['utilization']:.1f}%, temp={device_status_metrics['temperature']:.1f}°C for device_uuid={self.device_uuid}"
+                f"PROCESS_ID: {self.process_id} - Publishing device status: utilization={device_status_metrics['utilization']:.1f}%, temp={device_status_metrics['temperature']:.1f}°C for device_uuid={self.device_uuid}"
             )
             self.threadlet.publish_device_status(
                 device_uuid=self.device_uuid,  # Pass device_uuid explicitly
@@ -251,7 +252,7 @@ class ThreadletRunner:
         )
 
         # Create mock training process
-        self.training_process = DemoTrainingProcess(self.threadlet)
+        self.training_process = DemoTrainingProcess(self.threadlet, self.process_id)
 
         # Register configuration handlers
         self.threadlet.register_handler(

@@ -17,6 +17,8 @@ kill_processes() {
 
 # Kill existing processes
 kill_processes "nats-server -c"
+kill_processes "weaver"
+kill_processes "threadlet"
 
 if [ -d "/srv/tmp/jetstream/store" ]; then
     rm -r /srv/tmp/jetstream/store

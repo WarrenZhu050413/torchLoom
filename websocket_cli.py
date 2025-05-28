@@ -17,14 +17,15 @@ logger = logging.getLogger("websocket_cli")
 class TorchLoomWebSocketCLI:
     """WebSocket client for interacting with torchLoom weaver."""
 
-    def __init__(self, ws_url: str = "ws://localhost:8080/ws"):
+    def __init__(self, ws_url: str = "ws://localhost:8080/ws", test_process_id: Optional[str] = None):
         self.ws_url = ws_url
         self.websocket: Optional[websockets.WebSocketClientProtocol] = None
         self.running = False
         self.command_queue = asyncio.Queue()
         self.active_process_ids = set()  # Track active process_ids
         self.active_device_uuids = set()  # Track active device_uuids
-        logger.info(f"WebSocket CLI initialized with URL: {ws_url}")
+        self.test_process_id = test_process_id or "test-process" # Fixed ID for E2E testing
+        logger.info(f"WebSocket CLI initialized with URL: {ws_url}. Test Process ID: {self.test_process_id}")
 
     async def connect(self):
         """Connect to the WebSocket server."""
@@ -254,15 +255,24 @@ class TorchLoomWebSocketCLI:
 
             # Demo sequence of commands showcasing the comprehensive data
             # Use an actual active process_id if available, otherwise use placeholder
+            self.active_process_ids.discard('')
             if self.active_process_ids:
+                
                 demo_process_id = next(
                     iter(self.active_process_ids)
-                )  # Use first active process_id
-                print(f"[DEMO] 🎯 Using active process_id: {demo_process_id}")
+                )
+                logger.info(f"[DEMO] 🎯 Using active process_id from received status: {demo_process_id} for commands.")
+                # If a specific test_process_id is set and observed, prefer it for consistency in testing.
+                if self.test_process_id and self.test_process_id in self.active_process_ids:
+                    demo_process_id = self.test_process_id
+                    logger.info(f"[DEMO] ✅ Prioritizing fixed test_process_id: {self.test_process_id} as it is active.")
+                elif self.test_process_id:
+                    logger.info(f"[DEMO] ℹ️ Fixed test_process_id {self.test_process_id} is set, but not yet observed in active processes. Will use {demo_process_id} for now.")
             else:
-                demo_process_id = "demo-threadlet-placeholder"  # Fallback placeholder
-                print(
-                    f"[DEMO] ⚠️  No active process_ids found, using placeholder: {demo_process_id}"
+                # Fallback to the fixed test_process_id if no active ones are found yet.
+                demo_process_id = self.test_process_id
+                logger.warning(
+                    f"[DEMO] ⚠️  No active process_ids found. Using pre-defined test_process_id: {demo_process_id} for commands."
                 )
 
             commands = [
@@ -380,10 +390,13 @@ async def main():
     print("This demo will:")
     print("1. Connect to the WebSocket server")
     print("2. Receive and display status updates")
-    print("3. Send a sequence of demo commands")
+    print("3. Send a sequence of demo commands targeting a specific process_id")
     print("\nPress Ctrl+C to exit\n")
 
-    cli = TorchLoomWebSocketCLI()
+    # For testing, we can pass a specific process_id to the CLI
+    # This should match the process_id used when spawning the threadlet
+    test_pid = "test-process" # Ensure this matches the one in spawn_threadlet.py for the test
+    cli = TorchLoomWebSocketCLI(test_process_id=test_pid)
     await cli.run()
 
 
