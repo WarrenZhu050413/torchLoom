@@ -3,6 +3,7 @@
 jetstream
 lightning_logs
 checkpoints
+cifar
 
 # Python
 __pycache__

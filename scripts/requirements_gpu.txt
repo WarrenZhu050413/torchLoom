@@ -3,8 +3,12 @@ nats-py>=2.10
 torch==2.7.*                # CPU-only wheel is automatically chosen
 torchvision
 protobuf
+grpcio-tools
 pynvml
 lightning
 requests
 lintrunner
 lintrunner_adapters
+uvicorn[standard]
+fastapi
+pip install python-multipart

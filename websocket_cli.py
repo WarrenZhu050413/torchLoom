@@ -19,7 +19,7 @@ class TorchLoomWebSocketCLI:
 
     def __init__(
         self,
-        ws_url: str = "ws://localhost:8080/ws",
+        ws_url: str = "ws://localhost:8079/ws",
         test_process_id: Optional[str] = None,
     ):
         self.ws_url = ws_url
