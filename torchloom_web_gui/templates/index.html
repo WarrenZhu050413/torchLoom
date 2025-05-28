@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TorchLoom Control</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10" crossorigin="anonymous"></script>
+    <style>
+        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2 { color: #555; }
+        .status-section, .command-section, .info-section { margin-bottom: 30px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .process, .device { border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 10px; }
+        .process:last-child, .device:last-child { border-bottom: none; }
+        .process-id { font-weight: bold; color: #007bff; }
+        .device-uuid { font-weight: bold; color: #28a745; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], textarea, select { width: calc(100% - 22px); padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 10px 15px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        pre { background-color: #e9e9e9; padding: 10px; border-radius: 4px; overflow-x: auto; }
+        .metrics { margin-left: 20px; }
+        .metrics p { margin: 5px 0; }
+        .error { color: red; font-weight: bold; }
+        .success { color: green; font-weight: bold; }
+        .connection-status { padding: 10px; margin-bottom: 10px; border-radius: 4px; }
+        .connected { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .disconnected { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .config-form { background-color: #f8f9fa; padding: 10px; border-radius: 4px; margin-top: 10px; }
+        .config-form textarea { font-family: monospace; font-size: 12px; height: 120px; }
+        .config-submit-btn { background-color: #28a745; font-size: 12px; padding: 5px 10px; margin-top: 5px; }
+        .config-submit-btn:hover { background-color: #218838; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>TorchLoom Control Panel</h1>
+
+        <div class="info-section">
+            <h2>ℹ️ How to Send Commands</h2>
+            <p>Select a command type, specify the target Process ID (if applicable), and fill in the parameters as a JSON object.</p>
+            <p><strong>Available Command Types:</strong></p>
+            <ul>
+                <li><code>update_config</code>: Update training configuration.
+                    <ul>
+                        <li>Params: <code>{"learning_rate": "0.001", "batch_size": "32", ...}</code></li>
+                    </ul>
+                </li>
+                <li><code>pause_training</code>: Pause a training process. (No extra params needed)</li>
+                <li><code>resume_training</code>: Resume a paused training process. (No extra params needed)</li>
+                <li><code>stop_training</code>: Stop a training process. (No extra params needed)</li>
+                 <li><code>deactivate_device</code>: Deactivate a device.
+                    <ul>
+                        <li>Params: <code>{"reason": "Maintenance"}</code></li>
+                    </ul>
+                </li>
+            </ul>
+             <p><strong>Note:</strong> The <code>process_id</code> for commands should be one of the active Process IDs shown in the status section. Some commands may not require a <code>process_id</code> if they are global.</p>
+        </div>
+
+        <div class="command-section">
+            <h2>⚙️ Send Command</h2>
+            <form id="command-form" hx-post="/send_command" hx-target="#command-response" hx-swap="innerHTML" hx-indicator="#loading">
+                <div>
+                    <label for="command_type">Command Type:</label>
+                    <select id="command_type" name="command_type" required onchange="handleCommandTypeChange()">
+                        <option value="update_config">Update Config</option>
+                        <option value="pause_training">Pause Training</option>
+                        <option value="resume_training">Resume Training</option>
+                        <option value="stop_training">Stop Training</option>
+                        <option value="deactivate_device">Deactivate Device</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="process_id">Target Process ID:</label>
+                    <select id="process_id" name="process_id" onchange="handleProcessSelection()">
+                        <option value="">Loading processes...</option>
+                    </select>
+                    <button type="button" id="refresh-processes-btn" onclick="loadProcesses()" style="margin-left: 10px; padding: 5px 10px; font-size: 12px;">🔄 Refresh</button>
+                </div>
+                <div id="config-editor" style="display: none;">
+                    <label for="config_preview">Current Configuration:</label>
+                    <textarea id="config_preview" readonly style="background-color: #f8f9fa; height: 150px; font-family: monospace; font-size: 12px;" placeholder="Select a process to view its configuration"></textarea>
+                    <div style="margin-top: 10px;">
+                        <button type="button" onclick="editConfig()" id="edit-config-btn" style="background-color: #ffc107; color: #212529;">✏️ Edit Config</button>
+                        <button type="button" onclick="cancelConfigEdit()" id="cancel-edit-btn" style="background-color: #6c757d; display: none; margin-left: 5px;">❌ Cancel</button>
+                    </div>
+                </div>
+                <div id="params-section">
+                    <label for="params">Parameters (JSON format):</label>
+                    <textarea id="params" name="params" rows="4" placeholder='e.g., {"learning_rate": "0.0005"}'></textarea>
+                </div>
+                <button type="submit">
+                    <span class="loading-text htmx-indicator">Sending...</span>
+                    <span class="normal-text">Send Command</span>
+                </button>
+            </form>
+            <div id="command-response" style="margin-top: 10px;"></div>
+        </div>
+
+        <div class="status-section">
+            <h2>📊 System Status</h2>
+            <div id="connection-status" class="connection-status disconnected">
+                Connecting to server...
+            </div>
+            <div id="status-content">
+                <!-- Status updates will be injected here by JavaScript -->
+                <p>Awaiting status updates from server...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let reconnectInterval = null;
+
+        function formatStatusToHTML(statusData) {
+            const timestamp = new Date().toLocaleTimeString();
+            let html = `<p><em>Last updated: ${timestamp}</em></p>`;
+
+            // Devices
+            const devices = statusData.devices || [];
+            if (devices.length > 0) {
+                html += `<h3>🖥️ DEVICES (${devices.length})</h3>`;
+                devices.forEach(device => {
+                    const deviceUuid = device.device_uuid || 'N/A';
+                    const processId = device.process_id || 'N/A';
+                    const serverId = device.server_id || 'N/A';
+                    const utilization = device.utilization || 'N/A';
+                    const temperature = device.temperature || 'N/A';
+                    const memoryUsed = device.memory_used || 'N/A';
+                    const memoryTotal = device.memory_total || 'N/A';
+                    const config = device.config || {};
+
+                    html += `<div class='device'>`;
+                    html += `<p><span class='device-uuid'>Device UUID:</span> ${deviceUuid}</p>`;
+                    html += `<p><strong>Process ID:</strong> ${processId}</p>`;
+                    html += `<p><strong>Server:</strong> ${serverId}</p>`;
+                    html += `<p><strong>Utilization:</strong> ${utilization}%</p>`;
+                    html += `<p><strong>Temperature:</strong> ${temperature}°C</p>`;
+                    html += `<p><strong>Memory:</strong> ${memoryUsed}/${memoryTotal} GB</p>`;
+                    if (Object.keys(config).length > 0) {
+                        const configId = `device-config-${deviceUuid}`;
+                        html += `<div class='config-form'>`;
+                        html += `<p><strong>Config:</strong></p>`;
+                        html += `<form onsubmit="updateDeviceConfig(event, '${deviceUuid}', '${processId}')">`;
+                        html += `<textarea id="${configId}" name="config">${JSON.stringify(config, null, 2)}</textarea>`;
+                        html += `<br><button type="submit" class="config-submit-btn">Update Device Config</button>`;
+                        html += `</form>`;
+                        html += `</div>`;
+                    }
+                    html += `</div>`;
+                });
+                html += `<hr>`;
+            }
+
+            // Training Status
+            const trainingStatus = statusData.training_status || [];
+            if (trainingStatus.length > 0) {
+                html += `<h3>🚀 TRAINING STATUS (${trainingStatus.length} replicas)</h3>`;
+                trainingStatus.forEach(status => {
+                    const processId = status.process_id || 'N/A';
+                    const state = status.status || 'unknown';
+                    const currentStep = status.current_step || 0;
+                    const epoch = status.epoch || 0;
+                    const maxStep = status.max_step || 0;
+                    const maxEpoch = status.max_epoch || 0;
+                    const trainingTime = status.training_time || 0.0;
+                    const metrics = status.metrics || {};
+                    const config = status.config || {};
+                    const message = status.message || '';
+                    const statusType = status.status_type || '';
+
+                    html += `<div class='process'>`;
+                    html += `<p><span class='process-id'>Process ID:</span> ${processId}</p>`;
+                    html += `<p><strong>Status:</strong> ${state}</p>`;
+                    html += `<p><strong>Progress:</strong> Step ${currentStep}/${maxStep} | Epoch ${epoch}/${maxEpoch}</p>`;
+
+                    if (maxStep > 0) {
+                        const stepProgress = (currentStep / maxStep) * 100;
+                        html += `<p><strong>Step Progress:</strong> ${stepProgress.toFixed(1)}%</p>`;
+                    }
+                    if (maxEpoch > 0) {
+                        const epochProgress = (epoch / maxEpoch) * 100;
+                        html += `<p><strong>Epoch Progress:</strong> ${epochProgress.toFixed(1)}%</p>`;
+                    }
+
+                    if (trainingTime > 0) {
+                        const hours = Math.floor(trainingTime / 3600);
+                        const minutes = Math.floor((trainingTime % 3600) / 60);
+                        const seconds = Math.floor(trainingTime % 60);
+                        html += `<p><strong>Training Time:</strong> ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}</p>`;
+                    }
+
+                    // Always render primary metrics section
+                    html += `<div class='metrics'>`;
+                    html += `<p><strong>📊 Metrics:</strong></p>`;
+                    const primaryMetrics = ['loss', 'accuracy', 'learning_rate', 'batch_size', 'gradient_norm', 'throughput'];
+                    let primaryMetricsFound = false;
+                    
+                    Object.entries(metrics).forEach(([key, value]) => {
+                        if (primaryMetrics.includes(key)) {
+                            const unit = key === 'throughput' ? ' samples/sec' : '';
+                            const displayKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                            html += `<p><em>${displayKey}:</em> ${value}${unit}</p>`;
+                            primaryMetricsFound = true;
+                        }
+                    });
+                    html += `</div>`;
+
+                    // Always render additional metrics section
+                    html += `<div class='metrics'>`;
+                    html += `<p><strong>📈 Additional Metrics:</strong></p>`;
+                    let additionalMetricsFound = false;
+                    Object.entries(metrics).forEach(([key, value]) => {
+                        if (!primaryMetrics.includes(key) && key !== 'message') {
+                            const displayKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                            html += `<p><em>${displayKey}:</em> ${value}</p>`;
+                            additionalMetricsFound = true;
+                        }
+                    });
+                    html += `</div>`;
+
+                    if (Object.keys(config).length > 0) {
+                        const configId = `training-config-${processId.replace(/[^a-zA-Z0-9]/g, '-')}`;
+                        html += `<div class='config-form'>`;
+                        html += `<p><strong>⚙️ Config:</strong></p>`;
+                        html += `<form onsubmit="updateTrainingConfig(event, '${processId}')">`;
+                        html += `<textarea id="${configId}" name="config">${JSON.stringify(config, null, 2)}</textarea>`;
+                        html += `<br><button type="submit" class="config-submit-btn">Update Training Config</button>`;
+                        html += `</form>`;
+                        html += `</div>`;
+                    }
+                    if (message) {
+                        html += `<p><strong>💬 Message:</strong> ${message}</p>`;
+                    }
+                    if (statusType) {
+                        html += `<p><strong>Type:</strong> ${statusType}</p>`;
+                    }
+                    html += `</div>`;
+                });
+                html += `<hr>`;
+            }
+
+            // Active Participants Summary
+            const currentProcessIds = new Set();
+            const currentDeviceUuids = new Set();
+            
+            devices.forEach(device => {
+                if (device.device_uuid && device.device_uuid !== 'unknown') currentDeviceUuids.add(device.device_uuid);
+                if (device.process_id && device.process_id !== 'unknown') currentProcessIds.add(device.process_id);
+            });
+            trainingStatus.forEach(status => {
+                if (status.process_id && status.process_id !== 'unknown') currentProcessIds.add(status.process_id);
+            });
+
+            const activeProcessIds = Array.from(currentProcessIds).filter(id => id).sort();
+            const activeDeviceUuids = Array.from(currentDeviceUuids).filter(id => id).sort();
+
+            if (activeProcessIds.length > 0 || activeDeviceUuids.length > 0) {
+                html += `<h3>📋 ACTIVE PARTICIPANTS</h3>`;
+                if (activeProcessIds.length > 0) {
+                    html += `<p><strong>Process IDs:</strong> ${activeProcessIds.join(', ')}</p>`;
+                }
+                if (activeDeviceUuids.length > 0) {
+                    html += `<p><strong>Device UUIDs:</strong> ${activeDeviceUuids.join(', ')}</p>`;
+                }
+            }
+
+            if (devices.length === 0 && trainingStatus.length === 0) {
+                html += `<p>No active devices or training processes detected.</p>`;
+            }
+
+            return html;
+        }
+
+        // Add form validation
+        function validateJSON(text) {
+            if (!text || text.trim() === '') {
+                return { valid: true, parsed: {} };
+            }
+            try {
+                const parsed = JSON.parse(text);
+                if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+                    return { valid: false, error: 'Parameters must be a JSON object (not array)' };
+                }
+                return { valid: true, parsed: parsed };
+            } catch (error) {
+                return { valid: false, error: 'Invalid JSON format: ' + error.message };
+            }
+        }
+
+        // Add form submission validation
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('command-form');
+            const paramsField = document.getElementById('params');
+            
+            form.addEventListener('submit', function(event) {
+                const params = paramsField.value;
+                const validation = validateJSON(params);
+                
+                if (!validation.valid) {
+                    event.preventDefault();
+                    document.getElementById('command-response').innerHTML = 
+                        `<p class="error">❌ ${validation.error}</p>`;
+                    return false;
+                }
+            });
+
+            // Real-time JSON validation
+            paramsField.addEventListener('input', function() {
+                const validation = validateJSON(this.value);
+                if (this.value.trim() && !validation.valid) {
+                    this.style.borderColor = '#dc3545';
+                    this.style.backgroundColor = '#f8d7da';
+                } else {
+                    this.style.borderColor = '#28a745';
+                    this.style.backgroundColor = '#d4edda';
+                }
+            });
+
+            connectWebSocket();
+        });
+
+        function updateDeviceConfig(event, deviceUuid, processId) {
+            event.preventDefault();
+            const form = event.target;
+            const configText = form.config.value;
+            
+            const validation = validateJSON(configText);
+            if (!validation.valid) {
+                alert('Invalid JSON configuration: ' + validation.error);
+                return;
+            }
+            
+            // Use HTMX to send the update_config command
+            const formData = new FormData();
+            formData.append('command_type', 'update_config');
+            formData.append('process_id', processId);
+            formData.append('params', JSON.stringify(validation.parsed));
+            
+            fetch('/send_command', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.text())
+            .then(result => {
+                console.log('Device config update result:', result);
+                // Show result in the command response area
+                const responseDiv = document.getElementById('command-response');
+                if (responseDiv) {
+                    responseDiv.innerHTML = `<p class="success">✅ Device config updated for ${deviceUuid}</p>`;
+                }
+            })
+            .catch(error => {
+                console.error('Error updating device config:', error);
+                const responseDiv = document.getElementById('command-response');
+                if (responseDiv) {
+                    responseDiv.innerHTML = `<p class="error">❌ Error updating device config: ${error.message}</p>`;
+                }
+            });
+        }
+
+        function updateTrainingConfig(event, processId) {
+            event.preventDefault();
+            const form = event.target;
+            const configText = form.config.value;
+            
+            const validation = validateJSON(configText);
+            if (!validation.valid) {
+                alert('Invalid JSON configuration: ' + validation.error);
+                return;
+            }
+            
+            // Use HTMX to send the update_config command
+            const formData = new FormData();
+            formData.append('command_type', 'update_config');
+            formData.append('process_id', processId);
+            formData.append('params', JSON.stringify(validation.parsed));
+            
+            fetch('/send_command', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.text())
+            .then(result => {
+                console.log('Training config update result:', result);
+                // Show result in the command response area
+                const responseDiv = document.getElementById('command-response');
+                if (responseDiv) {
+                    responseDiv.innerHTML = `<p class="success">✅ Training config updated for process ${processId}</p>`;
+                }
+            })
+            .catch(error => {
+                console.error('Error updating training config:', error);
+                const responseDiv = document.getElementById('command-response');
+                if (responseDiv) {
+                    responseDiv.innerHTML = `<p class="error">❌ Error updating training config: ${error.message}</p>`;
+                }
+            });
+        }
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            try {
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = function(event) {
+                    console.log('WebSocket connected');
+                    document.getElementById('connection-status').textContent = 'Connected to server';
+                    document.getElementById('connection-status').className = 'connection-status connected';
+                    
+                    // Clear any reconnection attempts
+                    if (reconnectInterval) {
+                        clearInterval(reconnectInterval);
+                        reconnectInterval = null;
+                    }
+                };
+                
+                ws.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        
+                        if (data.type === 'status_update' && data.data) {
+                            const html = formatStatusToHTML(data.data);
+                            document.getElementById('status-content').innerHTML = html;
+                        } else if (data.type === 'pong') {
+                            console.log('Received pong from server');
+                        } else if (data.type === 'error') {
+                            console.error('Server error:', data.message);
+                            document.getElementById('status-content').innerHTML = `<p class='error'>Server error: ${data.message}</p>`;
+                        } else {
+                            console.log('Received message:', data);
+                        }
+                    } catch (error) {
+                        console.error('Error parsing WebSocket message:', error);
+                    }
+                };
+                
+                ws.onclose = function(event) {
+                    console.log('WebSocket disconnected');
+                    document.getElementById('connection-status').textContent = 'Disconnected. Attempting to reconnect...';
+                    document.getElementById('connection-status').className = 'connection-status disconnected';
+                    
+                    // Attempt to reconnect
+                    if (!reconnectInterval) {
+                        reconnectInterval = setInterval(connectWebSocket, 5000);
+                    }
+                };
+                
+                ws.onerror = function(error) {
+                    console.error('WebSocket error:', error);
+                    document.getElementById('connection-status').textContent = 'Connection error. Attempting to reconnect...';
+                    document.getElementById('connection-status').className = 'connection-status disconnected';
+                };
+                
+            } catch (error) {
+                console.error('Failed to create WebSocket connection:', error);
+                document.getElementById('connection-status').textContent = 'Failed to connect. Retrying...';
+                document.getElementById('connection-status').className = 'connection-status disconnected';
+                
+                if (!reconnectInterval) {
+                    reconnectInterval = setInterval(connectWebSocket, 5000);
+                }
+            }
+        }
+
+        // Send periodic pings to keep connection alive
+        setInterval(function() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({type: 'ping'}));
+            }
+        }, 30000);
+
+        // New UI enhancement functions
+        let availableProcesses = [];
+        let isEditingConfig = false;
+        let originalConfigText = '';
+
+        async function loadProcesses() {
+            try {
+                const response = await fetch('/api/processes');
+                const data = await response.json();
+                
+                if (data.error) {
+                    console.error('Error loading processes:', data.error);
+                    return;
+                }
+                
+                availableProcesses = data.processes || [];
+                updateProcessDropdown();
+            } catch (error) {
+                console.error('Failed to load processes:', error);
+            }
+        }
+
+        function updateProcessDropdown() {
+            const dropdown = document.getElementById('process_id');
+            const commandType = document.getElementById('command_type').value;
+            
+            // Clear current options
+            dropdown.innerHTML = '';
+            
+            // Add default option
+            const defaultOption = document.createElement('option');
+            defaultOption.value = '';
+            if (availableProcesses.length === 0) {
+                defaultOption.textContent = 'No processes available';
+            } else {
+                defaultOption.textContent = commandType === 'deactivate_device' ? 
+                    'Select process (optional for global commands)' : 
+                    'Select a process';
+            }
+            dropdown.appendChild(defaultOption);
+            
+            // Add process options
+            availableProcesses.forEach(process => {
+                const option = document.createElement('option');
+                option.value = process.process_id;
+                option.textContent = `${process.process_id} (${process.type}, ${process.status})`;
+                option.dataset.config = JSON.stringify(process.config);
+                option.dataset.type = process.type;
+                dropdown.appendChild(option);
+            });
+        }
+
+        function handleCommandTypeChange() {
+            const commandType = document.getElementById('command_type').value;
+            const configEditor = document.getElementById('config-editor');
+            const paramsSection = document.getElementById('params-section');
+            
+            // Show/hide config editor based on command type
+            if (commandType === 'update_config') {
+                configEditor.style.display = 'block';
+                paramsSection.style.display = 'none';
+            } else {
+                configEditor.style.display = 'none';
+                paramsSection.style.display = 'block';
+                cancelConfigEdit(); // Reset any config editing state
+            }
+            
+            // Update dropdown placeholder text
+            updateProcessDropdown();
+        }
+
+        function handleProcessSelection() {
+            const dropdown = document.getElementById('process_id');
+            const selectedOption = dropdown.options[dropdown.selectedIndex];
+            const configPreview = document.getElementById('config_preview');
+            const commandType = document.getElementById('command_type').value;
+            
+            if (selectedOption && selectedOption.dataset.config && commandType === 'update_config') {
+                const config = JSON.parse(selectedOption.dataset.config);
+                const formattedConfig = JSON.stringify(config, null, 2);
+                configPreview.value = formattedConfig;
+                originalConfigText = formattedConfig;
+                
+                // Reset edit mode
+                cancelConfigEdit();
+            } else {
+                configPreview.value = '';
+                originalConfigText = '';
+            }
+        }
+
+        function editConfig() {
+            const configPreview = document.getElementById('config_preview');
+            const editBtn = document.getElementById('edit-config-btn');
+            const cancelBtn = document.getElementById('cancel-edit-btn');
+            const paramsField = document.getElementById('params');
+            
+            if (!configPreview.value) {
+                alert('Please select a process first to edit its configuration.');
+                return;
+            }
+            
+            isEditingConfig = true;
+            configPreview.readOnly = false;
+            configPreview.style.backgroundColor = '#fff';
+            configPreview.style.borderColor = '#007bff';
+            editBtn.style.display = 'none';
+            cancelBtn.style.display = 'inline-block';
+            
+            // Copy config to params field for submission
+            paramsField.value = configPreview.value;
+            
+            // Add real-time sync between config editor and params
+            configPreview.addEventListener('input', syncConfigToParams);
+        }
+
+        function cancelConfigEdit() {
+            const configPreview = document.getElementById('config_preview');
+            const editBtn = document.getElementById('edit-config-btn');
+            const cancelBtn = document.getElementById('cancel-edit-btn');
+            
+            isEditingConfig = false;
+            configPreview.readOnly = true;
+            configPreview.style.backgroundColor = '#f8f9fa';
+            configPreview.style.borderColor = '#ced4da';
+            configPreview.value = originalConfigText;
+            editBtn.style.display = 'inline-block';
+            cancelBtn.style.display = 'none';
+            
+            // Remove the event listener
+            configPreview.removeEventListener('input', syncConfigToParams);
+        }
+
+        function syncConfigToParams() {
+            const configPreview = document.getElementById('config_preview');
+            const paramsField = document.getElementById('params');
+            
+            if (isEditingConfig) {
+                paramsField.value = configPreview.value;
+                
+                // Validate JSON in real-time
+                const validation = validateJSON(configPreview.value);
+                if (configPreview.value.trim() && !validation.valid) {
+                    configPreview.style.borderColor = '#dc3545';
+                    configPreview.style.backgroundColor = '#f8d7da';
+                } else {
+                    configPreview.style.borderColor = '#28a745';
+                    configPreview.style.backgroundColor = '#d4edda';
+                }
+            }
+        }
+    </script>
+</body>
+</html> 

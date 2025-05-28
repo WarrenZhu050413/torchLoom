@@ -6,12 +6,15 @@ from typing import Any, Dict, Tuple
 import torch
 from pynvml import nvmlDeviceGetHandleByIndex, nvmlDeviceGetUUID, nvmlInit
 
+from torchLoom.common.constants import LoggerConstants
 from torchLoom.log.log_utils import log_and_raise_exception
 from torchLoom.log.logger import setup_logger
-from torchLoom.common.constants import LoggerConstants
 from torchLoom.proto import torchLoom_pb2
 
-logger = setup_logger(name="torchLoom_utils", log_file=LoggerConstants.torchLoom_UTILS_LOG_FILE)
+logger = setup_logger(
+    name="torchLoom_utils", log_file=LoggerConstants.torchLoom_UTILS_LOG_FILE
+)
+
 
 def get_device_uuid():
     try:
@@ -27,6 +30,7 @@ def get_device_uuid():
         logger.warning(f"Failed to get device UUID, on {platform_name}, Error: {e}")
         return platform.node()
 
+
 def create_training_status_dict(ts: torchLoom_pb2.TrainingStatus) -> dict:
     """Converts a TrainingStatus protobuf message to a dictionary."""
     update_kwargs = {
@@ -40,6 +44,7 @@ def create_training_status_dict(ts: torchLoom_pb2.TrainingStatus) -> dict:
         "config": dict(ts.config),  # Convert protobuf map to dict
     }
     return update_kwargs
+
 
 def create_device_status_dict(ds: torchLoom_pb2.deviceStatus) -> dict:
     """Converts a DeviceStatus protobuf message to a dictionary."""

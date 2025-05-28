@@ -21,3 +21,5 @@ python websocket_cli.py
 ```sh
 python spawn_threadlet.py
 ```
+
+5. Goto the web GUI at http://localhost:8000/

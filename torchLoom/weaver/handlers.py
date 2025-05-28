@@ -79,7 +79,9 @@ async def handle_heartbeat(
     # Note: TrainingStatus protobuf doesn't have a 'status' field, so we store it in metrics
     training_update_kwargs = {
         "process_id": process_id,
-        "metrics": {"heartbeat_status": current_replica_status},  # Store status in metrics
+        "metrics": {
+            "heartbeat_status": current_replica_status
+        },  # Store status in metrics
     }
     status_tracker.update_training_progress(**training_update_kwargs)
 
@@ -190,7 +192,10 @@ async def handle_pause_training(
     if status_tracker.has_process_id(process_id):
         logger.info(f"Sending pause command to process_id: {process_id}")
         # Store status in metrics since TrainingStatus doesn't have a status field
-        training_update_kwargs = {"process_id": process_id, "metrics": {"training_status": "pausing"}}
+        training_update_kwargs = {
+            "process_id": process_id,
+            "metrics": {"training_status": "pausing"},
+        }
         status_tracker.update_training_progress(**training_update_kwargs)
         await weaver_publish_command_func("pause", process_id, params)
     else:
@@ -210,7 +215,10 @@ async def handle_resume_training(
     if status_tracker.has_process_id(process_id):
         logger.info(f"Sending resume command to process_id: {process_id}")
         # Store status in metrics since TrainingStatus doesn't have a status field
-        training_update_kwargs = {"process_id": process_id, "metrics": {"training_status": "resuming"}}
+        training_update_kwargs = {
+            "process_id": process_id,
+            "metrics": {"training_status": "resuming"},
+        }
         status_tracker.update_training_progress(**training_update_kwargs)
         await weaver_publish_command_func("resume", process_id, params)
     else:
@@ -230,7 +238,10 @@ async def handle_deactivate_device(
     if status_tracker.has_process_id(process_id):
         logger.info(f"Sending deactivate command to process_id: {process_id}")
         # Store status in metrics since TrainingStatus doesn't have a status field
-        training_update_kwargs = {"process_id": process_id, "metrics": {"training_status": "deactivating"}}
+        training_update_kwargs = {
+            "process_id": process_id,
+            "metrics": {"training_status": "deactivating"},
+        }
         status_tracker.update_training_progress(**training_update_kwargs)
         await weaver_publish_command_func("pause", process_id, params)
     else:

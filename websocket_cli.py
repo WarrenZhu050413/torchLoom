@@ -17,15 +17,23 @@ logger = logging.getLogger("websocket_cli")
 class TorchLoomWebSocketCLI:
     """WebSocket client for interacting with torchLoom weaver."""
 
-    def __init__(self, ws_url: str = "ws://localhost:8080/ws", test_process_id: Optional[str] = None):
+    def __init__(
+        self,
+        ws_url: str = "ws://localhost:8080/ws",
+        test_process_id: Optional[str] = None,
+    ):
         self.ws_url = ws_url
         self.websocket: Optional[websockets.WebSocketClientProtocol] = None
         self.running = False
         self.command_queue = asyncio.Queue()
         self.active_process_ids = set()  # Track active process_ids
         self.active_device_uuids = set()  # Track active device_uuids
-        self.test_process_id = test_process_id or "test-process" # Fixed ID for E2E testing
-        logger.info(f"WebSocket CLI initialized with URL: {ws_url}. Test Process ID: {self.test_process_id}")
+        self.test_process_id = (
+            test_process_id or "test-process"
+        )  # Fixed ID for E2E testing
+        logger.info(
+            f"WebSocket CLI initialized with URL: {ws_url}. Test Process ID: {self.test_process_id}"
+        )
 
     async def connect(self):
         """Connect to the WebSocket server."""
@@ -255,19 +263,26 @@ class TorchLoomWebSocketCLI:
 
             # Demo sequence of commands showcasing the comprehensive data
             # Use an actual active process_id if available, otherwise use placeholder
-            self.active_process_ids.discard('')
+            self.active_process_ids.discard("")
             if self.active_process_ids:
-                
-                demo_process_id = next(
-                    iter(self.active_process_ids)
+
+                demo_process_id = next(iter(self.active_process_ids))
+                logger.info(
+                    f"[DEMO] 🎯 Using active process_id from received status: {demo_process_id} for commands."
                 )
-                logger.info(f"[DEMO] 🎯 Using active process_id from received status: {demo_process_id} for commands.")
                 # If a specific test_process_id is set and observed, prefer it for consistency in testing.
-                if self.test_process_id and self.test_process_id in self.active_process_ids:
+                if (
+                    self.test_process_id
+                    and self.test_process_id in self.active_process_ids
+                ):
                     demo_process_id = self.test_process_id
-                    logger.info(f"[DEMO] ✅ Prioritizing fixed test_process_id: {self.test_process_id} as it is active.")
+                    logger.info(
+                        f"[DEMO] ✅ Prioritizing fixed test_process_id: {self.test_process_id} as it is active."
+                    )
                 elif self.test_process_id:
-                    logger.info(f"[DEMO] ℹ️ Fixed test_process_id {self.test_process_id} is set, but not yet observed in active processes. Will use {demo_process_id} for now.")
+                    logger.info(
+                        f"[DEMO] ℹ️ Fixed test_process_id {self.test_process_id} is set, but not yet observed in active processes. Will use {demo_process_id} for now."
+                    )
             else:
                 # Fallback to the fixed test_process_id if no active ones are found yet.
                 demo_process_id = self.test_process_id
@@ -279,56 +294,9 @@ class TorchLoomWebSocketCLI:
                 {
                     "type": "ui_command",
                     "data": {
-                        "command_type": "update_config",
-                        "process_id": demo_process_id,
-                        "params": {
-                            "learning_rate": "0.0005",
-                            "batch_size": "64",
-                            "optimizer": "Adam",
-                        },
-                    },
-                },
-                {
-                    "type": "ui_command",
-                    "data": {
-                        "command_type": "update_config",
-                        "process_id": demo_process_id,
-                        "params": {
-                            "scheduler": "cosine_annealing",
-                            "weight_decay": "0.01",
-                        },
-                    },
-                },
-                {
-                    "type": "ui_command",
-                    "data": {
                         "command_type": "pause_training",
                         "process_id": demo_process_id,
                         "params": {},
-                    },
-                },
-                {
-                    "type": "ui_command",
-                    "data": {
-                        "command_type": "resume_training",
-                        "process_id": demo_process_id,
-                        "params": {},
-                    },
-                },
-                {
-                    "type": "ui_command",
-                    "data": {
-                        "command_type": "update_config",
-                        "process_id": demo_process_id,
-                        "params": {"learning_rate": "0.002", "batch_size": "128"},
-                    },
-                },
-                {
-                    "type": "ui_command",
-                    "data": {
-                        "command_type": "deactivate_device",
-                        "process_id": demo_process_id,
-                        "params": {"reason": "Demo device deactivation"},
                     },
                 },
             ]
@@ -395,7 +363,9 @@ async def main():
 
     # For testing, we can pass a specific process_id to the CLI
     # This should match the process_id used when spawning the threadlet
-    test_pid = "test-process" # Ensure this matches the one in spawn_threadlet.py for the test
+    test_pid = (
+        "test-process"  # Ensure this matches the one in spawn_threadlet.py for the test
+    )
     cli = TorchLoomWebSocketCLI(test_process_id=test_pid)
     await cli.run()
 

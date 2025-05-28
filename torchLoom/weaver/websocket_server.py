@@ -11,8 +11,11 @@ import time
 from typing import Any, Callable, List, Optional
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Form, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from torchLoom.common.constants import UINetworkConstants
 from torchLoom.log.logger import setup_logger
@@ -80,6 +83,20 @@ class WebSocketServer:
         # Callback function to get initial status data - will be set by Weaver
         self._get_initial_status: Optional[Callable[[], dict]] = None
 
+        # Setup static files and templates for web GUI
+        try:
+            self.app.mount(
+                "/static",
+                StaticFiles(directory="torchloom_web_gui/static"),
+                name="static",
+            )
+            self.templates = Jinja2Templates(directory="torchloom_web_gui/templates")
+        except Exception as e:
+            logger.warning(
+                f"Could not mount static files or templates: {e}. Web GUI may not work properly."
+            )
+            self.templates = None
+
         # CORS for WebSocket connections
         self.app.add_middleware(
             CORSMiddleware,
@@ -107,7 +124,128 @@ class WebSocketServer:
         await self.manager.send_json_to_all(data)
 
     def setup_routes(self):
-        """Setup FastAPI WebSocket route."""
+        """Setup FastAPI WebSocket route and HTTP routes for web GUI."""
+
+        @self.app.get("/", response_class=HTMLResponse)
+        async def get_web_gui(request: Request):
+            """Serve the web GUI HTML page."""
+            if not self.templates:
+                return HTMLResponse(
+                    "<h1>TorchLoom Control Panel</h1><p>Web GUI templates not available. Please ensure torchloom_web_gui/templates directory exists.</p>"
+                )
+
+            return self.templates.TemplateResponse("index.html", {"request": request})
+
+        @self.app.post("/send_command", response_class=HTMLResponse)
+        async def send_command_endpoint(
+            request: Request,
+            command_type: str = Form(...),
+            process_id: Optional[str] = Form(None),
+            params: Optional[str] = Form(None),
+        ):
+            """Handle command form submissions from the web GUI."""
+            if not self._ui_command_handler:
+                logger.error("Cannot send command: UI command handler not set.")
+                return HTMLResponse(
+                    "<p class='error'>❌ Error: UI command handler not available.</p>",
+                    status_code=503,
+                )
+
+            command_data = {
+                "type": "ui_command",
+                "data": {
+                    "command_type": command_type,
+                },
+            }
+            if process_id and process_id.strip():
+                command_data["data"]["process_id"] = process_id.strip()
+
+            parsed_params = {}
+            if params and params.strip():
+                try:
+                    parsed_params = json.loads(params)
+                    if not isinstance(parsed_params, dict):
+                        raise ValueError("Params must be a JSON object.")
+                except json.JSONDecodeError as e:
+                    logger.error(f"Invalid JSON in params: {params}")
+                    return HTMLResponse(
+                        f"<p class='error'>❌ Error: Invalid JSON in parameters: {str(e)}</p>",
+                        status_code=400,
+                    )
+                except ValueError as ve:
+                    logger.error(str(ve))
+                    return HTMLResponse(
+                        f"<p class='error'>❌ Error: {str(ve)}</p>", status_code=400
+                    )
+
+            command_data["data"]["params"] = parsed_params
+
+            try:
+                # Handle both sync and async command handlers
+                import inspect
+
+                if inspect.iscoroutinefunction(self._ui_command_handler):
+                    await self._ui_command_handler(command_data)
+                else:
+                    self._ui_command_handler(command_data)
+
+                logger.info(
+                    f"Processed command from web GUI: {command_type} for {process_id if process_id else 'all'}"
+                )
+                return HTMLResponse(
+                    f"<p class='success'>✅ Command '{command_type}' sent successfully.</p>"
+                )
+            except Exception as e:
+                logger.error(f"Failed to process command from web GUI: {e}")
+                return HTMLResponse(
+                    f"<p class='error'>❌ Error processing command: {str(e)}</p>",
+                    status_code=500,
+                )
+
+        @self.app.get("/api/processes")
+        async def get_processes():
+            """Get available process IDs and their configurations for the UI dropdown."""
+            try:
+                if self._get_initial_status:
+                    status_data = self._get_initial_status()
+                    processes = []
+                    
+                    # Extract process information from training status
+                    training_status = status_data.get("training_status", [])
+                    for status in training_status:
+                        process_id = status.get("process_id")
+                        if process_id and process_id != "N/A":
+                            config = status.get("config", {})
+                            processes.append({
+                                "process_id": process_id,
+                                "config": config,
+                                "status": status.get("status", "unknown"),
+                                "type": "training"
+                            })
+                    
+                    # Extract process information from devices
+                    devices = status_data.get("devices", [])
+                    for device in devices:
+                        process_id = device.get("process_id")
+                        if process_id and process_id != "N/A":
+                            # Check if we already have this process from training status
+                            existing = next((p for p in processes if p["process_id"] == process_id), None)
+                            if not existing:
+                                config = device.get("config", {})
+                                processes.append({
+                                    "process_id": process_id,
+                                    "config": config,
+                                    "status": "device",
+                                    "type": "device",
+                                    "device_uuid": device.get("device_uuid", "N/A")
+                                })
+                    
+                    return {"processes": processes}
+                else:
+                    return {"processes": []}
+            except Exception as e:
+                logger.error(f"Error fetching processes: {e}")
+                return {"error": str(e), "processes": []}
 
         @self.app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):
@@ -168,7 +306,13 @@ class WebSocketServer:
                 # Forward UI commands to Weaver's handler system
                 if self._ui_command_handler:
                     try:
-                        await self._ui_command_handler(data)
+                        # Handle both sync and async command handlers
+                        import inspect
+
+                        if inspect.iscoroutinefunction(self._ui_command_handler):
+                            await self._ui_command_handler(data)
+                        else:
+                            self._ui_command_handler(data)
                         logger.info(f"Forwarded UI command: {command_type}")
                     except Exception as e:
                         logger.error(f"Error handling UI command {command_type}: {e}")
