@@ -1,14 +1,14 @@
 from dataclasses import dataclass
 
-from torchLoom.log.logger import setup_logger
+from torchLoom.log_utils.logger import setup_logger
 
 class LoggerConstants:
-    MANAGER_torchLoom_LOG_FILE: str = "./torchLoom/log/torchLoom.log"
-    MANAGER_RUNTIME_LOG_FILE: str = "./torchLoom/log/manager.log"
-    torchLoom_CONSTANTS_LOG_FILE: str = "./torchLoom/log/torchLoom_constants.log"
-    torchLoom_UTILS_LOG_FILE: str = "./torchLoom/log/torchLoom_utils.log"
-    torchLoom_CONTROLLER_LOG_FILE: str = "./torchLoom/log/torchLoom_weaver.log"
-    torchLoom_MONITOR_CLI_LOG_FILE: str = "./torchLoom/log/torchLoom_monitor_cli.log"
+    MANAGER_torchLoom_LOG_FILE: str = "./torchLoom/log_utils/torchLoom.log_utils"
+    MANAGER_RUNTIME_LOG_FILE: str = "./torchLoom/log_utils/manager.log"
+    torchLoom_CONSTANTS_LOG_FILE: str = "./torchLoom/log_utils/torchLoom_constants.log"
+    torchLoom_UTILS_LOG_FILE: str = "./torchLoom/log_utils/torchLoom_utils.log"
+    torchLoom_CONTROLLER_LOG_FILE: str = "./torchLoom/log_utils/torchLoom_weaver.log"
+    torchLoom_MONITOR_CLI_LOG_FILE: str = "./torchLoom/log_utils/torchLoom_monitor_cli.log"
     FORMAT_LOG: bool = False
     
 logger = setup_logger(

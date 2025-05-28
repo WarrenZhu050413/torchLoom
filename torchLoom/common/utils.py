@@ -7,8 +7,8 @@ import torch
 from pynvml import nvmlDeviceGetHandleByIndex, nvmlDeviceGetUUID, nvmlInit
 
 from torchLoom.common.constants import LoggerConstants
-from torchLoom.log.log_utils import log_and_raise_exception
-from torchLoom.log.logger import setup_logger
+from torchLoom.log_utils.log_utils import log_and_raise_exception
+from torchLoom.log_utils.logger import setup_logger
 from torchLoom.proto import torchLoom_pb2
 
 logger = setup_logger(

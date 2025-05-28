@@ -14,7 +14,7 @@ from torchLoom.common.utils import (
     create_device_status_dict,
     create_training_status_dict,
 )
-from torchLoom.log.logger import setup_logger
+from torchLoom.log_utils.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
 logger = setup_logger(name="handlers")

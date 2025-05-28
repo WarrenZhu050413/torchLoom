@@ -20,7 +20,7 @@ from torchLoom.common.constants import (
 )
 from torchLoom.common.handlers import HandlerRegistry
 from torchLoom.common.subscription import SubscriptionManager
-from torchLoom.log.logger import setup_logger
+from torchLoom.log_utils.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
 from . import handlers

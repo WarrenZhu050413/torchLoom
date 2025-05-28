@@ -17,8 +17,8 @@ from nats.js.client import JetStreamContext
 
 import nats
 from torchLoom.common.constants import NatsConstants, LoggerConstants, TimeConstants
-from torchLoom.log.log_utils import log_and_raise_exception
-from torchLoom.log.logger import setup_logger
+from torchLoom.log_utils.log_utils import log_and_raise_exception
+from torchLoom.log_utils.logger import setup_logger
 
 logger = setup_logger(name="subscription_manager")  # Renamed logger
 

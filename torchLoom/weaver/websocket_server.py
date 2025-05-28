@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from torchLoom.common.constants import UINetworkConstants
-from torchLoom.log.logger import setup_logger
+from torchLoom.log_utils.logger import setup_logger
 
 logger = setup_logger(name="websocket_server")
 

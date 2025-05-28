@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Set
 
-from torchLoom.log.logger import setup_logger
+from torchLoom.log_utils.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import TrainingStatus, UIStatusUpdate, deviceStatus
 
 logger = setup_logger(name="status_tracker")

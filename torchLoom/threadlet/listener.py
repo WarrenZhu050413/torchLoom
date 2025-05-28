@@ -32,7 +32,7 @@ from torchLoom.common.utils import (
     create_training_status_dict,
     maybe_get_device_uuid,
 )
-from torchLoom.log.logger import setup_logger
+from torchLoom.log_utils.logger import setup_logger
 from torchLoom.proto import torchLoom_pb2
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope, RegisterDevice
 

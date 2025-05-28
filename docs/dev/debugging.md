@@ -23,7 +23,7 @@ telnet localhost 4222
 ps aux | grep weaver.py
 
 # Check weaver logs
-tail -f /srv/apps/warren/torchft/torchft/torchLoom/logging/torchLoom.log
+tail -f /srv/apps/warren/torchft/torchft/torchLoom/logging/torchLoom.log_utils
 ```
 
 ### Manager

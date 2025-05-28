@@ -10,7 +10,7 @@ import time
 from typing import Any, Callable, Optional
 
 from torchLoom.common.publishers import BasePublisher
-from torchLoom.log.logger import setup_logger
+from torchLoom.log_utils.logger import setup_logger
 from torchLoom.proto.torchLoom_pb2 import EventEnvelope
 
 logger = setup_logger(name="ui_interface")
