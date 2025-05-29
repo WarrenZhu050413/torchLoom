@@ -437,7 +437,108 @@
                 }
                 editorBox.appendChild(wrapper);
             });
+        }// ---------- 配置编辑器 ----------
+        function renderConfigEditor(cfg) {
+            editorBox.innerHTML = '';                // 清空旧内容
+
+            Object.entries(cfg).forEach(([key, value]) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'param-item';
+                wrapper.innerHTML = `<label>${key}</label>`;
+
+                // === batch_size：整数滑块 ===
+                if (key === 'batch_size') {
+                    const num = document.createElement('input');
+                    num.type = 'number';
+                    num.min = 1;
+                    num.step = 1;
+                    num.value = parseInt(value, 10);
+                    num.className = 'param-input';
+                    num.dataset.key = key;
+
+                    const range = document.createElement('input');
+                    range.type = 'range';
+                    range.min = 1;
+                    range.max = Math.max(1024, num.value * 4); // 动态上限
+                    range.step = 1;
+                    range.value = num.value;
+
+                    num.addEventListener('input', () => range.value = num.value);
+                    range.addEventListener('input', () => num.value = range.value);
+
+                    wrapper.append(num, range);
+
+                    // === learning_rate：对数滑块 1e-5 → 1 ===
+                } else if (key === 'learning_rate') {
+                    const num = document.createElement('input');
+                    num.type = 'number';
+                    num.step = 'any';
+                    num.min = 1e-5;
+                    num.max = 1;
+                    num.value = parseFloat(value);
+                    num.className = 'param-input';
+                    num.dataset.key = key;
+
+                    // slider.value 存 log10(lr)；取值区间 −5 → 0
+                    const range = document.createElement('input');
+                    range.type = 'range';
+                    range.min = -5;
+                    range.max = 0;
+                    range.step = 0.01;
+                    range.value = Math.log10(num.value);
+
+                    // 双向同步（对数 ↔ 线性）
+                    num.addEventListener('input', () => {
+                        if (num.value > 0) range.value = Math.log10(num.value);
+                    });
+                    range.addEventListener('input', () => {
+                        num.value = (10 ** range.value).toExponential(6);
+                    });
+
+                    wrapper.append(num, range);
+
+                    // === 其他离散 / 数值 ===
+                } else if (!isNaN(parseFloat(value)) && isFinite(value)) {
+                    const num = document.createElement('input');
+                    num.type = 'number';
+                    num.step = 'any';
+                    num.value = value;
+                    num.className = 'param-input';
+                    num.dataset.key = key;
+
+                    const range = document.createElement('input');
+                    range.type = 'range';
+                    range.min = 0;
+                    range.max = parseFloat(value) * 10 || 1;
+                    range.step = (range.max - range.min) / 100;
+                    range.value = value;
+
+                    num.addEventListener('input', () => range.value = num.value);
+                    range.addEventListener('input', () => num.value = range.value);
+
+                    wrapper.append(num, range);
+
+                } else {
+                    // 离散：下拉框
+                    const sel = document.createElement('select');
+                    sel.className = 'param-input';
+                    sel.dataset.key = key;
+
+                    const opts = (DROPDOWN_CANDIDATES[key] || []).slice();
+                    if (!opts.includes(value.toString())) opts.push(value);
+
+                    opts.forEach(v => {
+                        const o = new Option(v, v, false, v === value.toString());
+                        sel.add(o);
+                    });
+
+                    wrapper.appendChild(sel);
+                }
+
+                editorBox.appendChild(wrapper);
+            });
         }
+
 
         // --------- 拦截表单提交，打包 JSON ----------
         const cmdForm = document.getElementById('command-form'); // 你的 <form>
