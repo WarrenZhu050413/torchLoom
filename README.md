@@ -2,6 +2,16 @@
 
 torchLoom is an active controller framework for PyTorch, enabling dynamic, fault-tolerant, and efficient distributed machine learning (ML) training. 
 
+Large-scale distributed ML programs traditionally use simple control structures. However, demand for advanced features like network-algorithm co-design and fault tolerance necessitates complex control mechanisms.
+
+Currently, PyTorch lacks native control plane abstractions, leading to application-specific solutions such as Rank-0 Leader Coordination, specialized servers, or centralized global store, all tightly coupled to specific use cases.
+
+Inspired by Kubernetes' control plane and torchFT's Lighthouse server, torchLoom introduces a "Weaver" orchestration service that communicates with lightweight "Threadlet" agents that interact with training workers. This design decouples control plane from data plane and enables shared implementations across applications, leading to simple and reusable code.
+
+torchLoom currently provides adaptive synchronization frequency for semi-synchronous training, allreduce topology optimization via real-time network profiling, and worker preemption based on external monitoring, all within the same control plane.
+
+## Background
+
 The name "Loom" itself is evocative of two key concepts: firstly, it references the spinning jenny, one of the first artifacts of the Industrial Revolution. Secondly, "Loom" alludes to the intricate orchestration of diverse computational "threads" or workloads running on GPUs, weaving them together for maximum efficiency and towards more useful ends. 
 
 torchLoom addresses the growing complexity of modern ML workloads, which often involve heterogeneous tasks and require more than static scheduling. Inspired by torchFT, torchLoom extends the concept of a central manager by introducing a proactive **Weaver** controller service and **Threadlet** agents within each training process. The Weaver proactively orchestrates the distributed system, managing aspects like fault tolerance, resource optimization, and even real-time adjustments to training strategies, while Threadlets act as local agents handling monitoring and control tasks.
