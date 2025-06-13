@@ -188,7 +188,10 @@ We aim to be an AI agent friendly library. In [AGENTS.md](AGENTS.md) are some in
 
 ## Explore More
 
-- Check out the [examples](examples) for ways of using torchLoom. Specifically, the `localsgd` example demonstrates how to integrate torchLoom with PyTorch Lightning for configuring the sync-every parameter of a LocalSGD training setup.
+- Check out the [examples](examples) for ways of using torchLoom. 
+  - The `localsgd` example demonstrates how to integrate torchLoom with PyTorch Lightning for configuring the sync-every parameter of a LocalSGD training setup.
+  - The `topology_optimization` example showcases allreduce topology optimization via real-time network profiling, dynamically switching between ring, tree, butterfly, and hierarchical communication patterns based on network conditions.
+  - The `fault_tolerance` example demonstrates worker preemption based on external monitoring, showing how torchLoom handles fault injection, automatic recovery, and checkpoint management for resilient distributed training.
 - Check out the [docs](docs) for more details on the design and implementation of torchLoom.
 - Check out the [contributing](contributing) for more details on how to contribute to torchLoom.
 - Check out the [contributors](CONTRIBUTORS.md) to see who has contributed to torchLoom.
